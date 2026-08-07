@@ -308,7 +308,8 @@ jobs:
               $path = Join-Path $deps "lib/$name"
               if (Test-Path $path) { return $path }
             }
-            throw "None of $($names -join ', ') found in $deps/lib"
+            $available = (Get-ChildItem "$deps/lib" -File -Filter *.lib).Name -join ', '
+            throw "None of $($names -join ', ') found in $deps/lib. Available: $available"
           }
 
           # RocksDB locates third-party libraries through thirdparty.inc on MSVC.
@@ -317,9 +318,9 @@ jobs:
           $env:LZ4_INCLUDE = "$deps/include"
           $env:LZ4_LIB_RELEASE = Resolve-Library @("lz4.lib")
           $env:ZLIB_INCLUDE = "$deps/include"
-          $env:ZLIB_LIB_RELEASE = Resolve-Library @("zlib.lib", "zlibstatic.lib")
+          $env:ZLIB_LIB_RELEASE = Resolve-Library @("zs.lib", "zlib.lib", "zlibstatic.lib")
           $env:ZSTD_INCLUDE = "$deps/include"
-          $env:ZSTD_LIB_RELEASE = Resolve-Library @("zstd.lib", "libzstd_static.lib")
+          $env:ZSTD_LIB_RELEASE = Resolve-Library @("zstd.lib", "zstd_static.lib", "libzstd_static.lib")
           # thirdparty.inc knows nothing about bzip2, so wire it up by hand.
           $bzip2 = Resolve-Library @("bz2.lib", "bzip2.lib")
 

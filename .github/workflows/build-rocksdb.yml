@@ -1,0 +1,425 @@
+name: Build RocksDB
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: RocksDB repo ref
+        required: true
+        default: main
+        type: string
+      create-pr:
+        description: Create a pull request
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+  RETENTION: 7
+  # Supplies jemalloc and the compression libraries as static libraries.
+  VCPKG_REF: "2026.07.29"
+
+jobs:
+  build-linux:
+    name: Linux build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    container:
+      image: ubuntu:22.04
+      options: --platform ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
+    env:
+      TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-linux' || 'x64-linux' }}
+      # Minimum CPU architecture to support. x86-64-v3 (Haswell and newer)
+      # enables the SSE4.2/PCLMUL CRC32C path, which RocksDB gates at compile
+      # time; 1 keeps RocksDB's armv8-a+crc+crypto baseline, which it checks
+      # for at run time.
+      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'x86-64-v3' }}
+    steps:
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            autoconf autoconf-archive automake build-essential ca-certificates \
+            cmake curl git libtool pkg-config tar unzip zip
+
+      - name: Check out RocksDB repository
+        uses: actions/checkout@v7
+        with:
+          repository: facebook/rocksdb
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Check out vcpkg repository
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_REF }}
+          path: vcpkg
+
+      - name: Build static dependencies
+        run: |
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          # Initial-exec TLS is served from the static TLS surplus reserved at
+          # process start, which a library dlopen'ed as late as .NET loads this
+          # one may not get, failing the load.
+          portfile=vcpkg/ports/jemalloc/portfile.cmake
+          grep -Fxq '    OPTIONS ${opts}' $portfile
+          awk '{ print }
+               $0 == "    OPTIONS ${opts}" { print "        --disable-initial-exec-tls" }' \
+            $portfile > $portfile.patched
+          mv -f $portfile.patched $portfile
+          ./vcpkg/vcpkg install --clean-after-build \
+            bzip2:$TRIPLET jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET \
+            zlib:$TRIPLET zstd:$TRIPLET
+          shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
+          if [ -n "$shared" ]; then
+            echo "::error::vcpkg produced shared dependencies: $shared"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
+          # RocksDB's logging macros embed __FILE__, so remap the paths.
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive" \
+            -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+            -DFAIL_ON_WARNINGS=OFF \
+            -DPORTABLE=$MIN_CPU \
+            -DROCKSDB_BUILD_SHARED=ON \
+            -DUSE_RTTI=OFF \
+            -DWITH_BENCHMARK_TOOLS=OFF \
+            -DWITH_BZ2=ON \
+            -DWITH_CORE_TOOLS=OFF \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GFLAGS=OFF \
+            -DWITH_JEMALLOC=ON \
+            -DWITH_LIBURING=OFF \
+            -DWITH_LZ4=ON \
+            -DWITH_SNAPPY=ON \
+            -DWITH_TESTS=OFF \
+            -DWITH_TOOLS=OFF \
+            -DWITH_TRACE_TOOLS=OFF \
+            -DWITH_ZLIB=ON \
+            -DWITH_ZSTD=ON
+          cmake --build build --target rocksdb-shared
+          mkdir artifact
+          cp -L build/librocksdb.so artifact/librocksdb.so
+          strip artifact/librocksdb.so
+
+      - name: Verify
+        run: |
+          library=artifact/librocksdb.so
+          readelf -d $library | grep NEEDED
+          unexpected=$(readelf -d $library |
+            sed -n 's/.*Shared library: \[\(.*\)\]/\1/p' |
+            grep -Ev '^(ld-linux-(x86-64|aarch64)|libc|libdl|libgcc_s|libm|libpthread|librt|libstdc\+\+)\.so' || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::Third-party dependencies must be statically linked: $unexpected"
+            exit 1
+          fi
+          if ldd -r $library 2>&1 | grep -E 'not found|undefined symbol'; then
+            echo "::error::The library has unresolved runtime dependencies"
+            exit 1
+          fi
+          if ! readelf -Ws $library |
+            awk '$7 != "UND" && $8 ~ /^(je_)?mallocx(@@.*)?$/ { found = 1 } END { exit !found }'; then
+            echo "::error::jemalloc is not linked into the library"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: artifact/librocksdb.so
+          retention-days: ${{ env.RETENTION }}
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-15-intel' }}
+    env:
+      TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-osx' || 'x64-osx' }}
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      # See the Linux job.
+      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'x86-64-v3' }}
+    steps:
+      - name: Check out RocksDB repository
+        uses: actions/checkout@v7
+        with:
+          repository: facebook/rocksdb
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Check out vcpkg repository
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_REF }}
+          path: vcpkg
+
+      - name: Install dependencies
+        run: brew install autoconf autoconf-archive automake libtool
+
+      - name: Build static dependencies
+        run: |
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          # Initial-exec TLS is served from the static TLS surplus reserved at
+          # process start, which a library dlopen'ed as late as .NET loads this
+          # one may not get, failing the load.
+          portfile=vcpkg/ports/jemalloc/portfile.cmake
+          grep -Fxq '    OPTIONS ${opts}' $portfile
+          awk '{ print }
+               $0 == "    OPTIONS ${opts}" { print "        --disable-initial-exec-tls" }' \
+            $portfile > $portfile.patched
+          mv -f $portfile.patched $portfile
+          ./vcpkg/vcpkg install --clean-after-build \
+            bzip2:$TRIPLET jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET \
+            zlib:$TRIPLET zstd:$TRIPLET
+          shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.dylib')
+          if [ -n "$shared" ]; then
+            echo "::error::vcpkg produced shared dependencies: $shared"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
+          # RocksDB's logging macros embed __FILE__, so remap the paths.
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-force_load,$deps/lib/libjemalloc.a" \
+            -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+            -DFAIL_ON_WARNINGS=OFF \
+            -DPORTABLE=$MIN_CPU \
+            -DROCKSDB_BUILD_SHARED=ON \
+            -DUSE_RTTI=OFF \
+            -DWITH_BENCHMARK_TOOLS=OFF \
+            -DWITH_BZ2=ON \
+            -DWITH_CORE_TOOLS=OFF \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GFLAGS=OFF \
+            -DWITH_JEMALLOC=ON \
+            -DWITH_LIBURING=OFF \
+            -DWITH_LZ4=ON \
+            -DWITH_SNAPPY=ON \
+            -DWITH_TESTS=OFF \
+            -DWITH_TOOLS=OFF \
+            -DWITH_TRACE_TOOLS=OFF \
+            -DWITH_ZLIB=ON \
+            -DWITH_ZSTD=ON
+          cmake --build build --target rocksdb-shared
+          mkdir artifact
+          cp -L build/librocksdb.dylib artifact/librocksdb.dylib
+          strip -x artifact/librocksdb.dylib
+
+      - name: Verify
+        run: |
+          library=artifact/librocksdb.dylib
+          otool -L $library
+          unexpected=$(otool -L $library | tail -n +2 | awk '{ print $1 }' |
+            grep -Ev '^(@rpath/librocksdb|/usr/lib/|/System/Library/)' || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::Third-party dependencies must be statically linked: $unexpected"
+            exit 1
+          fi
+          if ! nm -g $library | grep -Eq ' [Tt] _(je_)?mallocx$'; then
+            echo "::error::jemalloc is not linked into the library"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: osx-${{ matrix.arch }}
+          path: artifact/librocksdb.dylib
+          retention-days: ${{ env.RETENTION }}
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
+    env:
+      # Static libraries against the dynamic CRT, matching RocksDB's /MD default.
+      TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-windows-static-md' || 'x64-windows-static-md' }}
+    steps:
+      - name: Check out RocksDB repository
+        uses: actions/checkout@v7
+        with:
+          repository: facebook/rocksdb
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Check out vcpkg repository
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_REF }}
+          path: vcpkg
+
+      - name: Build static dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          ./vcpkg/vcpkg.exe install --clean-after-build `
+            bzip2:$env:TRIPLET lz4:$env:TRIPLET snappy:$env:TRIPLET `
+            zlib:$env:TRIPLET zstd:$env:TRIPLET
+          $shared = Get-ChildItem "vcpkg/installed/$env:TRIPLET/bin" -Filter *.dll `
+            -File -ErrorAction Ignore
+          if ($shared) {
+            throw "vcpkg produced shared dependencies: $($shared.Name -join ', ')"
+          }
+
+      - name: Build
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $deps = Join-Path $PWD "vcpkg/installed/$env:TRIPLET"
+
+          function Resolve-Library([string[]] $names) {
+            foreach ($name in $names) {
+              $path = Join-Path $deps "lib/$name"
+              if (Test-Path $path) { return $path }
+            }
+            throw "None of $($names -join ', ') found in $deps/lib"
+          }
+
+          # RocksDB locates third-party libraries through thirdparty.inc on MSVC.
+          $env:SNAPPY_INCLUDE = "$deps/include"
+          $env:SNAPPY_LIB_RELEASE = Resolve-Library @("snappy.lib")
+          $env:LZ4_INCLUDE = "$deps/include"
+          $env:LZ4_LIB_RELEASE = Resolve-Library @("lz4.lib")
+          $env:ZLIB_INCLUDE = "$deps/include"
+          $env:ZLIB_LIB_RELEASE = Resolve-Library @("zlib.lib", "zlibstatic.lib")
+          $env:ZSTD_INCLUDE = "$deps/include"
+          $env:ZSTD_LIB_RELEASE = Resolve-Library @("zstd.lib", "libzstd_static.lib")
+          # thirdparty.inc knows nothing about bzip2, so wire it up by hand.
+          $bzip2 = Resolve-Library @("bz2.lib", "bzip2.lib")
+
+          # WIN_CI enables parallel compilation and drops debug info. PORTABLE
+          # sets /arch:AVX2, from which RocksDB infers SSE4.2 and PCLMUL.
+          # /Brepro replaces the linker timestamp with a hash of the content.
+          cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.arch }} `
+            "-DCMAKE_CXX_FLAGS=/DBZIP2 /I$deps/include" `
+            "-DCMAKE_SHARED_LINKER_FLAGS=$bzip2 /Brepro" `
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
+            -DFAIL_ON_WARNINGS=OFF `
+            -DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'AVX2' }} `
+            -DROCKSDB_BUILD_SHARED=ON `
+            -DUSE_RTTI=OFF `
+            -DWIN_CI=ON `
+            -DWITH_BENCHMARK_TOOLS=OFF `
+            -DWITH_CORE_TOOLS=OFF `
+            -DWITH_EXAMPLES=OFF `
+            -DWITH_GFLAGS=OFF `
+            -DWITH_JEMALLOC=OFF `
+            -DWITH_LZ4=ON `
+            -DWITH_MD_LIBRARY=ON `
+            -DWITH_SNAPPY=ON `
+            -DWITH_TESTS=OFF `
+            -DWITH_TOOLS=OFF `
+            -DWITH_TRACE_TOOLS=OFF `
+            -DWITH_ZLIB=ON `
+            -DWITH_ZSTD=ON
+          cmake --build build --config Release --target rocksdb-shared
+
+          $library = Get-ChildItem build -Recurse -File -Filter rocksdb-shared.dll |
+            Select-Object -First 1
+          if (!$library) { throw "The RocksDB DLL was not produced" }
+          New-Item -ItemType Directory artifact | Out-Null
+          Copy-Item $library.FullName artifact/rocksdb.dll
+
+      - name: Verify
+        run: |
+          # Imported DLL names are stored as ASCII in the import directory.
+          $imports = [Text.Encoding]::ASCII.GetString(
+            [IO.File]::ReadAllBytes("$PWD/artifact/rocksdb.dll"))
+          $pattern = '(snappy|zstd|lz4|zlib1?|bz2|libbz2)\.dll'
+          if ($imports -match $pattern) {
+            throw "Third-party dependencies must be statically linked: $($Matches[0])"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: win-${{ matrix.arch }}
+          path: artifact/rocksdb.dll
+          retention-days: ${{ env.RETENTION }}
+          if-no-files-found: error
+
+  create-pr:
+    name: Create a pull request
+    needs: [build-linux, build-macos, build-windows]
+    if: github.event.inputs.create-pr == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: src/Nethermind.RocksDbBindings/runtimes
+
+      - name: Move artifacts
+        working-directory: src/Nethermind.RocksDbBindings/runtimes
+        run: |
+          for rid in linux-arm64 linux-x64; do
+            mkdir -p $rid/native && mv -f $rid/librocksdb.so $rid/native/
+          done
+          for rid in osx-arm64 osx-x64; do
+            mkdir -p $rid/native && mv -f $rid/librocksdb.dylib $rid/native/
+          done
+          for rid in win-arm64 win-x64; do
+            mkdir -p $rid/native && mv -f $rid/rocksdb.dll $rid/native/
+          done
+
+      - name: Update version
+        env:
+          REF: ${{ github.event.inputs.ref }}
+        run: |
+          version=${REF#v}
+          if [[ $version =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            sed -i "s|<VersionPrefix>.*</VersionPrefix>|<VersionPrefix>$version</VersionPrefix>|" \
+              src/Directory.Build.props
+          fi
+
+      - name: Create a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head_branch=feature/rocksdb-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Update RocksDB binaries"
+          git push origin $head_branch
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update RocksDB binaries" -b "Built and updated RocksDB binaries"

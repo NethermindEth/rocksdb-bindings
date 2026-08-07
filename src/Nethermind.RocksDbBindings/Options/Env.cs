@@ -1,0 +1,56 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: MIT
+
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Nethermind.RocksDbBindings;
+
+public unsafe class Env
+{
+    public IntPtr Handle { get; protected set; }
+
+    private Env(IntPtr handle)
+    {
+        Handle = handle;
+    }
+
+    public static Env CreateDefaultEnv()
+    {
+        return new Env((IntPtr)RocksDbNative.rocksdb_create_default_env());
+    }
+
+    public static Env CreateMemEnv()
+    {
+        return new Env((IntPtr)RocksDbNative.rocksdb_create_mem_env());
+    }
+
+    public Env SetBackgroundThreads(int value)
+    {
+        RocksDbNative.rocksdb_env_set_background_threads(RocksDbInterop.Env(Handle), value);
+        return this;
+    }
+
+    public Env SetHighPriorityBackgroundThreads(int value)
+    {
+        RocksDbNative.rocksdb_env_set_high_priority_background_threads(RocksDbInterop.Env(Handle), value);
+        return this;
+    }
+
+    public void JoinAllThreads()
+    {
+        RocksDbNative.rocksdb_env_join_all_threads(RocksDbInterop.Env(Handle));
+    }
+
+    ~Env()
+    {
+        if (Handle != IntPtr.Zero)
+        {
+#if !NODESTROY
+            RocksDbNative.rocksdb_env_destroy(RocksDbInterop.Env(Handle));
+#endif
+            Handle = IntPtr.Zero;
+        }
+    }
+}

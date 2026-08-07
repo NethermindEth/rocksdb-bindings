@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: MIT
+
+using System;
+using System.IO;
+
+namespace Nethermind.RocksDbBindings;
+
+public class ReplicationConsumer
+{
+    private readonly RocksDb _db;
+
+    public ReplicationConsumer(RocksDb db)
+    {
+        _db = db;
+    }
+
+    public static void IngestFile(ReplicationFile file, string destinationDbPath)
+    {
+        Directory.CreateDirectory(destinationDbPath);
+
+        string destPath = Path.Combine(destinationDbPath, file.FileName);
+
+        using (var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write))
+        {
+            file.FileStream.CopyTo(fileStream);
+        }
+    }
+
+    public void IngestBatch(ReplicationBatch batch)
+    {
+        if (_db == null) throw new InvalidOperationException("DB is not initialized.");
+
+        using (var writeBatch = new WriteBatch(batch.Data))
+        {
+            _db.Write(writeBatch);
+        }
+    }
+
+#if !NETSTANDARD2_0
+    public void IngestBatch(ulong sequenceNo, ReadOnlySpan<byte> batchData)
+    {
+        if (_db == null) throw new InvalidOperationException("DB is not initialized.");
+
+        using (var writeBatch = WriteBatch.FromSpan(batchData))
+        {
+            _db.Write(writeBatch);
+        }
+    }
+#endif
+
+}

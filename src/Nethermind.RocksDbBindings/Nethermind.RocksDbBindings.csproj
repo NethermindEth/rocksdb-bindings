@@ -58,6 +58,7 @@
       <Pack>true</Pack>
       <PackagePath>%(RelativeDir)%(Filename)%(Extension)</PackagePath>
     </None>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 

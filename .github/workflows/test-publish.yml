@@ -1,9 +1,9 @@
 name: Test / Publish
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  # pull_request:
+  # push:
+  #   branches: [main]
   release:
     types: [published]
   workflow_dispatch:
@@ -53,6 +53,11 @@ jobs:
     # needs: test
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'No' || github.event_name == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NUGET_HOST: ${{ github.event.inputs.publish == 'Staging' && 'https://int.nugettest.org' || 'https://www.nuget.org' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -70,11 +75,18 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
+      - name: NuGet login
+        uses: nuget/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+          audience: ${{ env.NUGET_HOST }}
+          token-service-url: ${{ env.NUGET_HOST }}/api/v2/token
+
       - name: Publish
         working-directory: src
         run: |
           dotnet pack ./Nethermind.RocksDbBindings -c release \
             -p:VersionPrefix=${{ steps.version.outputs.version-prefix }}.${{ github.run_number }}
-          dotnet nuget push ./Nethermind.RocksDbBindings/artifacts/package/release/*.nupkg \
-            -k ${{ github.event.inputs.publish == 'Staging' && secrets.NUGETTEST_API_KEY || secrets.NUGET_API_KEY }} \
-            -s ${{ github.event.inputs.publish == 'Staging' && 'https://apiint.nugettest.org/v3/index.json' || 'https://api.nuget.org/v3/index.json' }}
+          dotnet nuget push ./artifacts/package/release/*.nupkg \
+            -k "${{ steps.login.outputs.NUGET_API_KEY }}" -s ${{ env.NUGET_HOST }}/api/v2/package

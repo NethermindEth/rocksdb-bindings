@@ -20,7 +20,7 @@ permissions:
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 4
   RETENTION: 7
-  # Supplies jemalloc and the compression libraries as static libraries.
+  # Supplies static jemalloc and compression libraries.
   VCPKG_REF: "2026.07.29"
 
 jobs:
@@ -36,11 +36,9 @@ jobs:
       options: --platform ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
     env:
       TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-linux' || 'x64-linux' }}
-      # Minimum CPU architecture to support. x86-64-v3 (Haswell and newer)
-      # enables the SSE4.2/PCLMUL CRC32C path, which RocksDB gates at compile
-      # time; 1 keeps RocksDB's armv8-a+crc+crypto baseline, which it checks
-      # for at run time.
-      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'x86-64-v3' }}
+      # Minimum CPU architecture. x86-64-v3 omits the PCLMUL that RocksDB's
+      # CRC32C path infers from AVX; 1 keeps its armv8-a+crc+crypto baseline.
+      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
     steps:
       - name: Install dependencies
         env:
@@ -64,12 +62,18 @@ jobs:
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
+          restore-keys: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-
+
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Initial-exec TLS is served from the static TLS surplus reserved at
-          # process start, which a library dlopen'ed as late as .NET loads this
-          # one may not get, failing the load.
+          # Initial-exec TLS comes from the static TLS surplus reserved at
+          # process start, which a library .NET dlopen's may not get.
           portfile=vcpkg/ports/jemalloc/portfile.cmake
           grep -Fxq '    OPTIONS ${opts}' $portfile
           awk '{ print }
@@ -94,7 +98,7 @@ jobs:
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -160,7 +164,7 @@ jobs:
       TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-osx' || 'x64-osx' }}
       MACOSX_DEPLOYMENT_TARGET: "12.0"
       # See the Linux job.
-      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'x86-64-v3' }}
+      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
     steps:
       - name: Check out RocksDB repository
         uses: actions/checkout@v7
@@ -175,15 +179,21 @@ jobs:
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
+          restore-keys: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-
+
       - name: Install dependencies
         run: brew install autoconf autoconf-archive automake libtool
 
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Initial-exec TLS is served from the static TLS surplus reserved at
-          # process start, which a library dlopen'ed as late as .NET loads this
-          # one may not get, failing the load.
+          # Initial-exec TLS comes from the static TLS surplus reserved at
+          # process start, which a library .NET dlopen's may not get.
           portfile=vcpkg/ports/jemalloc/portfile.cmake
           grep -Fxq '    OPTIONS ${opts}' $portfile
           awk '{ print }
@@ -285,6 +295,13 @@ jobs:
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
+          restore-keys: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-
+
       - name: Build static dependencies
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -324,9 +341,8 @@ jobs:
           # thirdparty.inc knows nothing about bzip2, so wire it up by hand.
           $bzip2 = Resolve-Library @("bz2.lib", "bzip2.lib")
 
-          # WIN_CI enables parallel compilation and drops debug info. PORTABLE
-          # sets /arch:AVX2, from which RocksDB infers SSE4.2 and PCLMUL.
-          # /Brepro replaces the linker timestamp with a hash of the content.
+          # WIN_CI enables parallel compilation and drops debug info; /Brepro
+          # replaces the linker timestamp with a content hash.
           cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.arch }} `
             "-DCMAKE_CXX_FLAGS=/DBZIP2 /I$deps/include" `
             "-DCMAKE_SHARED_LINKER_FLAGS=$bzip2 /Brepro" `

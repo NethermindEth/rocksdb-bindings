@@ -433,12 +433,14 @@ jobs:
       - name: Create a pull request
         env:
           GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.inputs.ref }}
         run: |
           head_branch=feature/rocksdb-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          title="chore(deps): update RocksDB binaries to ${REF#v}"
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
           git checkout -b $head_branch
           git add -A
-          git commit -am "Update RocksDB binaries"
+          git commit -m "$title"
           git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update RocksDB binaries" -b "Built and updated RocksDB binaries"
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "$title" -b "Built from RocksDB $REF."

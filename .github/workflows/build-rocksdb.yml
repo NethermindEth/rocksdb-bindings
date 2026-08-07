@@ -318,6 +318,8 @@ jobs:
       - name: Build
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          # MSBuild imports this and routes cl.exe through a ccache wrapper.
+          Remove-Item Directory.Build.props -ErrorAction Ignore
           $deps = Join-Path $PWD "vcpkg/installed/$env:TRIPLET"
 
           function Resolve-Library([string[]] $names) {

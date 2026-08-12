@@ -20,5 +20,3 @@ ENV LD_LIBRARY_PATH=/opt/clangsharp
 ENV PATH=/opt/clangsharp:$PATH
 
 WORKDIR /app
-
-CMD ["tail", "-f", "/dev/null"]

@@ -14,9 +14,9 @@ namespace Nethermind.RocksDbBindings;
 public unsafe class Iterator : IDisposable
 {
     private nint handle;
-    #pragma warning disable CS0414
+#pragma warning disable CS0414
     private ReadOptions readOptions;
-    #pragma warning restore CS0414
+#pragma warning restore CS0414
 
     internal Iterator(nint handle)
     {
@@ -73,7 +73,7 @@ public unsafe class Iterator : IDisposable
         return this;
     }
 
-    public unsafe Iterator Seek(byte *key, ulong klen)
+    public unsafe Iterator Seek(byte* key, ulong klen)
     {
         RocksDbNative.rocksdb_iter_seek(RocksDbInterop.Iterator(handle), (sbyte*)key, (nuint)klen);
         return this;
@@ -212,7 +212,7 @@ public unsafe class Iterator : IDisposable
     }
 #endif
 
-    public T Key<T>(Func<Stream,T> deserializer)
+    public T Key<T>(Func<Stream, T> deserializer)
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);

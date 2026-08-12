@@ -12,9 +12,9 @@ public unsafe class CompactionFilter
     private readonly FilterDelegate filterDelegate;
     private readonly DestructorDelegate destroyDelegate;
 
-    public CompactionFilter(NameDelegate nameDelegate, 
-                            FilterDelegate filterDelegate, 
-                            DestructorDelegate destroyDelegate, 
+    public CompactionFilter(NameDelegate nameDelegate,
+                            FilterDelegate filterDelegate,
+                            DestructorDelegate destroyDelegate,
                             nint state)
     {
         this.getNameDelegate = nameDelegate;
@@ -25,5 +25,5 @@ public unsafe class CompactionFilter
             (delegate* unmanaged[Cdecl]<void*, void>)(void*)System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(destroyDelegate),
             (delegate* unmanaged[Cdecl]<void*, int, sbyte*, nuint, sbyte*, nuint, sbyte**, nuint*, byte*, byte>)(void*)System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(filterDelegate),
             (delegate* unmanaged[Cdecl]<void*, sbyte*>)(void*)System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(getNameDelegate));
-    }        
+    }
 }

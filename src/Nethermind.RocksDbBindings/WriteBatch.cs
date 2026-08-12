@@ -227,26 +227,26 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         try
         {
             var keysLength = keys.Length;
-            (keysListArray, keysListSizesArray) = keysLength < 256 
+            (keysListArray, keysListSizesArray) = keysLength < 256
                 ? (null, null)
                 : (intPtrPool.Rent(keysLength), uintPtrPool.Rent(keysLength));
-            Span<nint> keysList = keysLength < 256 
+            Span<nint> keysList = keysLength < 256
                 ? stackalloc nint[keysLength]
                 : keysListArray.AsSpan(0, keysLength);
-            Span<nuint> keysListSizes = keysLength < 256 
-                ? stackalloc nuint[keysLength] 
+            Span<nuint> keysListSizes = keysLength < 256
+                ? stackalloc nuint[keysLength]
                 : keysListSizesArray.AsSpan(0, keysLength);
             using var keyHandles = CopyVector(keys, keysList, keysListSizes);
 
             var valuesLength = values.Length;
-            (valuesListArray, valuesListSizesArray) = valuesLength < 256 
+            (valuesListArray, valuesListSizesArray) = valuesLength < 256
                 ? (null, null)
                 : (intPtrPool.Rent(valuesLength), uintPtrPool.Rent(valuesLength));
             Span<nint> valuesList = valuesLength < 256
                 ? stackalloc nint[valuesLength]
                 : valuesListArray.AsSpan(0, valuesLength);
             Span<nuint> valuesListSizes = valuesLength < 256
-                ? stackalloc nuint[valuesLength] 
+                ? stackalloc nuint[valuesLength]
                 : valuesListSizesArray.AsSpan(0, valuesLength);
             using var valuesDisposable = CopyVector(values, valuesList, valuesListSizes);
 
@@ -268,7 +268,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
                         valuesLength, (nint)valuesListPtr, (nint)valuesListSizesPtr);
                 }
             }
-            return this; 
+            return this;
         }
         finally
         {
@@ -300,7 +300,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
 
         public MemoryHandleManager(int capacity)
         {
-             handles = new List<MemoryHandle>(capacity);
+            handles = new List<MemoryHandle>(capacity);
         }
 
         public void Add(MemoryHandle handle) => handles.Add(handle);

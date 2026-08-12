@@ -55,10 +55,10 @@ public class ReplicationSource
         }
     }
 
-    
+
     public IEnumerable<PooledReplicationBatch> GetPooledWalUpdates(ulong sequenceNumber)
     {
-        
+
         using (var iterator = _db.GetUpdatesSince(sequenceNumber))
         {
             while (iterator.Valid())

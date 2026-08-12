@@ -7,7 +7,7 @@ public class LiveFileMetadata
 {
     public FileMetadata FileMetadata;
     public FileDataMetadata FileDataMetadata;
-}   
+}
 
 public class FileMetadata
 {

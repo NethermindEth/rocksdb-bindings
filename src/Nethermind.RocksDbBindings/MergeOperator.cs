@@ -86,10 +86,10 @@ public static class MergeOperators
 
         unsafe nint MergeOperator.PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
-            var keySpan                = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
-            var operandsListSpan       = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
+            var keySpan = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
+            var operandsListSpan = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
             var operandsListLengthSpan = new ReadOnlySpan<long>((void*)operandsListLength, numOperands);
-            var operands               = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
+            var operands = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
 
             var value = PartialMerge(keySpan, operands, out var _success);
 
@@ -97,19 +97,19 @@ public static class MergeOperators
             Marshal.Copy(value, 0, ret, value.Length);
             newValueLength = (nint)value.Length;
 
-            success =  RocksDbInterop.Bool(_success);
+            success = RocksDbInterop.Bool(_success);
 
             return ret;
         }
 
         unsafe nint MergeOperator.FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
-            var keySpan                = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
-            var operandsListSpan       = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
+            var keySpan = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
+            var operandsListSpan = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
             var operandsListLengthSpan = new ReadOnlySpan<long>((void*)operandsListLength, numOperands);
-            var operands               = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
-            bool hasExistingValue      = existingValue != nint.Zero;
-            var existingValueSpan      = hasExistingValue ? new ReadOnlySpan<byte>((void*)existingValue, (int)existingValueLength) : ReadOnlySpan<byte>.Empty;
+            var operands = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
+            bool hasExistingValue = existingValue != nint.Zero;
+            var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>((void*)existingValue, (int)existingValueLength) : ReadOnlySpan<byte>.Empty;
 
             var value = FullMerge(keySpan, hasExistingValue, existingValueSpan, operands, out var _success);
 
@@ -117,7 +117,7 @@ public static class MergeOperators
             Marshal.Copy(value, 0, ret, value.Length);
             newValueLength = (nint)value.Length;
 
-            success =  RocksDbInterop.Bool(_success);
+            success = RocksDbInterop.Bool(_success);
 
             return ret;
         }

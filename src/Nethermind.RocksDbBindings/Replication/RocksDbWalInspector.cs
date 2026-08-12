@@ -113,24 +113,24 @@ public static class RocksDbWalInspector
                             return 0;
 
                         case RecordType.SetCompressionType:
-                        {
-                            if (length < 4)
-                                throw new InvalidDataException($"Invalid SetCompressionType record in '{walPath}'.");
-
-                            uint compressionType = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
-                            if (compressionType == ZstdCompressionType)
                             {
-                                zstd = new WalZstdState();
-                            }
-                            else
-                            {
-                                throw new NotSupportedException(
-                                    $"WAL '{walPath}' uses compression type {compressionType}, " +
-                                    "but this reader currently supports only ZSTD.");
-                            }
+                                if (length < 4)
+                                    throw new InvalidDataException($"Invalid SetCompressionType record in '{walPath}'.");
 
-                            continue;
-                        }
+                                uint compressionType = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
+                                if (compressionType == ZstdCompressionType)
+                                {
+                                    zstd = new WalZstdState();
+                                }
+                                else
+                                {
+                                    throw new NotSupportedException(
+                                        $"WAL '{walPath}' uses compression type {compressionType}, " +
+                                        "but this reader currently supports only ZSTD.");
+                                }
+
+                                continue;
+                            }
 
                         case RecordType.UserDefinedTimestampSizeType:
                         case RecordType.RecyclableUserDefinedTimestampSizeType:
@@ -140,67 +140,67 @@ public static class RocksDbWalInspector
 
                         case RecordType.FullType:
                         case RecordType.RecyclableFullType:
-                        {
-                            byte[] logicalRecord = zstd == null
-                                ? payload.ToArray()
-                                : zstd.DecompressRecord(payload);
+                            {
+                                byte[] logicalRecord = zstd == null
+                                    ? payload.ToArray()
+                                    : zstd.DecompressRecord(payload);
 
-                            ulong seq = TryReadWriteBatchSequence(logicalRecord);
-                            if (seq != 0)
-                                return seq;
-                            continue;
-                        }
+                                ulong seq = TryReadWriteBatchSequence(logicalRecord);
+                                if (seq != 0)
+                                    return seq;
+                                continue;
+                            }
 
                         case RecordType.FirstType:
                         case RecordType.RecyclableFirstType:
-                        {
-                            logical.SetLength(0);
+                            {
+                                logical.SetLength(0);
 
-                            byte[] firstFragment = zstd == null
-                                ? payload.ToArray()
-                                : zstd.DecompressRecord(payload);
+                                byte[] firstFragment = zstd == null
+                                    ? payload.ToArray()
+                                    : zstd.DecompressRecord(payload);
 
-                            logical.Write(firstFragment, 0, firstFragment.Length);
-                            haveFragmentedRecord = true;
-                            continue;
-                        }
+                                logical.Write(firstFragment, 0, firstFragment.Length);
+                                haveFragmentedRecord = true;
+                                continue;
+                            }
 
                         case RecordType.MiddleType:
                         case RecordType.RecyclableMiddleType:
-                        {
-                            if (!haveFragmentedRecord)
+                            {
+                                if (!haveFragmentedRecord)
+                                    continue;
+
+                                byte[] midFragment = zstd == null
+                                    ? payload.ToArray()
+                                    : zstd.DecompressRecord(payload);
+
+                                logical.Write(midFragment, 0, midFragment.Length);
                                 continue;
-
-                            byte[] midFragment = zstd == null
-                                ? payload.ToArray()
-                                : zstd.DecompressRecord(payload);
-
-                            logical.Write(midFragment, 0, midFragment.Length);
-                            continue;
-                        }
+                            }
 
                         case RecordType.LastType:
                         case RecordType.RecyclableLastType:
-                        {
-                            if (!haveFragmentedRecord)
+                            {
+                                if (!haveFragmentedRecord)
+                                    continue;
+
+                                byte[] lastFragment = zstd == null
+                                    ? payload.ToArray()
+                                    : zstd.DecompressRecord(payload);
+
+                                logical.Write(lastFragment, 0, lastFragment.Length);
+                                haveFragmentedRecord = false;
+
+                                ulong seq = TryReadWriteBatchSequence(
+                                    logical.GetBuffer().AsSpan(0, checked((int)logical.Length)));
+
+                                if (seq != 0)
+                                    return seq;
+
+                                logical.SetLength(0);
                                 continue;
-
-                            byte[] lastFragment = zstd == null
-                                ? payload.ToArray()
-                                : zstd.DecompressRecord(payload);
-
-                            logical.Write(lastFragment, 0, lastFragment.Length);
-                            haveFragmentedRecord = false;
-
-                            ulong seq = TryReadWriteBatchSequence(
-                                logical.GetBuffer().AsSpan(0, checked((int)logical.Length)));
-
-                            if (seq != 0)
-                                return seq;
-
-                            logical.SetLength(0);
-                            continue;
-                        }
+                            }
 
                         default:
                             return 0;

@@ -91,7 +91,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
                     return 0;
                 var valLength = Math.Min(length, (ulong)value.Length);
                 Buffer.BlockCopy(value, 0, buffer, (int)offset, (int)valLength);
-            return valLength;
+                return valLength;
             }
         }
     }
@@ -132,7 +132,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
                     return 0;
                 var valLength = Math.Min(length, (ulong)value.Length);
                 Buffer.BlockCopy(value, 0, buffer, (int)offset, (int)valLength);
-            return valLength;
+                return valLength;
             }
         }
     }

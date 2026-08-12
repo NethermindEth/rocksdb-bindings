@@ -46,7 +46,8 @@ public unsafe class BloomFilterPolicy
     /// trailing spaces in keys.
     /// </summary>
     /// <param name="bits_per_key">Bits per key.</param>
-    public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true) {
+    public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true)
+    {
         nint handle = use_block_based_builder
             ? (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom(bits_per_key)
             : (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom_full(bits_per_key);

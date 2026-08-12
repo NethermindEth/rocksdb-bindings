@@ -15,7 +15,7 @@ public class RocksSafePath : IDisposable
     public RocksSafePath(string path)
     {
         var enc = new System.Text.UTF8Encoding(false, false);
-        byte[] utf16  = enc.GetBytes(path);
+        byte[] utf16 = enc.GetBytes(path);
         Handle = Marshal.AllocHGlobal(utf16.Length + 1);
         Marshal.Copy(utf16, 0, Handle, utf16.Length);
         Marshal.WriteByte(Handle, utf16.Length, 0); //Add the null-terminator to the byte sequence
@@ -27,8 +27,8 @@ public class RocksSafePath : IDisposable
         //This should be tied to the lifetime of the RocksDB object
         //if(Handle != nint.Zero)
         //{
-            //Marshal.FreeHGlobal(Handle);
-            //Handle = nint.Zero;
+        //Marshal.FreeHGlobal(Handle);
+        //Handle = nint.Zero;
         //}
     }
 }

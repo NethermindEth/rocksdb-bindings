@@ -27,15 +27,15 @@ internal class OptionsBase
     [StructLayout(LayoutKind.Sequential)]
     internal struct ComparatorState
     {
-        public IntPtr GetComparatorPtr { get; set; }
-        public IntPtr NamePtr { get; set; }
+        public nint GetComparatorPtr { get; set; }
+        public nint NamePtr { get; set; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MergeOperatorState
     {
-        public IntPtr GetMergeOperatorPtr { get; set; }
-        public IntPtr NamePtr { get; set; }
+        public nint GetMergeOperatorPtr { get; set; }
+        public nint NamePtr { get; set; }
     }
 }
 
@@ -149,7 +149,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     ///
     /// Default: nullptr
     /// </summary>
-    public T SetCompactionFilter(IntPtr compactionFilter)
+    public T SetCompactionFilter(nint compactionFilter)
     {
         RocksDbNative.rocksdb_options_set_compaction_filter(RocksDbInterop.Options(Handle), RocksDbInterop.CompactionFilter(compactionFilter));
         return (T)this;
@@ -165,7 +165,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     ///
     /// Default: nullptr
     /// </summary>
-    public T SetCompactionFilterFactory(IntPtr compactionFilterFactory)
+    public T SetCompactionFilterFactory(nint compactionFilterFactory)
     {
         RocksDbNative.rocksdb_options_set_compaction_filter_factory(RocksDbInterop.Options(Handle), RocksDbInterop.CompactionFilterFactory(compactionFilterFactory));
         return (T)this;
@@ -195,7 +195,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// here has the same name and orders keys *exactly* the same as the
     /// comparator provided to previous open calls on the same DB.
     /// </summary>
-    public T SetComparator(IntPtr comparator)
+    public T SetComparator(nint comparator)
     {
         RocksDbNative.rocksdb_options_set_comparator(RocksDbInterop.Options(Handle), RocksDbInterop.Comparator(comparator));
         return (T)this;
@@ -236,7 +236,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         Marshal.StructureToPtr(state, statePtr, false);
 
         // Create the comparator
-        IntPtr handle = (IntPtr)RocksDbNative.rocksdb_comparator_create(
+        nint handle = (nint)RocksDbNative.rocksdb_comparator_create(
             (void*)statePtr,
             (delegate* unmanaged[Cdecl]<void*, void>)(void*)Marshal.GetFunctionPointerForDelegate(ComparatorRef.DestructorDelegate),
             (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, int>)(void*)Marshal.GetFunctionPointerForDelegate(ComparatorRef.CompareDelegate),
@@ -246,7 +246,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
 
-    private unsafe int Comparator_Compare(IntPtr state, IntPtr a, UIntPtr alen, IntPtr b, UIntPtr blen)
+    private unsafe int Comparator_Compare(nint state, nint a, nuint alen, nint b, nuint blen)
     {
         var getComparatorPtr = (*((OptionsBase.ComparatorState*)state)).GetComparatorPtr;
         var getComparator = Marshal.GetDelegateForFunctionPointer<OptionsBase.GetComparator>(getComparatorPtr);
@@ -254,14 +254,14 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return comparator.Compare(a, alen, b, blen);
     }
 
-    private unsafe static void Comparator_Destroy(IntPtr state)
+    private unsafe static void Comparator_Destroy(nint state)
     {
         var namePtr = (*((OptionsBase.ComparatorState*)state)).NamePtr;
         Marshal.FreeHGlobal(namePtr);
         Marshal.FreeHGlobal(state);
     }
 
-    private unsafe static IntPtr Comparator_GetNamePtr(IntPtr state)
+    private unsafe static nint Comparator_GetNamePtr(nint state)
         => (*((OptionsBase.ComparatorState*)state)).NamePtr;
 
 
@@ -306,7 +306,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         Marshal.StructureToPtr(state, statePtr, false);
 
         // Create the merge operator
-        IntPtr handle = (IntPtr)RocksDbNative.rocksdb_mergeoperator_create(
+        nint handle = (nint)RocksDbNative.rocksdb_mergeoperator_create(
             (void*)statePtr,
             (delegate* unmanaged[Cdecl]<void*, void>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.DestructorDelegate),
             (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, sbyte**, nuint*, int, byte*, nuint*, sbyte*>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.FullMergeDelegate),
@@ -317,38 +317,38 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return SetMergeOperator(handle);
     }
 
-    private static MergeOperator GetMergeOperatorFromPtr(IntPtr getMergeOperatorPtr)
+    private static MergeOperator GetMergeOperatorFromPtr(nint getMergeOperatorPtr)
     {
         var getMergeOperator = Marshal.GetDelegateForFunctionPointer<GetMergeOperator>(getMergeOperatorPtr);
         return getMergeOperator();
     }
 
-    private unsafe static IntPtr MergeOperator_PartialMerge(IntPtr state, IntPtr key, UIntPtr keyLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength)
+    private unsafe static nint MergeOperator_PartialMerge(nint state, nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
     {
         var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
         return mergeOperator.PartialMerge(key, keyLength, operandsList, operandsListLength, numOperands, out success, out newValueLength);
     }
 
-    private unsafe static IntPtr MergeOperator_FullMerge(IntPtr state, IntPtr key, UIntPtr keyLength, IntPtr existingValue, UIntPtr existingValueLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength)
+    private unsafe static nint MergeOperator_FullMerge(nint state, nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
     {
         var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
         return mergeOperator.FullMerge(key, keyLength, existingValue, existingValueLength, operandsList, operandsListLength, numOperands, out success, out newValueLength);
     }
 
-    private unsafe static void MergeOperator_DeleteValue(IntPtr state, IntPtr value, UIntPtr valueLength)
+    private unsafe static void MergeOperator_DeleteValue(nint state, nint value, nuint valueLength)
     {
         var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
         mergeOperator.DeleteValue(value, valueLength);
     }
 
-    private unsafe static void MergeOperator_Destroy(IntPtr state)
+    private unsafe static void MergeOperator_Destroy(nint state)
     {
         var namePtr = (*((OptionsBase.MergeOperatorState*)state)).NamePtr;
         Marshal.FreeHGlobal(namePtr);
         Marshal.FreeHGlobal(state);
     }
 
-    private unsafe static IntPtr MergeOperator_GetNamePtr(IntPtr state)
+    private unsafe static nint MergeOperator_GetNamePtr(nint state)
         => (*((OptionsBase.MergeOperatorState*)state)).NamePtr;
 
     /// <summary>
@@ -363,7 +363,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// openning the DB in this case.
     /// Default: nullptr
     /// </summary>
-    public T SetMergeOperator(IntPtr mergeOperator)
+    public T SetMergeOperator(nint mergeOperator)
     {
         RocksDbNative.rocksdb_options_set_merge_operator(RocksDbInterop.Options(Handle), RocksDbInterop.MergeOperator(mergeOperator));
         return (T)this;
@@ -432,7 +432,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// change when data grows.
     /// </summary>
     [Obsolete("Use Compression enum")]
-    public T SetCompressionPerLevel(Compression[] levelValues, UIntPtr numLevels)
+    public T SetCompressionPerLevel(Compression[] levelValues, nuint numLevels)
     {
         var values = levelValues.Select(x => (int)x).ToArray();
         fixed (int* valuesPtr = values)
@@ -501,7 +501,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     ///
     /// Default: nullptr
     /// </summary>
-    public T SetPrefixExtractor(IntPtr sliceTransform)
+    public T SetPrefixExtractor(nint sliceTransform)
     {
         RocksDbNative.rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(Handle), RocksDbInterop.SliceTransform(sliceTransform));
         return (T)this;
@@ -1049,7 +1049,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <summary>
     /// The options needed to support Universal Style compactions
     /// </summary>
-    public T SetUniversalCompactionOptions(IntPtr universalCompactionOptions)
+    public T SetUniversalCompactionOptions(nint universalCompactionOptions)
     {
         RocksDbNative.rocksdb_options_set_universal_compaction_options(RocksDbInterop.Options(Handle), RocksDbInterop.UniversalCompactionOptions(universalCompactionOptions));
         return (T)this;
@@ -1058,7 +1058,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <summary>
     /// The options for FIFO compaction style
     /// </summary>
-    public T SetFifoCompactionOptions(IntPtr fifoCompactionOptions)
+    public T SetFifoCompactionOptions(nint fifoCompactionOptions)
     {
         RocksDbNative.rocksdb_options_set_fifo_compaction_options(RocksDbInterop.Options(Handle), RocksDbInterop.FifoCompactionOptions(fifoCompactionOptions));
         return (T)this;

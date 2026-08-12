@@ -10,7 +10,7 @@ namespace Nethermind.RocksDbBindings;
 
 public class RocksSafePath : IDisposable
 {
-    public IntPtr Handle { get; private set; }
+    public nint Handle { get; private set; }
 
     public RocksSafePath(string path)
     {
@@ -25,10 +25,10 @@ public class RocksSafePath : IDisposable
     {
         //Disabled disposing, as it seems RocksDB actually save some of these strings without copying
         //This should be tied to the lifetime of the RocksDB object
-        //if(Handle != IntPtr.Zero)
+        //if(Handle != nint.Zero)
         //{
             //Marshal.FreeHGlobal(Handle);
-            //Handle = IntPtr.Zero;
+            //Handle = nint.Zero;
         //}
     }
 }

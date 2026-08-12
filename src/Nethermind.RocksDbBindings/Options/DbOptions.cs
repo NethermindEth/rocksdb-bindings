@@ -78,7 +78,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// e.g. to read/write files, schedule background work, etc.
     /// Default: Env::Default()
     /// </summary>
-    public T SetEnv(IntPtr env)
+    public T SetEnv(nint env)
     {
         RocksDbNative.rocksdb_options_set_env(RocksDbInterop.Options(Handle), RocksDbInterop.Env(env));
         return (T)this;
@@ -90,7 +90,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// in the same directory as the DB contents if info_log is nullptr.
     /// Default: nullptr
     /// </summary>
-    public T SetInfoLog(IntPtr logger)
+    public T SetInfoLog(nint logger)
     {
         RocksDbNative.rocksdb_options_set_info_log(RocksDbInterop.Options(Handle), RocksDbInterop.Logger(logger));
         return (T)this;

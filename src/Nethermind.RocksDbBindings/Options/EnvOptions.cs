@@ -9,21 +9,21 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class EnvOptions
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     public EnvOptions()
     {
-        Handle = (IntPtr)RocksDbNative.rocksdb_envoptions_create();
+        Handle = (nint)RocksDbNative.rocksdb_envoptions_create();
     }
 
     ~EnvOptions()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 }

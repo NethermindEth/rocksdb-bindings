@@ -9,21 +9,21 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class IngestExternalFileOptions
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     public IngestExternalFileOptions()
     {
-        Handle = (IntPtr)RocksDbNative.rocksdb_ingestexternalfileoptions_create();
+        Handle = (nint)RocksDbNative.rocksdb_ingestexternalfileoptions_create();
     }
 
     ~IngestExternalFileOptions()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 

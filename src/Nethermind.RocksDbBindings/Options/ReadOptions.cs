@@ -12,28 +12,28 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class ReadOptions
 {
-    private IntPtr iterateLowerBound;
-    private IntPtr iterateUpperBound;
+    private nint iterateLowerBound;
+    private nint iterateUpperBound;
 
     public ReadOptions()
     {
-        Handle = (IntPtr)RocksDbNative.rocksdb_readoptions_create();
+        Handle = (nint)RocksDbNative.rocksdb_readoptions_create();
     }
 
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     ~ReadOptions()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
-            if (iterateLowerBound != IntPtr.Zero)
+            if (iterateLowerBound != nint.Zero)
                 Marshal.FreeHGlobal(iterateLowerBound);
-            if (iterateUpperBound != IntPtr.Zero)
+            if (iterateUpperBound != nint.Zero)
                 Marshal.FreeHGlobal(iterateUpperBound);
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 
@@ -79,18 +79,18 @@ public unsafe class ReadOptions
 
     public unsafe ReadOptions SetIterateLowerBound(byte* key, ulong keylen)
     {
-        UIntPtr klen = (UIntPtr)keylen;
+        nuint klen = (nuint)keylen;
         RocksDbNative.rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, (nuint)klen);
         return this;
     }
 
     public ReadOptions SetIterateLowerBound(byte[] key, ulong keyLen)
     {
-        if (iterateLowerBound != IntPtr.Zero)
+        if (iterateLowerBound != nint.Zero)
             Marshal.FreeHGlobal(iterateLowerBound);
         iterateLowerBound = Marshal.AllocHGlobal(key.Length);
         Marshal.Copy(key, 0, iterateLowerBound, key.Length);
-        UIntPtr klen = (UIntPtr)keyLen;
+        nuint klen = (nuint)keyLen;
         RocksDbNative.rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateLowerBound, (nuint)klen);
         return this;
     }
@@ -108,18 +108,18 @@ public unsafe class ReadOptions
 
     public unsafe ReadOptions SetIterateUpperBound(byte* key, ulong keylen)
     {
-        UIntPtr klen = (UIntPtr)keylen;
+        nuint klen = (nuint)keylen;
         RocksDbNative.rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, (nuint)klen);
         return this;
     }
 
     public ReadOptions SetIterateUpperBound(byte[] key, ulong keyLen)
     {
-        if (iterateUpperBound != IntPtr.Zero)
+        if (iterateUpperBound != nint.Zero)
             Marshal.FreeHGlobal(iterateUpperBound);
         iterateUpperBound = Marshal.AllocHGlobal(key.Length);
         Marshal.Copy(key, 0, iterateUpperBound, key.Length);
-        UIntPtr klen = (UIntPtr)keyLen;
+        nuint klen = (nuint)keyLen;
         RocksDbNative.rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateUpperBound, (nuint)klen);
         return this;
     }
@@ -149,7 +149,7 @@ public unsafe class ReadOptions
 
     public ReadOptions SetReadaheadSize(ulong size)
     {
-        UIntPtr readaheadSize = (UIntPtr)size;
+        nuint readaheadSize = (nuint)size;
         RocksDbNative.rocksdb_readoptions_set_readahead_size(RocksDbInterop.ReadOptions(Handle), (nuint)readaheadSize);
         return this;
     }

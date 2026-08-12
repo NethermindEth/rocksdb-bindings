@@ -8,9 +8,9 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class TransactionLogIterator : IDisposable
 {
-    public IntPtr Handle { get; private set; }
+    public nint Handle { get; private set; }
 
-    internal TransactionLogIterator(IntPtr handle)
+    internal TransactionLogIterator(nint handle)
     {
         Handle = handle;
     }
@@ -35,17 +35,17 @@ public unsafe class TransactionLogIterator : IDisposable
     public unsafe WriteBatch GetBatch(out ulong sequenceNumber)
     {
         ulong seq;
-        IntPtr writeBatchHandle = (IntPtr)RocksDbNative.rocksdb_wal_iter_get_batch(RocksDbInterop.WalIterator(Handle), &seq);
+        nint writeBatchHandle = (nint)RocksDbNative.rocksdb_wal_iter_get_batch(RocksDbInterop.WalIterator(Handle), &seq);
         sequenceNumber = seq;
         return new WriteBatch(writeBatchHandle);
     }
 
     public void Dispose()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
             RocksDbNative.rocksdb_wal_iter_destroy(RocksDbInterop.WalIterator(Handle));
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 }

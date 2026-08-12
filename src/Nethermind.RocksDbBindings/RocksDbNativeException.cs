@@ -8,7 +8,7 @@ namespace Nethermind.RocksDbBindings;
 
 public class RocksDbNativeException : RocksDbException
 {
-    public unsafe RocksDbNativeException(IntPtr errptr)
+    public unsafe RocksDbNativeException(nint errptr)
         : base(Marshal.PtrToStringAnsi(errptr))
     {
         RocksDbNative.rocksdb_free((void*)errptr);

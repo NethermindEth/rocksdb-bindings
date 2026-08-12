@@ -9,25 +9,25 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class Cache
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
-    private Cache(IntPtr handle)
+    private Cache(nint handle)
     {
         this.Handle = handle;
     }
 
     ~Cache()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
             RocksDbNative.rocksdb_cache_destroy(RocksDbInterop.Cache(Handle));
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 
     public static Cache CreateLru(ulong capacity)
     {
-        IntPtr handle = (IntPtr)RocksDbNative.rocksdb_cache_create_lru((nuint)capacity);
+        nint handle = (nint)RocksDbNative.rocksdb_cache_create_lru((nuint)capacity);
         return new Cache(handle);
     }
 

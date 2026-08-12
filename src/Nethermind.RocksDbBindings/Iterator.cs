@@ -13,17 +13,17 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class Iterator : IDisposable
 {
-    private IntPtr handle;
+    private nint handle;
     #pragma warning disable CS0414
     private ReadOptions readOptions;
     #pragma warning restore CS0414
 
-    internal Iterator(IntPtr handle)
+    internal Iterator(nint handle)
     {
         this.handle = handle;
     }
 
-    internal Iterator(IntPtr handle, ReadOptions readOptions) : this(handle)
+    internal Iterator(nint handle, ReadOptions readOptions) : this(handle)
     {
         // Note: passing readOptions in here has no actual effect except to keep readOptions
         // from being garbage collected whilst the Iterator is still alive because the
@@ -32,16 +32,16 @@ public unsafe class Iterator : IDisposable
         this.readOptions = readOptions;
     }
 
-    public IntPtr Handle { get { return handle; } }
+    public nint Handle { get { return handle; } }
 
     public void Dispose()
     {
-        if (handle != IntPtr.Zero)
+        if (handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_iter_destroy(RocksDbInterop.Iterator(handle));
 #endif
-            handle = IntPtr.Zero;
+            handle = nint.Zero;
         }
     }
 
@@ -49,10 +49,10 @@ public unsafe class Iterator : IDisposable
     /// Detach the iterator from its handle but don't dispose the handle
     /// </summary>
     /// <returns></returns>
-    public IntPtr Detach()
+    public nint Detach()
     {
         var r = handle;
-        handle = IntPtr.Zero;
+        handle = nint.Zero;
         return r;
     }
 
@@ -172,14 +172,14 @@ public unsafe class Iterator : IDisposable
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
-        return RocksDbInterop.Bytes((IntPtr)keyPtr, keyLength);
+        return RocksDbInterop.Bytes((nint)keyPtr, keyLength);
     }
 
     public byte[] Value()
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
-        return RocksDbInterop.Bytes((IntPtr)valuePtr, valueLength);
+        return RocksDbInterop.Bytes((nint)valuePtr, valueLength);
     }
 
 #if !NETSTANDARD2_0
@@ -187,14 +187,14 @@ public unsafe class Iterator : IDisposable
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
-        return RocksDbInterop.Deserialize((IntPtr)keyPtr, keyLength, deserializer);
+        return RocksDbInterop.Deserialize((nint)keyPtr, keyLength, deserializer);
     }
 
     public T Value<T>(ISpanDeserializer<T> deserializer)
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
-        return RocksDbInterop.Deserialize((IntPtr)valuePtr, valueLength, deserializer);
+        return RocksDbInterop.Deserialize((nint)valuePtr, valueLength, deserializer);
     }
 
     public unsafe ReadOnlySpan<byte> GetKeySpan()
@@ -216,14 +216,14 @@ public unsafe class Iterator : IDisposable
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
-        return RocksDbInterop.Deserialize((IntPtr)keyPtr, keyLength, deserializer);
+        return RocksDbInterop.Deserialize((nint)keyPtr, keyLength, deserializer);
     }
 
     public T Value<T>(Func<Stream, T> deserializer)
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
-        return RocksDbInterop.Deserialize((IntPtr)valuePtr, valueLength, deserializer);
+        return RocksDbInterop.Deserialize((nint)valuePtr, valueLength, deserializer);
     }
 
     public string StringKey()

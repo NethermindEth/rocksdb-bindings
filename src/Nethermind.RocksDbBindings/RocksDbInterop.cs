@@ -9,45 +9,45 @@ using System.Text;
 namespace Nethermind.RocksDbBindings;
 
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void PutDelegate(IntPtr state, IntPtr key, UIntPtr keyLength, IntPtr value, UIntPtr valueLength);
+public delegate void PutDelegate(nint state, nint key, nuint keyLength, nint value, nuint valueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeletedDelegate(IntPtr state, IntPtr key, UIntPtr keyLength);
+public delegate void DeletedDelegate(nint state, nint key, nuint keyLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void PutCfDelegate(IntPtr state, uint cfid, IntPtr key, UIntPtr keyLength, IntPtr value, UIntPtr valueLength);
+public delegate void PutCfDelegate(nint state, uint cfid, nint key, nuint keyLength, nint value, nuint valueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeletedCfDelegate(IntPtr state, uint cfid, IntPtr key, UIntPtr keyLength);
+public delegate void DeletedCfDelegate(nint state, uint cfid, nint key, nuint keyLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void MergeCfDelegate(IntPtr state, uint cfid, IntPtr key, UIntPtr keyLength, IntPtr value, UIntPtr valueLength);
+public delegate void MergeCfDelegate(nint state, uint cfid, nint key, nuint keyLength, nint value, nuint valueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate UIntPtr GetTsSizeDelegate(IntPtr state, uint cfid);
+public delegate nuint GetTsSizeDelegate(nint state, uint cfid);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DestructorDelegate(IntPtr state);
+public delegate void DestructorDelegate(nint state);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void Destructor_Delegate(IntPtr state);
+public delegate void Destructor_Delegate(nint state);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate IntPtr NameDelegate(IntPtr state);
+public delegate nint NameDelegate(nint state);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte FilterDelegate(IntPtr state, int level, IntPtr key, UIntPtr keyLength, IntPtr existingValue, UIntPtr valueLength, IntPtr newValue, IntPtr newValueLength, out byte valueChanged);
+public delegate byte FilterDelegate(nint state, int level, nint key, nuint keyLength, nint existingValue, nuint valueLength, nint newValue, nint newValueLength, out byte valueChanged);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate IntPtr CreateCompactionFilterDelegate(IntPtr state, IntPtr context);
+public delegate nint CreateCompactionFilterDelegate(nint state, nint context);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareDelegate(IntPtr state, IntPtr a, UIntPtr aLength, IntPtr b, UIntPtr bLength);
+public delegate int CompareDelegate(nint state, nint a, nuint aLength, nint b, nuint bLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareTsDelegate(IntPtr state, IntPtr aTimestamp, UIntPtr aTimestampLength, IntPtr bTimestamp, UIntPtr bTimestampLength);
+public delegate int CompareTsDelegate(nint state, nint aTimestamp, nuint aTimestampLength, nint bTimestamp, nuint bTimestampLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareWithoutTsDelegate(IntPtr state, IntPtr a, UIntPtr aLength, byte aHasTimestamp, IntPtr b, UIntPtr bLength, byte bHasTimestamp);
+public delegate int CompareWithoutTsDelegate(nint state, nint a, nuint aLength, byte aHasTimestamp, nint b, nuint bLength, byte bHasTimestamp);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate IntPtr FullMergeDelegate(IntPtr state, IntPtr key, UIntPtr keyLength, IntPtr existingValue, UIntPtr existingValueLength, IntPtr operandsList, IntPtr operandsListLength, int operandsCount, out byte success, out IntPtr newValueLength);
+public delegate nint FullMergeDelegate(nint state, nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int operandsCount, out byte success, out nint newValueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate IntPtr PartialMergeDelegate(IntPtr state, IntPtr key, UIntPtr keyLength, IntPtr operandsList, IntPtr operandsListLength, int operandsCount, out byte success, out IntPtr newValueLength);
+public delegate nint PartialMergeDelegate(nint state, nint key, nuint keyLength, nint operandsList, nint operandsListLength, int operandsCount, out byte success, out nint newValueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeleteValueDelegate(IntPtr state, IntPtr value, UIntPtr valueLength);
+public delegate void DeleteValueDelegate(nint state, nint value, nuint valueLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate IntPtr TransformDelegate(IntPtr state, IntPtr key, UIntPtr length, IntPtr destinationLength);
+public delegate nint TransformDelegate(nint state, nint key, nuint length, nint destinationLength);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte InDomainDelegate(IntPtr state, IntPtr key, UIntPtr length);
+public delegate byte InDomainDelegate(nint state, nint key, nuint length);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte InRangeDelegate(IntPtr state, IntPtr key, UIntPtr length);
+public delegate byte InRangeDelegate(nint state, nint key, nuint length);
 
 internal static unsafe class RocksDbInterop
 {
@@ -56,7 +56,7 @@ internal static unsafe class RocksDbInterop
     public static void ThrowIfError(sbyte* errptr)
     {
         if (errptr != null)
-            throw new RocksDbNativeException((IntPtr)errptr);
+            throw new RocksDbNativeException((nint)errptr);
     }
 
     public static string PtrToStringAndFree(sbyte* value, nuint length, Encoding encoding = null)
@@ -82,7 +82,7 @@ internal static unsafe class RocksDbInterop
 
         try
         {
-            return Marshal.PtrToStringAnsi((IntPtr)value);
+            return Marshal.PtrToStringAnsi((nint)value);
         }
         finally
         {
@@ -98,7 +98,7 @@ internal static unsafe class RocksDbInterop
         try
         {
             var result = new byte[checked((int)length)];
-            Marshal.Copy((IntPtr)value, result, 0, result.Length);
+            Marshal.Copy((nint)value, result, 0, result.Length);
             return result;
         }
         finally
@@ -107,9 +107,9 @@ internal static unsafe class RocksDbInterop
         }
     }
 
-    public static byte[] Bytes(IntPtr value, nuint length)
+    public static byte[] Bytes(nint value, nuint length)
     {
-        if (value == IntPtr.Zero)
+        if (value == nint.Zero)
             return null;
 
         var result = new byte[checked((int)length)];
@@ -117,9 +117,9 @@ internal static unsafe class RocksDbInterop
         return result;
     }
 
-    public static T Deserialize<T>(IntPtr value, nuint length, Func<Stream, T> deserializer)
+    public static T Deserialize<T>(nint value, nuint length, Func<Stream, T> deserializer)
     {
-        if (value == IntPtr.Zero)
+        if (value == nint.Zero)
             return default;
 
         using var stream = new UnmanagedMemoryStream((byte*)value, checked((long)length));
@@ -127,46 +127,46 @@ internal static unsafe class RocksDbInterop
     }
 
 #if !NETSTANDARD2_0
-    public static T Deserialize<T>(IntPtr value, nuint length, ISpanDeserializer<T> deserializer)
-        => value == IntPtr.Zero ? default : deserializer.Deserialize(new ReadOnlySpan<byte>((void*)value, checked((int)length)));
+    public static T Deserialize<T>(nint value, nuint length, ISpanDeserializer<T> deserializer)
+        => value == nint.Zero ? default : deserializer.Deserialize(new ReadOnlySpan<byte>((void*)value, checked((int)length)));
 #endif
 
-    public static rocksdb_t* Db(IntPtr value) => (rocksdb_t*)value;
-    public static rocksdb_backup_engine_t* BackupEngine(IntPtr value) => (rocksdb_backup_engine_t*)value;
-    public static rocksdb_block_based_table_options_t* BlockBasedTableOptions(IntPtr value) => (rocksdb_block_based_table_options_t*)value;
-    public static rocksdb_cache_t* Cache(IntPtr value) => (rocksdb_cache_t*)value;
-    public static rocksdb_checkpoint_t* Checkpoint(IntPtr value) => (rocksdb_checkpoint_t*)value;
-    public static rocksdb_column_family_handle_t* ColumnFamily(IntPtr value) => (rocksdb_column_family_handle_t*)value;
-    public static rocksdb_compactionfilter_t* CompactionFilter(IntPtr value) => (rocksdb_compactionfilter_t*)value;
-    public static rocksdb_compactionfilterfactory_t* CompactionFilterFactory(IntPtr value) => (rocksdb_compactionfilterfactory_t*)value;
-    public static rocksdb_comparator_t* Comparator(IntPtr value) => (rocksdb_comparator_t*)value;
-    public static rocksdb_cuckoo_table_options_t* CuckooTableOptions(IntPtr value) => (rocksdb_cuckoo_table_options_t*)value;
-    public static rocksdb_env_t* Env(IntPtr value) => (rocksdb_env_t*)value;
-    public static rocksdb_envoptions_t* EnvOptions(IntPtr value) => (rocksdb_envoptions_t*)value;
-    public static rocksdb_filterpolicy_t* FilterPolicy(IntPtr value) => (rocksdb_filterpolicy_t*)value;
-    public static rocksdb_flushoptions_t* FlushOptions(IntPtr value) => (rocksdb_flushoptions_t*)value;
-    public static rocksdb_fifo_compaction_options_t* FifoCompactionOptions(IntPtr value) => (rocksdb_fifo_compaction_options_t*)value;
-    public static rocksdb_ingestexternalfileoptions_t* IngestExternalFileOptions(IntPtr value) => (rocksdb_ingestexternalfileoptions_t*)value;
-    public static rocksdb_iterator_t* Iterator(IntPtr value) => (rocksdb_iterator_t*)value;
-    public static rocksdb_livefiles_t* LiveFiles(IntPtr value) => (rocksdb_livefiles_t*)value;
-    public static rocksdb_logger_t* Logger(IntPtr value) => (rocksdb_logger_t*)value;
-    public static rocksdb_mergeoperator_t* MergeOperator(IntPtr value) => (rocksdb_mergeoperator_t*)value;
-    public static rocksdb_options_t* Options(IntPtr value) => (rocksdb_options_t*)value;
-    public static rocksdb_readoptions_t* ReadOptions(IntPtr value) => (rocksdb_readoptions_t*)value;
-    public static rocksdb_slicetransform_t* SliceTransform(IntPtr value) => (rocksdb_slicetransform_t*)value;
-    public static rocksdb_snapshot_t* Snapshot(IntPtr value) => (rocksdb_snapshot_t*)value;
-    public static rocksdb_sstfilewriter_t* SstFileWriter(IntPtr value) => (rocksdb_sstfilewriter_t*)value;
-    public static rocksdb_wal_iterator_t* WalIterator(IntPtr value) => (rocksdb_wal_iterator_t*)value;
-    public static rocksdb_writebatch_t* WriteBatch(IntPtr value) => (rocksdb_writebatch_t*)value;
-    public static rocksdb_writebatch_wi_t* WriteBatchWithIndex(IntPtr value) => (rocksdb_writebatch_wi_t*)value;
-    public static rocksdb_writeoptions_t* WriteOptions(IntPtr value) => (rocksdb_writeoptions_t*)value;
-    public static rocksdb_universal_compaction_options_t* UniversalCompactionOptions(IntPtr value) => (rocksdb_universal_compaction_options_t*)value;
+    public static rocksdb_t* Db(nint value) => (rocksdb_t*)value;
+    public static rocksdb_backup_engine_t* BackupEngine(nint value) => (rocksdb_backup_engine_t*)value;
+    public static rocksdb_block_based_table_options_t* BlockBasedTableOptions(nint value) => (rocksdb_block_based_table_options_t*)value;
+    public static rocksdb_cache_t* Cache(nint value) => (rocksdb_cache_t*)value;
+    public static rocksdb_checkpoint_t* Checkpoint(nint value) => (rocksdb_checkpoint_t*)value;
+    public static rocksdb_column_family_handle_t* ColumnFamily(nint value) => (rocksdb_column_family_handle_t*)value;
+    public static rocksdb_compactionfilter_t* CompactionFilter(nint value) => (rocksdb_compactionfilter_t*)value;
+    public static rocksdb_compactionfilterfactory_t* CompactionFilterFactory(nint value) => (rocksdb_compactionfilterfactory_t*)value;
+    public static rocksdb_comparator_t* Comparator(nint value) => (rocksdb_comparator_t*)value;
+    public static rocksdb_cuckoo_table_options_t* CuckooTableOptions(nint value) => (rocksdb_cuckoo_table_options_t*)value;
+    public static rocksdb_env_t* Env(nint value) => (rocksdb_env_t*)value;
+    public static rocksdb_envoptions_t* EnvOptions(nint value) => (rocksdb_envoptions_t*)value;
+    public static rocksdb_filterpolicy_t* FilterPolicy(nint value) => (rocksdb_filterpolicy_t*)value;
+    public static rocksdb_flushoptions_t* FlushOptions(nint value) => (rocksdb_flushoptions_t*)value;
+    public static rocksdb_fifo_compaction_options_t* FifoCompactionOptions(nint value) => (rocksdb_fifo_compaction_options_t*)value;
+    public static rocksdb_ingestexternalfileoptions_t* IngestExternalFileOptions(nint value) => (rocksdb_ingestexternalfileoptions_t*)value;
+    public static rocksdb_iterator_t* Iterator(nint value) => (rocksdb_iterator_t*)value;
+    public static rocksdb_livefiles_t* LiveFiles(nint value) => (rocksdb_livefiles_t*)value;
+    public static rocksdb_logger_t* Logger(nint value) => (rocksdb_logger_t*)value;
+    public static rocksdb_mergeoperator_t* MergeOperator(nint value) => (rocksdb_mergeoperator_t*)value;
+    public static rocksdb_options_t* Options(nint value) => (rocksdb_options_t*)value;
+    public static rocksdb_readoptions_t* ReadOptions(nint value) => (rocksdb_readoptions_t*)value;
+    public static rocksdb_slicetransform_t* SliceTransform(nint value) => (rocksdb_slicetransform_t*)value;
+    public static rocksdb_snapshot_t* Snapshot(nint value) => (rocksdb_snapshot_t*)value;
+    public static rocksdb_sstfilewriter_t* SstFileWriter(nint value) => (rocksdb_sstfilewriter_t*)value;
+    public static rocksdb_wal_iterator_t* WalIterator(nint value) => (rocksdb_wal_iterator_t*)value;
+    public static rocksdb_writebatch_t* WriteBatch(nint value) => (rocksdb_writebatch_t*)value;
+    public static rocksdb_writebatch_wi_t* WriteBatchWithIndex(nint value) => (rocksdb_writebatch_wi_t*)value;
+    public static rocksdb_writeoptions_t* WriteOptions(nint value) => (rocksdb_writeoptions_t*)value;
+    public static rocksdb_universal_compaction_options_t* UniversalCompactionOptions(nint value) => (rocksdb_universal_compaction_options_t*)value;
 }
 
 internal sealed unsafe class NativeUtf8StringArray : IDisposable
 {
     private readonly RocksSafePath[] values;
-    private readonly IntPtr buffer;
+    private readonly nint buffer;
 
     public NativeUtf8StringArray(string[] strings)
     {
@@ -178,11 +178,11 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
         }
 
         values = new RocksSafePath[strings.Length];
-        buffer = Marshal.AllocHGlobal(IntPtr.Size * strings.Length);
+        buffer = Marshal.AllocHGlobal(nint.Size * strings.Length);
         for (int i = 0; i < strings.Length; i++)
         {
             values[i] = new RocksSafePath(strings[i]);
-            Marshal.WriteIntPtr(buffer, i * IntPtr.Size, values[i].Handle);
+            Marshal.WriteIntPtr(buffer, i * nint.Size, values[i].Handle);
         }
 
         Pointer = (sbyte**)buffer;
@@ -195,7 +195,7 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
         for (int i = 0; i < values.Length; i++)
             values[i]?.Dispose();
 
-        if (buffer != IntPtr.Zero)
+        if (buffer != nint.Zero)
             Marshal.FreeHGlobal(buffer);
     }
 }

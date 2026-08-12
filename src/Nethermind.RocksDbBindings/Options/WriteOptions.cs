@@ -9,19 +9,19 @@ public unsafe class WriteOptions
 {
     public WriteOptions()
     {
-        Handle = (IntPtr)RocksDbNative.rocksdb_writeoptions_create();
+        Handle = (nint)RocksDbNative.rocksdb_writeoptions_create();
     }
 
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     ~WriteOptions()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 

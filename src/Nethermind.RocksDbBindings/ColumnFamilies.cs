@@ -35,7 +35,7 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
 
     public IEnumerable<string> Names => this.Select(cfd => cfd.Name);
 
-    public IEnumerable<IntPtr> OptionHandles => this.Select(cfd => cfd.Options.Handle);
+    public IEnumerable<nint> OptionHandles => this.Select(cfd => cfd.Options.Handle);
 
     public void Add(Descriptor descriptor)
     {

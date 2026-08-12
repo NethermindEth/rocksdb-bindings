@@ -10,29 +10,29 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class WriteBatchWithIndex : IWriteBatch
 {
-    private IntPtr handle;
+    private nint handle;
     private Encoding defaultEncoding = Encoding.UTF8;
 
     public WriteBatchWithIndex(ulong reservedBytes = 0, bool overwriteKeys = true)
-        : this((IntPtr)RocksDbNative.rocksdb_writebatch_wi_create((nuint)reservedBytes, RocksDbInterop.Bool(overwriteKeys)))
+        : this((nint)RocksDbNative.rocksdb_writebatch_wi_create((nuint)reservedBytes, RocksDbInterop.Bool(overwriteKeys)))
     {
     }
 
-    private WriteBatchWithIndex(IntPtr handle)
+    private WriteBatchWithIndex(nint handle)
     {
         this.handle = handle;
     }
 
-    public IntPtr Handle { get { return handle; } }
+    public nint Handle { get { return handle; } }
 
     public void Dispose()
     {
-        if (handle != IntPtr.Zero)
+        if (handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_writebatch_wi_destroy(RocksDbInterop.WriteBatchWithIndex(handle));
 #endif
-            handle = IntPtr.Zero;
+            handle = nint.Zero;
         }
     }
 
@@ -50,8 +50,8 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     public Iterator CreateIteratorWithBase(Iterator baseIterator, ColumnFamilyHandle cf = null)
     {
         var handle = cf is null
-            ? (IntPtr)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
-            : (IntPtr)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
+            ? (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
+            : (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
         return new Iterator(handle);
     }
 
@@ -139,9 +139,9 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
 
     public Iterator NewIterator(Iterator baseIterator, ColumnFamilyHandle cf = null)
     {
-        IntPtr iteratorHandle = cf is null
-            ? (IntPtr)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
-            : (IntPtr)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
+        nint iteratorHandle = cf is null
+            ? (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
+            : (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
         baseIterator.Detach();
         // Note: passing in base iterator here only to ensure that it is not collected before the iterator
         return new Iterator(iteratorHandle);
@@ -244,13 +244,13 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     }
 #endif
 
-    public WriteBatchWithIndex Putv(int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    public WriteBatchWithIndex Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
     {
         RocksDbNative.rocksdb_writebatch_wi_putv(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
         return this;
     }
 
-    public WriteBatchWithIndex PutvCf(IntPtr columnFamily, int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    public WriteBatchWithIndex PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
     {
         RocksDbNative.rocksdb_writebatch_wi_putv_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
         return this;
@@ -279,7 +279,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public WriteBatchWithIndex MergeCf(IntPtr columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
+    public WriteBatchWithIndex MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = val)
@@ -289,18 +289,18 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void MergeCf(IntPtr columnFamily, byte* key, ulong klen, byte* val, ulong vlen)
+    public unsafe void MergeCf(nint columnFamily, byte* key, ulong klen, byte* val, ulong vlen)
     {
         RocksDbNative.rocksdb_writebatch_wi_merge_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
     }
 
-    public WriteBatchWithIndex Mergev(int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    public WriteBatchWithIndex Mergev(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
     {
         RocksDbNative.rocksdb_writebatch_wi_mergev(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
         return this;
     }
 
-    public WriteBatchWithIndex MergevCf(IntPtr columnFamily, int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    public WriteBatchWithIndex MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
     {
         RocksDbNative.rocksdb_writebatch_wi_mergev_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
         return this;
@@ -351,7 +351,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     }
 #endif
 
-    public unsafe void Deletev(int numKeys, IntPtr keysList, IntPtr keysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle cf = null)
     {
         if (cf is null)
         {
@@ -386,7 +386,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public unsafe void DeleteRangev(int numKeys, IntPtr startKeysList, IntPtr startKeysListSizes, IntPtr endKeysList, IntPtr endKeysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle cf = null)
     {
         if (cf is null)
         {
@@ -404,7 +404,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public WriteBatchWithIndex Iterate(IntPtr state, PutDelegate put, DeletedDelegate deleted)
+    public WriteBatchWithIndex Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
     {
         RocksDbNative.rocksdb_writebatch_wi_iterate(
             RocksDbInterop.WriteBatchWithIndex(handle),
@@ -422,7 +422,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     {
         nuint size;
         var data = RocksDbNative.rocksdb_writebatch_wi_data(RocksDbInterop.WriteBatchWithIndex(handle), &size);
-        return RocksDbInterop.Bytes((IntPtr)data, size);
+        return RocksDbInterop.Bytes((nint)data, size);
     }
 
     /// <summary>
@@ -470,17 +470,17 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         => Put(key, val, cf);
     IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
         => Put(key, klen, val, vlen, cf);
-    IWriteBatch IWriteBatch.Putv(int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    IWriteBatch IWriteBatch.Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => Putv(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.PutvCf(IntPtr columnFamily, int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    IWriteBatch IWriteBatch.PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => PutvCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
         => Merge(key, klen, val, vlen, cf);
-    IWriteBatch IWriteBatch.MergeCf(IntPtr columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
+    IWriteBatch IWriteBatch.MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
         => MergeCf(columnFamily, key, klen, val, vlen);
-    IWriteBatch IWriteBatch.Mergev(int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    IWriteBatch IWriteBatch.Mergev(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => Mergev(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.MergevCf(IntPtr columnFamily, int numKeys, IntPtr keysList, IntPtr keysListSizes, int numValues, IntPtr valuesList, IntPtr valuesListSizes)
+    IWriteBatch IWriteBatch.MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => MergevCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.Delete(byte[] key, ColumnFamilyHandle cf)
         => Delete(key, cf);
@@ -490,7 +490,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         => DeleteRange(startKey, sklen, endKey, eklen, cf);
     IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
         => PutLogData(blob, len);
-    IWriteBatch IWriteBatch.Iterate(IntPtr state, PutDelegate put, DeletedDelegate deleted)
+    IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
         => Iterate(state, put, deleted);
 
 #if !NETSTANDARD2_0

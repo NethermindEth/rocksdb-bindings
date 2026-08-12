@@ -7,7 +7,7 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class CompactionFilter
 {
-    public IntPtr Handle;
+    public nint Handle;
     private readonly NameDelegate getNameDelegate;
     private readonly FilterDelegate filterDelegate;
     private readonly DestructorDelegate destroyDelegate;
@@ -15,12 +15,12 @@ public unsafe class CompactionFilter
     public CompactionFilter(NameDelegate nameDelegate, 
                             FilterDelegate filterDelegate, 
                             DestructorDelegate destroyDelegate, 
-                            IntPtr state)
+                            nint state)
     {
         this.getNameDelegate = nameDelegate;
         this.filterDelegate = filterDelegate;
         this.destroyDelegate = destroyDelegate;
-        Handle = (IntPtr)RocksDbNative.rocksdb_compactionfilter_create(
+        Handle = (nint)RocksDbNative.rocksdb_compactionfilter_create(
             (void*)state,
             (delegate* unmanaged[Cdecl]<void*, void>)(void*)System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(destroyDelegate),
             (delegate* unmanaged[Cdecl]<void*, int, sbyte*, nuint, sbyte*, nuint, sbyte**, nuint*, byte*, byte>)(void*)System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(filterDelegate),

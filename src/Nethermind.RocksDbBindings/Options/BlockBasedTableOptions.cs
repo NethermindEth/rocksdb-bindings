@@ -8,7 +8,7 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class BlockBasedTableOptions
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     // The following exists only to retain a reference to those types which are used in-place by rocksdb
     // and not copied (or reference things that are used in-place).  The idea is to have managed references
@@ -18,17 +18,17 @@ public unsafe class BlockBasedTableOptions
 
     public BlockBasedTableOptions()
     {
-        this.Handle = (IntPtr)RocksDbNative.rocksdb_block_based_options_create();
+        this.Handle = (nint)RocksDbNative.rocksdb_block_based_options_create();
     }
 
     ~BlockBasedTableOptions()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_block_based_options_destroy(RocksDbInterop.BlockBasedTableOptions(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 
@@ -50,7 +50,7 @@ public unsafe class BlockBasedTableOptions
         return this;
     }
 
-    public BlockBasedTableOptions SetFilterPolicy(IntPtr filterPolicy)
+    public BlockBasedTableOptions SetFilterPolicy(nint filterPolicy)
     {
         RocksDbNative.rocksdb_block_based_options_set_filter_policy(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.FilterPolicy(filterPolicy));
         return this;
@@ -70,7 +70,7 @@ public unsafe class BlockBasedTableOptions
         return this;
     }
 
-    public BlockBasedTableOptions SetBlockCache(IntPtr blockCache)
+    public BlockBasedTableOptions SetBlockCache(nint blockCache)
     {
         RocksDbNative.rocksdb_block_based_options_set_block_cache(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.Cache(blockCache));
         return this;

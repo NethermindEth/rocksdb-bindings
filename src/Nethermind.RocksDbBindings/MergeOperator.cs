@@ -11,9 +11,9 @@ namespace Nethermind.RocksDbBindings;
 public interface MergeOperator
 {
     string Name { get; }
-    IntPtr PartialMerge(IntPtr key, UIntPtr keyLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength);
-    IntPtr FullMerge(IntPtr key, UIntPtr keyLength, IntPtr existingValue, UIntPtr existingValueLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength);
-    void DeleteValue(IntPtr value, UIntPtr valueLength);
+    nint PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength);
+    nint FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength);
+    void DeleteValue(nint value, nuint valueLength);
 }
 
 #if !NETSTANDARD2_0
@@ -54,10 +54,10 @@ public static class MergeOperators
 
     public ref struct OperandsEnumerator
     {
-        private ReadOnlySpan<IntPtr> _operandsList;
+        private ReadOnlySpan<nint> _operandsList;
         private ReadOnlySpan<long> _operandsListLength;
 
-        public OperandsEnumerator(ReadOnlySpan<IntPtr> operandsList, ReadOnlySpan<long> operandsListLength)
+        public OperandsEnumerator(ReadOnlySpan<nint> operandsList, ReadOnlySpan<long> operandsListLength)
         {
             _operandsList = operandsList;
             _operandsListLength = operandsListLength;
@@ -84,10 +84,10 @@ public static class MergeOperators
             FullMerge = fullMerge;
         }
 
-        unsafe IntPtr MergeOperator.PartialMerge(IntPtr key, UIntPtr keyLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength)
+        unsafe nint MergeOperator.PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
             var keySpan                = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
-            var operandsListSpan       = new ReadOnlySpan<IntPtr>((void*)operandsList, numOperands);
+            var operandsListSpan       = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
             var operandsListLengthSpan = new ReadOnlySpan<long>((void*)operandsListLength, numOperands);
             var operands               = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
 
@@ -95,34 +95,34 @@ public static class MergeOperators
 
             var ret = Marshal.AllocHGlobal(value.Length);
             Marshal.Copy(value, 0, ret, value.Length);
-            newValueLength = (IntPtr)value.Length;
+            newValueLength = (nint)value.Length;
 
             success =  RocksDbInterop.Bool(_success);
 
             return ret;
         }
 
-        unsafe IntPtr MergeOperator.FullMerge(IntPtr key, UIntPtr keyLength, IntPtr existingValue, UIntPtr existingValueLength, IntPtr operandsList, IntPtr operandsListLength, int numOperands, out byte success, out IntPtr newValueLength)
+        unsafe nint MergeOperator.FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
             var keySpan                = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
-            var operandsListSpan       = new ReadOnlySpan<IntPtr>((void*)operandsList, numOperands);
+            var operandsListSpan       = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
             var operandsListLengthSpan = new ReadOnlySpan<long>((void*)operandsListLength, numOperands);
             var operands               = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
-            bool hasExistingValue      = existingValue != IntPtr.Zero;
+            bool hasExistingValue      = existingValue != nint.Zero;
             var existingValueSpan      = hasExistingValue ? new ReadOnlySpan<byte>((void*)existingValue, (int)existingValueLength) : ReadOnlySpan<byte>.Empty;
 
             var value = FullMerge(keySpan, hasExistingValue, existingValueSpan, operands, out var _success);
 
             var ret = Marshal.AllocHGlobal(value.Length);
             Marshal.Copy(value, 0, ret, value.Length);
-            newValueLength = (IntPtr)value.Length;
+            newValueLength = (nint)value.Length;
 
             success =  RocksDbInterop.Bool(_success);
 
             return ret;
         }
 
-        void MergeOperator.DeleteValue(IntPtr value, UIntPtr valueLength) => Marshal.FreeHGlobal(value);
+        void MergeOperator.DeleteValue(nint value, nuint valueLength) => Marshal.FreeHGlobal(value);
     }
 }
 #endif

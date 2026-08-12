@@ -12,7 +12,7 @@ public unsafe class FlushOptions : OptionsHandle
     public FlushOptions()
         : base(createHandle: false)
     {
-        Handle = (IntPtr)RocksDbNative.rocksdb_flushoptions_create();
+        Handle = (nint)RocksDbNative.rocksdb_flushoptions_create();
     }
 
     public FlushOptions SetWaitForFlush(bool waitForFlush)

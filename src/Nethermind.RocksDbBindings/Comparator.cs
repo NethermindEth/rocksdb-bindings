@@ -11,7 +11,7 @@ namespace Nethermind.RocksDbBindings;
 public interface Comparator
 {
     string Name { get; }
-    int Compare(IntPtr a, UIntPtr alen, IntPtr b, UIntPtr blen);
+    int Compare(nint a, nuint alen, nint b, nuint blen);
 }
 
 public abstract class StringComparatorBase : Comparator
@@ -20,7 +20,7 @@ public abstract class StringComparatorBase : Comparator
 
     public string Name { get; }
 
-    public StringComparatorBase(Encoding encoding = null, string name = null, IntPtr state = default(IntPtr))
+    public StringComparatorBase(Encoding encoding = null, string name = null, nint state = default(nint))
     {
         Name = name ?? typeof(StringComparatorBase).Name;
         Encoding = encoding ?? Encoding.UTF8;
@@ -28,7 +28,7 @@ public abstract class StringComparatorBase : Comparator
 
     public abstract int Compare(string a, string b);
 
-    public unsafe int Compare(IntPtr a, UIntPtr alen, IntPtr b, UIntPtr blen)
+    public unsafe int Compare(nint a, nuint alen, nint b, nuint blen)
     {
         var astr = Encoding.GetString((byte*)a, (int)alen);
         var bstr = Encoding.GetString((byte*)b, (int)blen);

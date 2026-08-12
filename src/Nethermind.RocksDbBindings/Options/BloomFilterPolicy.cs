@@ -7,16 +7,16 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class BloomFilterPolicy
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
-    private BloomFilterPolicy(IntPtr handle)
+    private BloomFilterPolicy(nint handle)
     {
         this.Handle = handle;
     }
 
     ~BloomFilterPolicy()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             // Commented out until a solution is found to rocksdb issue #1095 (https://github.com/facebook/rocksdb/issues/1095)
@@ -24,7 +24,7 @@ public unsafe class BloomFilterPolicy
             // Otherwise don't create one or it will leak
             // RocksDB owns this while attached to options; see rocksdb issue #1095.
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 
@@ -47,9 +47,9 @@ public unsafe class BloomFilterPolicy
     /// </summary>
     /// <param name="bits_per_key">Bits per key.</param>
     public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true) {
-        IntPtr handle = use_block_based_builder
-            ? (IntPtr)RocksDbNative.rocksdb_filterpolicy_create_bloom(bits_per_key)
-            : (IntPtr)RocksDbNative.rocksdb_filterpolicy_create_bloom_full(bits_per_key);
+        nint handle = use_block_based_builder
+            ? (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom(bits_per_key)
+            : (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom_full(bits_per_key);
         return new BloomFilterPolicy(handle);
     }
 }

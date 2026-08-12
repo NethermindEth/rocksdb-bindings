@@ -7,28 +7,28 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class SliceTransform
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
-    private SliceTransform(IntPtr handle)
+    private SliceTransform(nint handle)
     {
         this.Handle = handle;
     }
 
     public static SliceTransform CreateFixedPrefix(/*(size_t)*/ ulong fixed_prefix_length)
     {
-        IntPtr handle = (IntPtr)RocksDbNative.rocksdb_slicetransform_create_fixed_prefix((nuint)fixed_prefix_length);
+        nint handle = (nint)RocksDbNative.rocksdb_slicetransform_create_fixed_prefix((nuint)fixed_prefix_length);
         return new SliceTransform(handle);
     }
 
     public static SliceTransform CreateNoOp()
     {
-        IntPtr handle = (IntPtr)RocksDbNative.rocksdb_slicetransform_create_noop();
+        nint handle = (nint)RocksDbNative.rocksdb_slicetransform_create_noop();
         return new SliceTransform(handle);
     }
 
     ~SliceTransform()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             // Commented out until a solution is found to rocksdb issue #1095 (https://github.com/facebook/rocksdb/issues/1095)
@@ -36,7 +36,7 @@ public unsafe class SliceTransform
             // Otherwise don't create one or it will leak
             // RocksDB owns this while attached to options; see rocksdb issue #1095.
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 }

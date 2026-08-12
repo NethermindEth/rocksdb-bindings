@@ -13,26 +13,26 @@ namespace Nethermind.RocksDbBindings;
 public interface ColumnFamilyHandle
 #pragma warning restore IDE1006
 {
-    IntPtr Handle { get; }
+    nint Handle { get; }
 }
 
 unsafe class ColumnFamilyHandleInternal : ColumnFamilyHandle, IDisposable
 {
-    public ColumnFamilyHandleInternal(IntPtr handle)
+    public ColumnFamilyHandleInternal(nint handle)
     {
         this.Handle = handle;
     }
 
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     public void Dispose()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_column_family_handle_destroy(RocksDbInterop.ColumnFamily(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 }

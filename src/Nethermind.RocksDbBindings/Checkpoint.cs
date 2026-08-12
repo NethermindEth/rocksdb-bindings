@@ -9,9 +9,9 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class Checkpoint : IDisposable
 {
-    public IntPtr Handle { get; }
+    public nint Handle { get; }
 
-    public Checkpoint(IntPtr handle)
+    public Checkpoint(nint handle)
     {
         Handle = handle;
     }

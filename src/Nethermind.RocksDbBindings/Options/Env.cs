@@ -9,21 +9,21 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class Env
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
-    private Env(IntPtr handle)
+    private Env(nint handle)
     {
         Handle = handle;
     }
 
     public static Env CreateDefaultEnv()
     {
-        return new Env((IntPtr)RocksDbNative.rocksdb_create_default_env());
+        return new Env((nint)RocksDbNative.rocksdb_create_default_env());
     }
 
     public static Env CreateMemEnv()
     {
-        return new Env((IntPtr)RocksDbNative.rocksdb_create_mem_env());
+        return new Env((nint)RocksDbNative.rocksdb_create_mem_env());
     }
 
     public Env SetBackgroundThreads(int value)
@@ -45,12 +45,12 @@ public unsafe class Env
 
     ~Env()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_env_destroy(RocksDbInterop.Env(Handle));
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 }

@@ -10,7 +10,7 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class SstFileWriter : IDisposable
 {
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     internal dynamic References { get; } = new ExpandoObject();
 
@@ -21,15 +21,15 @@ public unsafe class SstFileWriter : IDisposable
         var opts = ioOptions ?? new ColumnFamilyOptions();
         References.EnvOptions = envOptions;
         References.IoOptions = ioOptions;
-        Handle = (IntPtr)RocksDbNative.rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(envOptions.Handle), RocksDbInterop.Options(opts.Handle));
+        Handle = (nint)RocksDbNative.rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(envOptions.Handle), RocksDbInterop.Options(opts.Handle));
     }
 
     public void Dispose()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
             var handle = Handle;
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
             RocksDbNative.rocksdb_sstfilewriter_destroy(RocksDbInterop.SstFileWriter(handle));
         }
     }

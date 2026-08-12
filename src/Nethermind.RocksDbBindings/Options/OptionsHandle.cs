@@ -26,7 +26,7 @@ public unsafe abstract class OptionsHandle
     internal string WalPath { get; set; }
     internal string LogPath { get; set; }
 
-    public IntPtr Handle { get; protected set; }
+    public nint Handle { get; protected set; }
 
     public OptionsHandle()
         : this(createHandle: true)
@@ -36,17 +36,17 @@ public unsafe abstract class OptionsHandle
     protected OptionsHandle(bool createHandle)
     {
         if (createHandle)
-            Handle = (IntPtr)RocksDbNative.rocksdb_options_create();
+            Handle = (nint)RocksDbNative.rocksdb_options_create();
     }
 
     ~OptionsHandle()
     {
-        if (Handle != IntPtr.Zero)
+        if (Handle != nint.Zero)
         {
 #if !NODESTROY
             DestroyHandle();
 #endif
-            Handle = IntPtr.Zero;
+            Handle = nint.Zero;
         }
     }
 

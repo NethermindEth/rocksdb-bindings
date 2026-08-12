@@ -359,6 +359,11 @@ public partial struct rocksdb_pinnableslice_t
 }
 
 [GeneratedCode("ClangSharp", "21.1.8.4")]
+public partial struct rocksdb_pinnable_multi_get_t
+{
+}
+
+[GeneratedCode("ClangSharp", "21.1.8.4")]
 public partial struct rocksdb_transactiondb_options_t
 {
 }
@@ -862,6 +867,24 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_batched_multi_get_cf_slice(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const rocksdb_slice_t *")] rocksdb_slice_t* keys_list, rocksdb_pinnableslice_t** values, [NativeTypeName("char **")] sbyte** errs, [NativeTypeName("const bool")] byte sorted_input);
+
+    public const uint rocksdb_pinnable_multi_get_not_found = 0;
+    public const uint rocksdb_pinnable_multi_get_found = 1;
+    public const uint rocksdb_pinnable_multi_get_error = 2;
+    public const uint rocksdb_pinnable_multi_get_out_of_bounds = 3;
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern rocksdb_pinnable_multi_get_t* rocksdb_batched_multi_get_pinned_cf(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const rocksdb_slice_t *")] rocksdb_slice_t* keys, [NativeTypeName("unsigned char")] byte sorted_input);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [return: NativeTypeName("size_t")]
+    public static extern nuint rocksdb_pinnable_multi_get_count([NativeTypeName("const rocksdb_pinnable_multi_get_t *")] rocksdb_pinnable_multi_get_t* multi_get);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int rocksdb_pinnable_multi_get_result([NativeTypeName("const rocksdb_pinnable_multi_get_t *")] rocksdb_pinnable_multi_get_t* multi_get, [NativeTypeName("size_t")] nuint index, [NativeTypeName("const char **")] sbyte** value, [NativeTypeName("size_t *")] nuint* value_size, [NativeTypeName("const char **")] sbyte** error, [NativeTypeName("size_t *")] nuint* error_size);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void rocksdb_pinnable_multi_get_destroy(rocksdb_pinnable_multi_get_t* multi_get);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("unsigned char")]
@@ -5387,6 +5410,13 @@ public static unsafe partial class RocksDbNative
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("uint64_t")]
     public static extern ulong rocksdb_options_get_preserve_internal_time_seconds(rocksdb_options_t* opt);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void rocksdb_options_set_blob_file_writable_file_max_buffer_size(rocksdb_options_t* opt, [NativeTypeName("uint64_t")] ulong v);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [return: NativeTypeName("uint64_t")]
+    public static extern ulong rocksdb_options_get_blob_file_writable_file_max_buffer_size(rocksdb_options_t* opt);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_options_set_enable_blob_direct_write(rocksdb_options_t* opt, [NativeTypeName("unsigned char")] byte v);

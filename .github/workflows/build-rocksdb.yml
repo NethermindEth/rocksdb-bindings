@@ -393,19 +393,46 @@ jobs:
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
 
+  generate-bindings:
+    name: Generate bindings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Generate
+        env:
+          REF: ${{ github.event.inputs.ref }}
+        run: bash generation/run.sh "$REF"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: bindings
+          path: src/Nethermind.RocksDbBindings/RocksDbNative.g.cs
+          retention-days: ${{ env.RETENTION }}
+          if-no-files-found: error
+
   create-pr:
     name: Create a pull request
-    needs: [build-linux, build-macos, build-windows]
+    needs: [build-linux, build-macos, build-windows, generate-bindings]
     if: github.event.inputs.create-pr == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Download artifacts
+      - name: Download binaries
         uses: actions/download-artifact@v8
         with:
+          pattern: "{linux,osx,win}-*"
           path: src/Nethermind.RocksDbBindings/runtimes
+
+      - name: Download bindings
+        uses: actions/download-artifact@v8
+        with:
+          name: bindings
+          path: src/Nethermind.RocksDbBindings
 
       - name: Move artifacts
         working-directory: src/Nethermind.RocksDbBindings/runtimes
@@ -436,11 +463,12 @@ jobs:
           REF: ${{ github.event.inputs.ref }}
         run: |
           head_branch=feature/rocksdb-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
-          title="chore(deps): update RocksDB binaries to ${REF#v}"
+          title="chore(deps): update RocksDB binaries and bindings to ${REF#v}"
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
           git checkout -b $head_branch
           git add -A
           git commit -m "$title"
           git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "$title" -b "Built from RocksDB $REF."
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "$title" \
+            -b "Built and generated from RocksDB $REF."

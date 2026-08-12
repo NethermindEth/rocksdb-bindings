@@ -34,7 +34,7 @@ public unsafe class TransactionLogIterator : IDisposable
 
     public unsafe WriteBatch GetBatch(out ulong sequenceNumber)
     {
-        nuint seq;
+        ulong seq;
         IntPtr writeBatchHandle = (IntPtr)RocksDbNative.rocksdb_wal_iter_get_batch(RocksDbInterop.WalIterator(Handle), &seq);
         sequenceNumber = seq;
         return new WriteBatch(writeBatchHandle);

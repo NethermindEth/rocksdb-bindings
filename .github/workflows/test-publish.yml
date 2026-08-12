@@ -54,9 +54,35 @@ jobs:
       #   run: |
       #     dotnet test -c release --no-restore
 
+  notices:
+    name: Notices
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Check declared dependencies are mentioned
+        run: |
+          # grep exits non-zero on no match, which would end the step early.
+          ports=$(grep -oE '[a-z0-9.+-]+:\$(env:)?TRIPLET' \
+            .github/workflows/build-rocksdb.yml | sed 's/:.*//' | sort -u || true)
+          if [ -z "$ports" ]; then
+            echo "::error::No vcpkg ports found in build-rocksdb.yml"
+            exit 1
+          fi
+          missing=""
+          for port in $ports; do
+            grep -qiw -- "$port" THIRD-PARTY-NOTICES.txt || missing="$missing $port"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing from THIRD-PARTY-NOTICES.txt:$missing"
+            exit 1
+          fi
+          echo "Attributed: $(echo $ports | tr '\n' ' ')"
+
   publish:
     name: Publish
-    needs: test
+    needs: [notices, test]
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'No' || github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:

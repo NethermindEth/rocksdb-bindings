@@ -81,8 +81,7 @@ jobs:
             $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
           ./vcpkg/vcpkg install --clean-after-build \
-            bzip2:$TRIPLET jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET \
-            zlib:$TRIPLET zstd:$TRIPLET
+            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -92,13 +91,15 @@ jobs:
       - name: Build
         run: |
           deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
+          # Keep bundled dependencies private and expose only RocksDB's C API.
+          echo '{ global: rocksdb_*; local: *; };' > $GITHUB_WORKSPACE/exports.map
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -106,7 +107,7 @@ jobs:
             -DROCKSDB_BUILD_SHARED=ON \
             -DUSE_RTTI=OFF \
             -DWITH_BENCHMARK_TOOLS=OFF \
-            -DWITH_BZ2=ON \
+            -DWITH_BZ2=OFF \
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
@@ -117,7 +118,7 @@ jobs:
             -DWITH_TESTS=OFF \
             -DWITH_TOOLS=OFF \
             -DWITH_TRACE_TOOLS=OFF \
-            -DWITH_ZLIB=ON \
+            -DWITH_ZLIB=OFF \
             -DWITH_ZSTD=ON
           cmake --build build --target rocksdb-shared
           mkdir artifact
@@ -139,9 +140,17 @@ jobs:
             echo "::error::The library has unresolved runtime dependencies"
             exit 1
           fi
-          if ! readelf -Ws $library |
+          # Check before stripping because jemalloc's symbols are local.
+          if ! readelf -Ws build/librocksdb.so |
             awk '$7 != "UND" && $8 ~ /^(je_)?mallocx(@@.*)?$/ { found = 1 } END { exit !found }'; then
             echo "::error::jemalloc is not linked into the library"
+            exit 1
+          fi
+          leaked=$(readelf --dyn-syms -W $library |
+            awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
+            grep -Ev '^(rocksdb_|_init$|_fini$|_edata$|_end$|__bss_start$|$)' | sort -u || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::Only the rocksdb_* C API may be exported: $(echo $leaked | cut -c1-400)"
             exit 1
           fi
 
@@ -201,8 +210,7 @@ jobs:
             $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
           ./vcpkg/vcpkg install --clean-after-build \
-            bzip2:$TRIPLET jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET \
-            zlib:$TRIPLET zstd:$TRIPLET
+            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.dylib')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -212,6 +220,8 @@ jobs:
       - name: Build
         run: |
           deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
+          # Mach-O symbols carry a leading underscore.
+          echo '_rocksdb_*' > $GITHUB_WORKSPACE/exports.txt
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -222,7 +232,7 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-force_load,$deps/lib/libjemalloc.a" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-force_load,$deps/lib/libjemalloc.a -Wl,-exported_symbols_list,$GITHUB_WORKSPACE/exports.txt" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -230,7 +240,7 @@ jobs:
             -DROCKSDB_BUILD_SHARED=ON \
             -DUSE_RTTI=OFF \
             -DWITH_BENCHMARK_TOOLS=OFF \
-            -DWITH_BZ2=ON \
+            -DWITH_BZ2=OFF \
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
@@ -241,7 +251,7 @@ jobs:
             -DWITH_TESTS=OFF \
             -DWITH_TOOLS=OFF \
             -DWITH_TRACE_TOOLS=OFF \
-            -DWITH_ZLIB=ON \
+            -DWITH_ZLIB=OFF \
             -DWITH_ZSTD=ON
           cmake --build build --target rocksdb-shared
           mkdir artifact
@@ -258,8 +268,15 @@ jobs:
             echo "::error::Third-party dependencies must be statically linked: $unexpected"
             exit 1
           fi
-          if ! nm -g $library | grep -Eq ' [Tt] _(je_)?mallocx$'; then
+          # Check before stripping because jemalloc's symbols are private.
+          if ! nm build/librocksdb.dylib | grep -Eq ' [Tt] _(je_)?mallocx$'; then
             echo "::error::jemalloc is not linked into the library"
+            exit 1
+          fi
+          leaked=$(nm -gU $library | awk 'NF >= 3 { sub(/^_/, "", $3); print $3 }' |
+            grep -Ev '^(rocksdb_|$)' | sort -u || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::Only the rocksdb_* C API may be exported: $(echo $leaked | cut -c1-400)"
             exit 1
           fi
 
@@ -307,8 +324,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
           ./vcpkg/vcpkg.exe install --clean-after-build `
-            bzip2:$env:TRIPLET lz4:$env:TRIPLET snappy:$env:TRIPLET `
-            zlib:$env:TRIPLET zstd:$env:TRIPLET
+            lz4:$env:TRIPLET snappy:$env:TRIPLET zstd:$env:TRIPLET
           $shared = Get-ChildItem "vcpkg/installed/$env:TRIPLET/bin" -Filter *.dll `
             -File -ErrorAction Ignore
           if ($shared) {
@@ -336,18 +352,13 @@ jobs:
           $env:SNAPPY_LIB_RELEASE = Resolve-Library @("snappy.lib")
           $env:LZ4_INCLUDE = "$deps/include"
           $env:LZ4_LIB_RELEASE = Resolve-Library @("lz4.lib")
-          $env:ZLIB_INCLUDE = "$deps/include"
-          $env:ZLIB_LIB_RELEASE = Resolve-Library @("zs.lib", "zlib.lib", "zlibstatic.lib")
           $env:ZSTD_INCLUDE = "$deps/include"
           $env:ZSTD_LIB_RELEASE = Resolve-Library @("zstd.lib", "zstd_static.lib", "libzstd_static.lib")
-          # thirdparty.inc knows nothing about bzip2, so wire it up by hand.
-          $bzip2 = Resolve-Library @("bz2.lib", "bzip2.lib")
 
           # WIN_CI enables parallel compilation and drops debug info; /Brepro
           # replaces the linker timestamp with a content hash.
           cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.arch }} `
-            "-DCMAKE_CXX_FLAGS=/DBZIP2 /I$deps/include" `
-            "-DCMAKE_SHARED_LINKER_FLAGS=$bzip2 /Brepro" `
+            "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro" `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
             -DFAIL_ON_WARNINGS=OFF `
             -DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'AVX2' }} `
@@ -355,6 +366,7 @@ jobs:
             -DUSE_RTTI=OFF `
             -DWIN_CI=ON `
             -DWITH_BENCHMARK_TOOLS=OFF `
+            -DWITH_BZ2=OFF `
             -DWITH_CORE_TOOLS=OFF `
             -DWITH_EXAMPLES=OFF `
             -DWITH_GFLAGS=OFF `
@@ -365,7 +377,7 @@ jobs:
             -DWITH_TESTS=OFF `
             -DWITH_TOOLS=OFF `
             -DWITH_TRACE_TOOLS=OFF `
-            -DWITH_ZLIB=ON `
+            -DWITH_ZLIB=OFF `
             -DWITH_ZSTD=ON
           cmake --build build --config Release --target rocksdb-shared
 
@@ -377,12 +389,19 @@ jobs:
 
       - name: Verify
         run: |
-          # Imported DLL names are stored as ASCII in the import directory.
-          $imports = [Text.Encoding]::ASCII.GetString(
-            [IO.File]::ReadAllBytes("$PWD/artifact/rocksdb.dll"))
-          $pattern = '(snappy|zstd|lz4|zlib1?|bz2|libbz2)\.dll'
-          if ($imports -match $pattern) {
-            throw "Third-party dependencies must be statically linked: $($Matches[0])"
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vs = & $vswhere -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs/VC/Tools/MSVC/*/bin/Host*/*/dumpbin.exe" |
+            Select-Object -First 1
+          if (!$dumpbin) { throw "dumpbin was not found under $vs" }
+          # dumpbin loads its linker libraries from its own directory.
+          $env:PATH = "$($dumpbin.Directory);$env:PATH"
+          $dependents = & $dumpbin /nologo /dependents artifact/rocksdb.dll
+          Write-Output $dependents
+          $bundled = $dependents |
+            Select-String '^\s+(lib)?(lz4|snappy|zstd)\S*\.dll$'
+          if ($bundled) {
+            throw "Third-party dependencies must be statically linked: $($bundled.Line.Trim())"
           }
 
       - name: Upload artifact

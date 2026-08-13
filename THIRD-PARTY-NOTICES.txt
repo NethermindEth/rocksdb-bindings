@@ -28,12 +28,10 @@ this distribution is stated in the corresponding section.
   1. rocksdb-sharp ....... BSD-2-Clause
   2. RocksDB ............. Apache-2.0 (elected; dual Apache-2.0 / GPL-2.0)
   3. LevelDB ............. BSD-3-Clause
-  4. bzip2 ............... bzip2 (BSD-style)
-  5. jemalloc ............ BSD-2-Clause
-  6. LZ4 ................. BSD-2-Clause
-  7. Snappy .............. BSD-3-Clause
-  8. zlib ................ Zlib
-  9. Zstandard ........... BSD-3-Clause (elected; dual BSD-3-Clause / GPL-2.0)
+  4. jemalloc ............ BSD-2-Clause
+  5. LZ4 ................. BSD-2-Clause
+  6. Snappy .............. BSD-3-Clause
+  7. Zstandard ........... BSD-3-Clause (elected; dual BSD-3-Clause / GPL-2.0)
 
 --------------------------------------------------------------------------------
 1. rocksdb-sharp
@@ -328,56 +326,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-4. bzip2
-
-https://sourceware.org/bzip2/
-
-Statically linked into the native libraries on all platforms.
-
---------------------------------------------------------------------------
-
-This program, "bzip2", the associated library "libbzip2", and all
-documentation, are copyright (C) 1996-2019 Julian R Seward.  All
-rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-
-2. The origin of this software must not be misrepresented; you must
-   not claim that you wrote the original software.  If you use this
-   software in a product, an acknowledgment in the product
-   documentation would be appreciated but is not required.
-
-3. Altered source versions must be plainly marked as such, and must
-   not be misrepresented as being the original software.
-
-4. The name of the author may not be used to endorse or promote
-   products derived from this software without specific prior written
-   permission.
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
-OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-Julian Seward, jseward@acm.org
-bzip2/libbzip2 version 1.0.8 of 13 July 2019
-
---------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-5. jemalloc
+4. jemalloc
 
 https://github.com/jemalloc/jemalloc
 
@@ -413,7 +362,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
-6. LZ4
+5. LZ4
 
 https://github.com/lz4/lz4
 
@@ -446,7 +395,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-7. Snappy
+6. Snappy
 
 https://github.com/google/snappy
 
@@ -509,37 +458,7 @@ Some of the benchmark data in testdata/ is licensed differently:
    (http://www.gutenberg.org/ebooks/53).
 
 --------------------------------------------------------------------------------
-8. zlib
-
-https://github.com/madler/zlib
-
-Statically linked into the native libraries on all platforms.
-
-Copyright notice:
-
- (C) 1995-2026 Jean-loup Gailly and Mark Adler
-
-  This software is provided 'as-is', without any express or implied
-  warranty.  In no event will the authors be held liable for any damages
-  arising from the use of this software.
-
-  Permission is granted to anyone to use this software for any purpose,
-  including commercial applications, and to alter it and redistribute it
-  freely, subject to the following restrictions:
-
-  1. The origin of this software must not be misrepresented; you must not
-     claim that you wrote the original software. If you use this software
-     in a product, an acknowledgment in the product documentation would be
-     appreciated but is not required.
-  2. Altered source versions must be plainly marked as such, and must not be
-     misrepresented as being the original software.
-  3. This notice may not be removed or altered from any source distribution.
-
-  Jean-loup Gailly        Mark Adler
-  jloup@gzip.org          madler@alumni.caltech.edu
-
---------------------------------------------------------------------------------
-9. Zstandard
+7. Zstandard
 
 https://github.com/facebook/zstd
 

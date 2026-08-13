@@ -330,7 +330,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 https://github.com/jemalloc/jemalloc
 
-Statically linked into the Linux and macOS native libraries. The Windows
+Statically linked into the Linux native libraries. The macOS and Windows
 libraries are built without jemalloc.
 
 Unless otherwise specified, files in the jemalloc source distribution are

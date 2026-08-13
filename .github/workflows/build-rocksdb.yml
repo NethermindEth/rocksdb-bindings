@@ -72,13 +72,15 @@ jobs:
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Initial-exec TLS comes from the static TLS surplus reserved at
-          # process start, which a library .NET dlopen's may not get.
+          # Keep libc malloc/free, jemalloc C++ operators, and dlopen-safe TLS.
           portfile=vcpkg/ports/jemalloc/portfile.cmake
           grep -Fxq '    OPTIONS ${opts}' $portfile
           awk '{ print }
-               $0 == "    OPTIONS ${opts}" { print "        --disable-initial-exec-tls" }' \
-            $portfile > $portfile.patched
+               $0 == "    OPTIONS ${opts}" {
+                 print "        --enable-cxx"
+                 print "        --disable-initial-exec-tls"
+                 print "        --with-jemalloc-prefix=je_"
+               }' $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
           ./vcpkg/vcpkg install --clean-after-build \
             jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
@@ -91,7 +93,7 @@ jobs:
       - name: Build
         run: |
           deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
-          # Keep bundled dependencies private and expose only RocksDB's C API.
+          # Keep bundled dependencies private and C++ allocations on jemalloc.
           echo '{ global: rocksdb_*; local: *; };' > $GITHUB_WORKSPACE/exports.map
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
@@ -99,10 +101,11 @@ jobs:
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -static-libstdc++ -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
+            -DHAVE_MALLOC_USABLE_SIZE=OFF \
             -DPORTABLE=$MIN_CPU \
             -DROCKSDB_BUILD_SHARED=ON \
             -DUSE_RTTI=OFF \
@@ -131,7 +134,7 @@ jobs:
           readelf -d $library | grep NEEDED
           unexpected=$(readelf -d $library |
             sed -n 's/.*Shared library: \[\(.*\)\]/\1/p' |
-            grep -Ev '^(ld-linux-(x86-64|aarch64)|libc|libdl|libgcc_s|libm|libpthread|librt|libstdc\+\+)\.so' || true)
+            grep -Ev '^(ld-linux-(x86-64|aarch64)|libc|libdl|libgcc_s|libm|libpthread|librt)\.so' || true)
           if [ -n "$unexpected" ]; then
             echo "::error::Third-party dependencies must be statically linked: $unexpected"
             exit 1
@@ -140,10 +143,31 @@ jobs:
             echo "::error::The library has unresolved runtime dependencies"
             exit 1
           fi
-          # Check before stripping because jemalloc's symbols are local.
-          if ! readelf -Ws build/librocksdb.so |
-            awk '$7 != "UND" && $8 ~ /^(je_)?mallocx(@@.*)?$/ { found = 1 } END { exit !found }'; then
-            echo "::error::jemalloc is not linked into the library"
+          # Private jemalloc symbols are available only before stripping.
+          jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
+          archive_defined=$(nm -A --defined-only "$jemalloc" |
+            awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
+          defined=$(readelf -Ws build/librocksdb.so |
+            awk '$7 != "UND" { sub(/@@.*/, "", $8); print $8 }' | sort -u)
+          for symbol in _Znwm _Znam _ZdlPv _ZdaPv; do
+            if ! echo "$archive_defined" | grep -qx "$symbol" ||
+               ! echo "$defined" | grep -qx "$symbol"; then
+              echo "::error::jemalloc C++ operator is missing: $symbol"
+              exit 1
+            fi
+          done
+          if ! echo "$defined" | grep -qx je_mallocx; then
+            echo "::error::jemalloc is not linked into RocksDB"
+            exit 1
+          fi
+          if echo "$defined" | grep -qxE 'malloc|free'; then
+            echo "::error::jemalloc must not replace malloc"
+            exit 1
+          fi
+          if readelf -Ws build/librocksdb.so |
+             awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' |
+             grep -qx malloc_usable_size; then
+            echo "::error::RocksDB must not query libc for jemalloc allocation sizes"
             exit 1
           fi
           leaked=$(readelf --dyn-syms -W $library |
@@ -195,22 +219,11 @@ jobs:
           key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
           restore-keys: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-
 
-      - name: Install dependencies
-        run: brew install autoconf autoconf-archive automake libtool
-
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Initial-exec TLS comes from the static TLS surplus reserved at
-          # process start, which a library .NET dlopen's may not get.
-          portfile=vcpkg/ports/jemalloc/portfile.cmake
-          grep -Fxq '    OPTIONS ${opts}' $portfile
-          awk '{ print }
-               $0 == "    OPTIONS ${opts}" { print "        --disable-initial-exec-tls" }' \
-            $portfile > $portfile.patched
-          mv -f $portfile.patched $portfile
           ./vcpkg/vcpkg install --clean-after-build \
-            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
+            lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.dylib')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -219,7 +232,6 @@ jobs:
 
       - name: Build
         run: |
-          deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
           # Mach-O symbols carry a leading underscore.
           echo '_rocksdb_*' > $GITHUB_WORKSPACE/exports.txt
           # RocksDB's logging macros embed __FILE__, so remap the paths.
@@ -232,7 +244,7 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-force_load,$deps/lib/libjemalloc.a -Wl,-exported_symbols_list,$GITHUB_WORKSPACE/exports.txt" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-exported_symbols_list,$GITHUB_WORKSPACE/exports.txt" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -244,7 +256,7 @@ jobs:
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
-            -DWITH_JEMALLOC=ON \
+            -DWITH_JEMALLOC=OFF \
             -DWITH_LIBURING=OFF \
             -DWITH_LZ4=ON \
             -DWITH_SNAPPY=ON \
@@ -266,11 +278,6 @@ jobs:
             grep -Ev '^(@rpath/librocksdb|/usr/lib/|/System/Library/)' || true)
           if [ -n "$unexpected" ]; then
             echo "::error::Third-party dependencies must be statically linked: $unexpected"
-            exit 1
-          fi
-          # Check before stripping because jemalloc's symbols are private.
-          if ! nm build/librocksdb.dylib | grep -Eq ' [Tt] _(je_)?mallocx$'; then
-            echo "::error::jemalloc is not linked into the library"
             exit 1
           fi
           leaked=$(nm -gU $library | awk 'NF >= 3 { sub(/^_/, "", $3); print $3 }' |

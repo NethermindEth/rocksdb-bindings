@@ -3,7 +3,7 @@
 
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Runtime.InteropServices.Marshalling;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -212,9 +212,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     {
         // Allocate some memory for the name bytes
         var name = comparator.Name ?? comparator.GetType().FullName;
-        var nameBytes = Encoding.UTF8.GetBytes(name + "\0");
-        var namePtr = Marshal.AllocHGlobal(nameBytes.Length);
-        Marshal.Copy(nameBytes, 0, namePtr, nameBytes.Length);
+        var namePtr = (nint)Utf8StringMarshaller.ConvertToUnmanaged(name);
 
         // Hold onto a reference to everything that needs to stay alive
         ComparatorRef = new OptionsBase.ComparatorReferences
@@ -231,8 +229,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
             NamePtr = namePtr,
             GetComparatorPtr = Marshal.GetFunctionPointerForDelegate(ComparatorRef.GetComparator)
         };
-        var statePtr = Marshal.AllocHGlobal(Marshal.SizeOf(state));
-        Marshal.StructureToPtr(state, statePtr, false);
+        var statePtr = (nint)NativeMemory.Alloc((nuint)sizeof(OptionsBase.ComparatorState));
+        *(OptionsBase.ComparatorState*)statePtr = state;
 
         // Create the comparator
         nint handle = (nint)RocksDbNative.rocksdb_comparator_create(
@@ -256,8 +254,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     private unsafe static void Comparator_Destroy(nint state)
     {
         var namePtr = (*((OptionsBase.ComparatorState*)state)).NamePtr;
-        Marshal.FreeHGlobal(namePtr);
-        Marshal.FreeHGlobal(state);
+        Utf8StringMarshaller.Free((byte*)namePtr);
+        NativeMemory.Free((void*)state);
     }
 
     private unsafe static nint Comparator_GetNamePtr(nint state)
@@ -280,9 +278,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     {
         // Allocate some memory for the name bytes
         var name = mergeOperator.Name ?? mergeOperator.GetType().FullName;
-        var nameBytes = Encoding.UTF8.GetBytes(name + "\0");
-        var namePtr = Marshal.AllocHGlobal(nameBytes.Length);
-        Marshal.Copy(nameBytes, 0, namePtr, nameBytes.Length);
+        var namePtr = (nint)Utf8StringMarshaller.ConvertToUnmanaged(name);
 
         // Hold onto a reference to everything that needs to stay alive
         MergeOperatorRef = new MergeOperatorReferences
@@ -301,8 +297,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
             NamePtr = namePtr,
             GetMergeOperatorPtr = Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.GetMergeOperator)
         };
-        var statePtr = Marshal.AllocHGlobal(Marshal.SizeOf(state));
-        Marshal.StructureToPtr(state, statePtr, false);
+        var statePtr = (nint)NativeMemory.Alloc((nuint)sizeof(OptionsBase.MergeOperatorState));
+        *(OptionsBase.MergeOperatorState*)statePtr = state;
 
         // Keep delete_value non-null so the allocating MergeOperator releases its results.
         nint handle = (nint)RocksDbNative.rocksdb_mergeoperator_create(
@@ -343,8 +339,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     private unsafe static void MergeOperator_Destroy(nint state)
     {
         var namePtr = (*((OptionsBase.MergeOperatorState*)state)).NamePtr;
-        Marshal.FreeHGlobal(namePtr);
-        Marshal.FreeHGlobal(state);
+        Utf8StringMarshaller.Free((byte*)namePtr);
+        NativeMemory.Free((void*)state);
     }
 
     private unsafe static nint MergeOperator_GetNamePtr(nint state)

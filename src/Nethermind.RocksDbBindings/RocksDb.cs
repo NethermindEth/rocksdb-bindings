@@ -7,6 +7,7 @@ using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 
 namespace Nethermind.RocksDbBindings;
@@ -429,7 +430,7 @@ public unsafe sealed class RocksDb : IDisposable
                 }
 
                 var copyLength = Math.Min(length, (long)valueLength);
-                Marshal.Copy((nint)ptr, buffer, (int)offset, (int)copyLength);
+                new ReadOnlySpan<byte>(ptr, (int)copyLength).CopyTo(buffer.AsSpan((int)offset, (int)copyLength));
                 RocksDbNative.rocksdb_free(ptr);
                 return (long)valueLength;
             }
@@ -446,7 +447,7 @@ public unsafe sealed class RocksDb : IDisposable
             throw new ArgumentException("Column family handle count must match key count.", nameof(cf));
 
         var result = new KeyValuePair<byte[], byte[]>[count];
-        var keyHandles = new GCHandle[count];
+        var keyHandles = new PinnedGCHandle<byte[]>[count];
         var keyPtrs = new sbyte*[count];
         var keyLengths = new nuint[count];
         var valuePtrs = new sbyte*[count];
@@ -461,8 +462,8 @@ public unsafe sealed class RocksDb : IDisposable
                 if (keys[i] is null)
                     throw new ArgumentException("Keys cannot contain null values.", nameof(keys));
 
-                keyHandles[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
-                keyPtrs[i] = (sbyte*)keyHandles[i].AddrOfPinnedObject();
+                keyHandles[i] = new PinnedGCHandle<byte[]>(keys[i]);
+                keyPtrs[i] = (sbyte*)keyHandles[i].GetAddressOfArrayData();
                 keyLengths[i] = (nuint)keys[i].Length;
 
                 if (cfHandles is not null)
@@ -524,10 +525,7 @@ public unsafe sealed class RocksDb : IDisposable
         finally
         {
             for (var i = 0; i < keyHandles.Length; i++)
-            {
-                if (keyHandles[i].IsAllocated)
-                    keyHandles[i].Free();
-            }
+                keyHandles[i].Dispose();
         }
     }
 
@@ -795,12 +793,10 @@ public unsafe sealed class RocksDb : IDisposable
         }
 
         var count = checked((int)lencf);
-        nint[] ptrs = new nint[count];
-        Marshal.Copy((nint)result, ptrs, 0, count);
         columnFamilies = new string[count];
         for (var i = 0; i < count; i++)
         {
-            columnFamilies[i] = Marshal.PtrToStringAnsi(ptrs[i]);
+            columnFamilies[i] = Utf8StringMarshaller.ConvertToManaged((byte*)result[i]);
         }
 
         RocksDbNative.rocksdb_list_column_families_destroy(result, lencf);
@@ -979,8 +975,8 @@ public unsafe sealed class RocksDb : IDisposable
                 LiveFileMetadata liveFileMetadata = new LiveFileMetadata();
 
                 FileMetadata metadata = new FileMetadata();
-                nint fileMetadata = (nint)RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
-                string fileName = Marshal.PtrToStringAnsi(fileMetadata);
+                var fileMetadata = RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
+                string fileName = Utf8StringMarshaller.ConvertToManaged((byte*)fileMetadata);
 
                 int level = RocksDbNative.rocksdb_livefiles_level(RocksDbInterop.LiveFiles(buffer), index);
 
@@ -996,12 +992,13 @@ public unsafe sealed class RocksDb : IDisposable
                 {
                     FileDataMetadata fileDataMetadata = new FileDataMetadata();
                     nuint smallestKeySize;
-                    var smallestKeyPtr = (nint)RocksDbNative.rocksdb_livefiles_smallestkey(RocksDbInterop.LiveFiles(buffer), index, &smallestKeySize);
-                    string smallestKey = Marshal.PtrToStringAnsi(smallestKeyPtr);
+                    var smallestKeyPtr = RocksDbNative.rocksdb_livefiles_smallestkey(RocksDbInterop.LiveFiles(buffer), index, &smallestKeySize);
+                    // These keys are length-delimited rather than null-terminated, so decode by size
+                    string smallestKey = DefaultEncoding.GetString((byte*)smallestKeyPtr, checked((int)smallestKeySize));
 
                     nuint largestKeySize;
-                    var largestKeyPtr = (nint)RocksDbNative.rocksdb_livefiles_largestkey(RocksDbInterop.LiveFiles(buffer), index, &largestKeySize);
-                    string largestKey = Marshal.PtrToStringAnsi(largestKeyPtr);
+                    var largestKeyPtr = RocksDbNative.rocksdb_livefiles_largestkey(RocksDbInterop.LiveFiles(buffer), index, &largestKeySize);
+                    string largestKey = DefaultEncoding.GetString((byte*)largestKeyPtr, checked((int)largestKeySize));
 
                     ulong entries = (ulong)RocksDbNative.rocksdb_livefiles_entries(RocksDbInterop.LiveFiles(buffer), index);
                     ulong deletions = (ulong)RocksDbNative.rocksdb_livefiles_deletions(RocksDbInterop.LiveFiles(buffer), index);
@@ -1047,8 +1044,8 @@ public unsafe sealed class RocksDb : IDisposable
 
             for (int index = 0; index < fileCount; index++)
             {
-                nint fileMetadata = (nint)RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
-                string fileName = Marshal.PtrToStringAnsi(fileMetadata);
+                var fileMetadata = RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
+                string fileName = Utf8StringMarshaller.ConvertToManaged((byte*)fileMetadata);
                 liveFiles.Add(fileName);
             }
 

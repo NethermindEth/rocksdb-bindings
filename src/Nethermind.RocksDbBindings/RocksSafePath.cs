@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Linq;
+using System.Runtime.InteropServices.Marshalling;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -12,22 +10,20 @@ public class RocksSafePath : IDisposable
 {
     public nint Handle { get; private set; }
 
-    public RocksSafePath(string path)
+    public unsafe RocksSafePath(string path)
     {
-        var enc = new System.Text.UTF8Encoding(false, false);
-        byte[] utf16 = enc.GetBytes(path);
-        Handle = Marshal.AllocHGlobal(utf16.Length + 1);
-        Marshal.Copy(utf16, 0, Handle, utf16.Length);
-        Marshal.WriteByte(Handle, utf16.Length, 0); //Add the null-terminator to the byte sequence
+        ArgumentNullException.ThrowIfNull(path);
+
+        Handle = (nint)Utf8StringMarshaller.ConvertToUnmanaged(path);
     }
 
     public void Dispose()
     {
         //Disabled disposing, as it seems RocksDB actually save some of these strings without copying
         //This should be tied to the lifetime of the RocksDB object
-        //if(Handle != nint.Zero)
+        //unsafe
         //{
-        //Marshal.FreeHGlobal(Handle);
+        //Utf8StringMarshaller.Free((byte*)Handle);
         //Handle = nint.Zero;
         //}
     }

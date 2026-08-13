@@ -534,7 +534,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         var resultPtr = RocksDbNative.rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &sizePtr);
         size = (int)sizePtr;
         var pooledBuffer = ArrayPool<byte>.Shared.Rent(size);
-        Marshal.Copy((nint)resultPtr, pooledBuffer, 0, size);
+        new ReadOnlySpan<byte>(resultPtr, size).CopyTo(pooledBuffer);
         return pooledBuffer;
     }
 

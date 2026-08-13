@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 
 namespace Nethermind.RocksDbBindings;
@@ -82,7 +83,7 @@ internal static unsafe class RocksDbInterop
 
         try
         {
-            return Marshal.PtrToStringAnsi((nint)value);
+            return Utf8StringMarshaller.ConvertToManaged((byte*)value);
         }
         finally
         {
@@ -98,7 +99,7 @@ internal static unsafe class RocksDbInterop
         try
         {
             var result = new byte[checked((int)length)];
-            Marshal.Copy((nint)value, result, 0, result.Length);
+            new ReadOnlySpan<byte>(value, result.Length).CopyTo(result);
             return result;
         }
         finally
@@ -113,7 +114,7 @@ internal static unsafe class RocksDbInterop
             return null;
 
         var result = new byte[checked((int)length)];
-        Marshal.Copy(value, result, 0, result.Length);
+        new ReadOnlySpan<byte>((void*)value, result.Length).CopyTo(result);
         return result;
     }
 
@@ -166,7 +167,7 @@ internal static unsafe class RocksDbInterop
 internal sealed unsafe class NativeUtf8StringArray : IDisposable
 {
     private readonly RocksSafePath[] values;
-    private readonly nint buffer;
+    private readonly nint* buffer;
 
     public NativeUtf8StringArray(string[] strings)
     {
@@ -178,11 +179,11 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
         }
 
         values = new RocksSafePath[strings.Length];
-        buffer = Marshal.AllocHGlobal(nint.Size * strings.Length);
+        buffer = (nint*)NativeMemory.Alloc((nuint)strings.Length, (nuint)sizeof(nint));
         for (int i = 0; i < strings.Length; i++)
         {
             values[i] = new RocksSafePath(strings[i]);
-            Marshal.WriteIntPtr(buffer, i * nint.Size, values[i].Handle);
+            buffer[i] = values[i].Handle;
         }
 
         Pointer = (sbyte**)buffer;
@@ -195,7 +196,6 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
         for (int i = 0; i < values.Length; i++)
             values[i]?.Dispose();
 
-        if (buffer != nint.Zero)
-            Marshal.FreeHGlobal(buffer);
+        NativeMemory.Free(buffer);
     }
 }

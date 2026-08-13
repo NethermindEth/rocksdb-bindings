@@ -93,8 +93,8 @@ public static class MergeOperators
 
             var value = PartialMerge(keySpan, operands, out var _success);
 
-            var ret = Marshal.AllocHGlobal(value.Length);
-            Marshal.Copy(value, 0, ret, value.Length);
+            var ret = (nint)NativeMemory.Alloc((nuint)value.Length);
+            value.CopyTo(new Span<byte>((void*)ret, value.Length));
             newValueLength = (nint)value.Length;
 
             success = RocksDbInterop.Bool(_success);
@@ -113,8 +113,8 @@ public static class MergeOperators
 
             var value = FullMerge(keySpan, hasExistingValue, existingValueSpan, operands, out var _success);
 
-            var ret = Marshal.AllocHGlobal(value.Length);
-            Marshal.Copy(value, 0, ret, value.Length);
+            var ret = (nint)NativeMemory.Alloc((nuint)value.Length);
+            value.CopyTo(new Span<byte>((void*)ret, value.Length));
             newValueLength = (nint)value.Length;
 
             success = RocksDbInterop.Bool(_success);
@@ -122,7 +122,7 @@ public static class MergeOperators
             return ret;
         }
 
-        void MergeOperator.DeleteValue(nint value, nuint valueLength) => Marshal.FreeHGlobal(value);
+        unsafe void MergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
     }
 }
 #endif

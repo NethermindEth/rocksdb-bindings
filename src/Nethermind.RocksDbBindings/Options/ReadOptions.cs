@@ -28,10 +28,8 @@ public unsafe class ReadOptions
         {
 #if !NODESTROY
             RocksDbNative.rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
-            if (iterateLowerBound != nint.Zero)
-                Marshal.FreeHGlobal(iterateLowerBound);
-            if (iterateUpperBound != nint.Zero)
-                Marshal.FreeHGlobal(iterateUpperBound);
+            NativeMemory.Free((void*)iterateLowerBound);
+            NativeMemory.Free((void*)iterateUpperBound);
 #endif
             Handle = nint.Zero;
         }
@@ -86,10 +84,9 @@ public unsafe class ReadOptions
 
     public ReadOptions SetIterateLowerBound(byte[] key, ulong keyLen)
     {
-        if (iterateLowerBound != nint.Zero)
-            Marshal.FreeHGlobal(iterateLowerBound);
-        iterateLowerBound = Marshal.AllocHGlobal(key.Length);
-        Marshal.Copy(key, 0, iterateLowerBound, key.Length);
+        NativeMemory.Free((void*)iterateLowerBound);
+        iterateLowerBound = (nint)NativeMemory.Alloc((nuint)key.Length);
+        key.CopyTo(new Span<byte>((void*)iterateLowerBound, key.Length));
         nuint klen = (nuint)keyLen;
         RocksDbNative.rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateLowerBound, (nuint)klen);
         return this;
@@ -115,10 +112,9 @@ public unsafe class ReadOptions
 
     public ReadOptions SetIterateUpperBound(byte[] key, ulong keyLen)
     {
-        if (iterateUpperBound != nint.Zero)
-            Marshal.FreeHGlobal(iterateUpperBound);
-        iterateUpperBound = Marshal.AllocHGlobal(key.Length);
-        Marshal.Copy(key, 0, iterateUpperBound, key.Length);
+        NativeMemory.Free((void*)iterateUpperBound);
+        iterateUpperBound = (nint)NativeMemory.Alloc((nuint)key.Length);
+        key.CopyTo(new Span<byte>((void*)iterateUpperBound, key.Length));
         nuint klen = (nuint)keyLen;
         RocksDbNative.rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateUpperBound, (nuint)klen);
         return this;

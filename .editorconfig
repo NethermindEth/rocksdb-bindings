@@ -14,6 +14,9 @@ file_header_template = SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited\n
 [*.cs]
 indent_size = 4
 
+[*.g.cs]
+dotnet_diagnostic.CS1591.severity = none
+
 #### Naming styles ####
 
 # Naming rules

@@ -15,7 +15,7 @@ public unsafe class Iterator : IDisposable
 {
     private nint handle;
 #pragma warning disable CS0414
-    private ReadOptions readOptions;
+    private ReadOptions? readOptions;
 #pragma warning restore CS0414
 
     internal Iterator(nint handle)
@@ -23,7 +23,7 @@ public unsafe class Iterator : IDisposable
         this.handle = handle;
     }
 
-    internal Iterator(nint handle, ReadOptions readOptions) : this(handle)
+    internal Iterator(nint handle, ReadOptions? readOptions) : this(handle)
     {
         // Note: passing readOptions in here has no actual effect except to keep readOptions
         // from being garbage collected whilst the Iterator is still alive because the
@@ -162,28 +162,28 @@ public unsafe class Iterator : IDisposable
         return this;
     }
 
-    public byte[] Key()
+    public byte[]? Key()
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
         return RocksDbInterop.Bytes((nint)keyPtr, keyLength);
     }
 
-    public byte[] Value()
+    public byte[]? Value()
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
         return RocksDbInterop.Bytes((nint)valuePtr, valueLength);
     }
 
-    public T Key<T>(ISpanDeserializer<T> deserializer)
+    public T? Key<T>(ISpanDeserializer<T> deserializer)
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
         return RocksDbInterop.Deserialize((nint)keyPtr, keyLength, deserializer);
     }
 
-    public T Value<T>(ISpanDeserializer<T> deserializer)
+    public T? Value<T>(ISpanDeserializer<T> deserializer)
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
@@ -204,14 +204,14 @@ public unsafe class Iterator : IDisposable
         return new ReadOnlySpan<byte>((byte*)valuePtr, (int)valueLength);
     }
 
-    public T Key<T>(Func<Stream, T> deserializer)
+    public T? Key<T>(Func<Stream, T> deserializer)
     {
         nuint keyLength;
         var keyPtr = RocksDbNative.rocksdb_iter_key(RocksDbInterop.Iterator(handle), &keyLength);
         return RocksDbInterop.Deserialize((nint)keyPtr, keyLength, deserializer);
     }
 
-    public T Value<T>(Func<Stream, T> deserializer)
+    public T? Value<T>(Func<Stream, T> deserializer)
     {
         nuint valueLength;
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);

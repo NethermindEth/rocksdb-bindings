@@ -45,7 +45,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return RocksDbNative.rocksdb_writebatch_wi_count(RocksDbInterop.WriteBatchWithIndex(handle));
     }
 
-    public Iterator CreateIteratorWithBase(Iterator baseIterator, ColumnFamilyHandle cf = null)
+    public Iterator CreateIteratorWithBase(Iterator baseIterator, ColumnFamilyHandle? cf = null)
     {
         var handle = cf is null
             ? (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
@@ -53,19 +53,19 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return new Iterator(handle);
     }
 
-    public string Get(string key, ColumnFamilyHandle cf = null, OptionsHandle options = null, Encoding encoding = null)
+    public string? Get(string key, ColumnFamilyHandle? cf = null, OptionsHandle? options = null, Encoding? encoding = null)
     {
         encoding ??= defaultEncoding;
         var value = Get(encoding.GetBytes(key), cf, options);
         return value is null ? null : encoding.GetString(value);
     }
 
-    public byte[] Get(byte[] key, ColumnFamilyHandle cf = null, OptionsHandle options = null)
+    public byte[]? Get(byte[] key, ColumnFamilyHandle? cf = null, OptionsHandle? options = null)
     {
         return Get(key, (ulong)key.GetLongLength(0), cf, options);
     }
 
-    public byte[] Get(byte[] key, ulong keyLength, ColumnFamilyHandle cf = null, OptionsHandle options = null)
+    public byte[]? Get(byte[] key, ulong keyLength, ColumnFamilyHandle? cf = null, OptionsHandle? options = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -73,12 +73,12 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public ulong Get(byte[] key, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle cf = null, OptionsHandle options = null)
+    public ulong Get(byte[] key, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle? cf = null, OptionsHandle? options = null)
     {
         return Get(key, (ulong)key.GetLongLength(0), buffer, offset, length, cf, options);
     }
 
-    public ulong Get(byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle cf = null, OptionsHandle options = null)
+    public ulong Get(byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle? cf = null, OptionsHandle? options = null)
     {
         unsafe
         {
@@ -94,19 +94,19 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public string Get(RocksDb db, string key, ColumnFamilyHandle cf = null, ReadOptions options = null, Encoding encoding = null)
+    public string? Get(RocksDb db, string key, ColumnFamilyHandle? cf = null, ReadOptions? options = null, Encoding? encoding = null)
     {
         encoding ??= defaultEncoding;
         var value = Get(db, encoding.GetBytes(key), cf, options);
         return value is null ? null : encoding.GetString(value);
     }
 
-    public byte[] Get(RocksDb db, byte[] key, ColumnFamilyHandle cf = null, ReadOptions options = null)
+    public byte[]? Get(RocksDb db, byte[] key, ColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
         return Get(db, key, (ulong)key.GetLongLength(0), cf, options);
     }
 
-    public byte[] Get(RocksDb db, byte[] key, ulong keyLength, ColumnFamilyHandle cf = null, ReadOptions options = null)
+    public byte[]? Get(RocksDb db, byte[] key, ulong keyLength, ColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -114,12 +114,12 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public ulong Get(RocksDb db, byte[] key, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle cf = null, ReadOptions options = null)
+    public ulong Get(RocksDb db, byte[] key, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
         return Get(db, key, (ulong)key.GetLongLength(0), buffer, offset, length, cf, options);
     }
 
-    public ulong Get(RocksDb db, byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle cf = null, ReadOptions options = null)
+    public ulong Get(RocksDb db, byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, ColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
         unsafe
         {
@@ -135,7 +135,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public Iterator NewIterator(Iterator baseIterator, ColumnFamilyHandle cf = null)
+    public Iterator NewIterator(Iterator baseIterator, ColumnFamilyHandle? cf = null)
     {
         nint iteratorHandle = cf is null
             ? (nint)RocksDbNative.rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
@@ -145,7 +145,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return new Iterator(iteratorHandle);
     }
 
-    public WriteBatchWithIndex Put(string key, string val, Encoding encoding = null)
+    public WriteBatchWithIndex Put(string key, string val, Encoding? encoding = null)
     {
         if (encoding is null)
         {
@@ -156,7 +156,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    private byte[] GetFromBatch(byte* key, nuint keyLength, ColumnFamilyHandle cf, OptionsHandle options)
+    private byte[]? GetFromBatch(byte* key, nuint keyLength, ColumnFamilyHandle? cf, OptionsHandle? options)
     {
         nuint valueLength;
         sbyte* errptr = null;
@@ -167,7 +167,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
     }
 
-    private byte[] GetFromBatchAndDb(RocksDb db, byte* key, nuint keyLength, ColumnFamilyHandle cf, ReadOptions options)
+    private byte[]? GetFromBatchAndDb(RocksDb db, byte* key, nuint keyLength, ColumnFamilyHandle? cf, ReadOptions? options)
     {
         nuint valueLength;
         sbyte* errptr = null;
@@ -178,12 +178,12 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
     }
 
-    public WriteBatchWithIndex Put(byte[] key, byte[] val, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex Put(byte[] key, byte[] val, ColumnFamilyHandle? cf = null)
     {
         return Put(key, (ulong)key.Length, val, (ulong)val.Length, cf);
     }
 
-    public WriteBatchWithIndex Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = val)
@@ -194,7 +194,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null)
+    public unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -206,7 +206,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public unsafe WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -223,7 +223,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe WriteBatchWithIndex Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatchWithIndex Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -252,7 +252,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public WriteBatchWithIndex Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = val)
@@ -263,7 +263,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null)
+    public unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -302,12 +302,12 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public WriteBatchWithIndex Delete(byte[] key, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex Delete(byte[] key, ColumnFamilyHandle? cf = null)
     {
         return Delete(key, (ulong)key.Length, cf);
     }
 
-    public WriteBatchWithIndex Delete(byte[] key, ulong klen, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex Delete(byte[] key, ulong klen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -317,7 +317,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle cf = null)
+    public unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -329,7 +329,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public unsafe WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         {
@@ -345,7 +345,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -357,7 +357,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public WriteBatchWithIndex DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle cf = null)
+    public WriteBatchWithIndex DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* startKeyPtr = startKey)
         fixed (byte* endKeyPtr = endKey)
@@ -368,7 +368,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle cf = null)
+    public unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -380,7 +380,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -416,7 +416,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     {
         nuint size;
         var data = RocksDbNative.rocksdb_writebatch_wi_data(RocksDbInterop.WriteBatchWithIndex(handle), &size);
-        return RocksDbInterop.Bytes((nint)data, size);
+        return RocksDbInterop.Bytes((nint)data, size)!;
     }
 
     /// <summary>
@@ -426,7 +426,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     /// <param name="offset"></param>
     /// <param name="size"></param>
     /// <returns>null if size was not large enough to hold the data</returns>
-    public byte[] ToBytes(byte[] buffer, int offset = 0, int size = -1)
+    public byte[]? ToBytes(byte[] buffer, int offset = 0, int size = -1)
     {
         if (size < 0)
         {
@@ -458,17 +458,17 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
 
     IWriteBatch IWriteBatch.Clear()
         => Clear();
-    IWriteBatch IWriteBatch.Put(string key, string val, Encoding encoding)
+    IWriteBatch IWriteBatch.Put(string key, string val, Encoding? encoding)
         => Put(key, val, encoding);
-    IWriteBatch IWriteBatch.Put(byte[] key, byte[] val, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(byte[] key, byte[] val, ColumnFamilyHandle? cf)
         => Put(key, val, cf);
-    IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf)
         => Put(key, klen, val, vlen, cf);
     IWriteBatch IWriteBatch.Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => Putv(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => PutvCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf)
         => Merge(key, klen, val, vlen, cf);
     IWriteBatch IWriteBatch.MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
         => MergeCf(columnFamily, key, klen, val, vlen);
@@ -476,21 +476,21 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         => Mergev(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => MergevCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Delete(byte[] key, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(byte[] key, ColumnFamilyHandle? cf)
         => Delete(key, cf);
-    IWriteBatch IWriteBatch.Delete(byte[] key, ulong klen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(byte[] key, ulong klen, ColumnFamilyHandle? cf)
         => Delete(key, klen, cf);
-    IWriteBatch IWriteBatch.DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle? cf)
         => DeleteRange(startKey, sklen, endKey, eklen, cf);
     IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
         => PutLogData(blob, len);
     IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
         => Iterate(state, put, deleted);
 
-    IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)
         => Put(key, value, cf);
-    IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)
         => Merge(key, value, cf);
-    IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
         => Delete(key, cf);
 }

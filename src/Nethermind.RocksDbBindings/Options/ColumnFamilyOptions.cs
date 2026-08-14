@@ -17,10 +17,10 @@ internal class OptionsBase
     public delegate Comparator GetComparator();
     public class ComparatorReferences
     {
-        public GetComparator GetComparator { get; set; }
-        public DestructorDelegate DestructorDelegate { get; set; }
-        public CompareDelegate CompareDelegate { get; set; }
-        public NameDelegate NameDelegate { get; set; }
+        public required GetComparator GetComparator { get; set; }
+        public required DestructorDelegate DestructorDelegate { get; set; }
+        public required CompareDelegate CompareDelegate { get; set; }
+        public required NameDelegate NameDelegate { get; set; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -41,18 +41,18 @@ internal class OptionsBase
 internal delegate MergeOperator GetMergeOperator();
 internal class MergeOperatorReferences
 {
-    public GetMergeOperator GetMergeOperator { get; set; }
-    public DestructorDelegate DestructorDelegate { get; set; }
-    public NameDelegate NameDelegate { get; set; }
-    public DeleteValueDelegate DeleteValueDelegate { get; set; }
-    public FullMergeDelegate FullMergeDelegate { get; set; }
-    public PartialMergeDelegate PartialMergeDelegate { get; set; }
+    public required GetMergeOperator GetMergeOperator { get; set; }
+    public required DestructorDelegate DestructorDelegate { get; set; }
+    public required NameDelegate NameDelegate { get; set; }
+    public required DeleteValueDelegate DeleteValueDelegate { get; set; }
+    public required FullMergeDelegate FullMergeDelegate { get; set; }
+    public required PartialMergeDelegate PartialMergeDelegate { get; set; }
 }
 
 public unsafe abstract partial class Options<T> : OptionsHandle where T : Options<T>
 {
-    OptionsBase.ComparatorReferences ComparatorRef { get; set; }
-    MergeOperatorReferences MergeOperatorRef { get; set; }
+    OptionsBase.ComparatorReferences? ComparatorRef { get; set; }
+    MergeOperatorReferences? MergeOperatorRef { get; set; }
 
     public T SetBlockBasedTableFactory(BlockBasedTableOptions table_options)
     {

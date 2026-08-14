@@ -13,8 +13,13 @@ public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
 {
     public static BinaryComparer Default { get; } = new BinaryComparer();
 
-    public int Compare(byte[] a1, byte[] a2)
+    public int Compare(byte[]? a1, byte[]? a2)
     {
+        if (a1 is null)
+            return a2 is null ? 0 : -1;
+        if (a2 is null)
+            return 1;
+
         int length = Math.Min(a1.Length, a2.Length);
         unsafe
         {
@@ -33,7 +38,7 @@ public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
         }
     }
 
-    public bool Equals(byte[] a1, byte[] a2)
+    public bool Equals(byte[]? a1, byte[]? a2)
     {
         if (ReferenceEquals(a1, a2))
             return true;

@@ -15,35 +15,35 @@ public interface IWriteBatch : IDisposable
     nint Handle { get; }
     IWriteBatch Clear();
     int Count();
-    IWriteBatch Put(string key, string val, Encoding encoding = null);
-    IWriteBatch Put(byte[] key, byte[] val, ColumnFamilyHandle cf = null);
-    IWriteBatch Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null);
+    IWriteBatch Put(string key, string val, Encoding? encoding = null);
+    IWriteBatch Put(byte[] key, byte[] val, ColumnFamilyHandle? cf = null);
+    IWriteBatch Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null);
 
-    IWriteBatch Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null);
-    unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null);
+    IWriteBatch Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null);
+    unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null);
     IWriteBatch Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes);
     IWriteBatch PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes);
-    IWriteBatch Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null);
-    unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null);
+    IWriteBatch Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null);
+    unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null);
 
-    IWriteBatch Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null);
+    IWriteBatch Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null);
     IWriteBatch MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen);
     unsafe void MergeCf(nint columnFamily, byte* key, ulong klen, byte* val, ulong vlen);
     IWriteBatch Mergev(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes);
     IWriteBatch MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes);
-    IWriteBatch Delete(byte[] key, ColumnFamilyHandle cf = null);
-    IWriteBatch Delete(byte[] key, ulong klen, ColumnFamilyHandle cf = null);
+    IWriteBatch Delete(byte[] key, ColumnFamilyHandle? cf = null);
+    IWriteBatch Delete(byte[] key, ulong klen, ColumnFamilyHandle? cf = null);
 
-    IWriteBatch Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null);
-    unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle cf = null);
-    unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle cf = null);
-    IWriteBatch DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle cf = null);
-    unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle cf = null);
-    unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle cf = null);
+    IWriteBatch Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null);
+    unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle? cf = null);
+    unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle? cf = null);
+    IWriteBatch DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle? cf = null);
+    unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle? cf = null);
+    unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle? cf = null);
     IWriteBatch PutLogData(byte[] blob, ulong len);
     IWriteBatch Iterate(nint state, PutDelegate put, DeletedDelegate deleted);
     byte[] ToBytes();
-    byte[] ToBytes(byte[] buffer, int offset = 0, int size = -1);
+    byte[]? ToBytes(byte[] buffer, int offset = 0, int size = -1);
     void SetSavePoint();
     void RollbackToSavePoint();
 }
@@ -101,7 +101,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return RocksDbNative.rocksdb_writebatch_count(RocksDbInterop.WriteBatch(handle));
     }
 
-    public WriteBatch Put(string key, string val, Encoding encoding = null)
+    public WriteBatch Put(string key, string val, Encoding? encoding = null)
     {
         if (encoding is null)
         {
@@ -112,12 +112,12 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public WriteBatch Put(byte[] key, byte[] val, ColumnFamilyHandle cf = null)
+    public WriteBatch Put(byte[] key, byte[] val, ColumnFamilyHandle? cf = null)
     {
         return Put(key, (ulong)key.Length, val, (ulong)val.Length, cf);
     }
 
-    public WriteBatch Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null)
+    public WriteBatch Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = val)
@@ -128,7 +128,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null)
+    public unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -140,7 +140,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         }
     }
 
-    public unsafe WriteBatch Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatch Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -157,7 +157,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe WriteBatch Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatch Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -206,12 +206,12 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         }
     }
 
-    public unsafe WriteBatch PutVector(ReadOnlySpan<ReadOnlyMemory<byte>> keys, ReadOnlySpan<ReadOnlyMemory<byte>> values, ColumnFamilyHandle columnFamily = null)
+    public unsafe WriteBatch PutVector(ReadOnlySpan<ReadOnlyMemory<byte>> keys, ReadOnlySpan<ReadOnlyMemory<byte>> values, ColumnFamilyHandle? columnFamily = null)
     {
         var intPtrPool = ArrayPool<nint>.Shared;
         var uintPtrPool = ArrayPool<nuint>.Shared;
-        nint[] keysListArray = null, valuesListArray = null;
-        nuint[] keysListSizesArray = null, valuesListSizesArray = null;
+        nint[]? keysListArray = null, valuesListArray = null;
+        nuint[]? keysListSizesArray = null, valuesListSizesArray = null;
 
         try
         {
@@ -221,10 +221,10 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
                 : (intPtrPool.Rent(keysLength), uintPtrPool.Rent(keysLength));
             Span<nint> keysList = keysLength < 256
                 ? stackalloc nint[keysLength]
-                : keysListArray.AsSpan(0, keysLength);
+                : keysListArray!.AsSpan(0, keysLength);
             Span<nuint> keysListSizes = keysLength < 256
                 ? stackalloc nuint[keysLength]
-                : keysListSizesArray.AsSpan(0, keysLength);
+                : keysListSizesArray!.AsSpan(0, keysLength);
             using var keyHandles = CopyVector(keys, keysList, keysListSizes);
 
             var valuesLength = values.Length;
@@ -233,10 +233,10 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
                 : (intPtrPool.Rent(valuesLength), uintPtrPool.Rent(valuesLength));
             Span<nint> valuesList = valuesLength < 256
                 ? stackalloc nint[valuesLength]
-                : valuesListArray.AsSpan(0, valuesLength);
+                : valuesListArray!.AsSpan(0, valuesLength);
             Span<nuint> valuesListSizes = valuesLength < 256
                 ? stackalloc nuint[valuesLength]
-                : valuesListSizesArray.AsSpan(0, valuesLength);
+                : valuesListSizesArray!.AsSpan(0, valuesLength);
             using var valuesDisposable = CopyVector(values, valuesList, valuesListSizes);
 
             fixed (void* keysListPtr = keysList,
@@ -315,7 +315,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public WriteBatch Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf = null)
+    public WriteBatch Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = val)
@@ -326,7 +326,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle cf = null)
+    public unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -365,12 +365,12 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public WriteBatch Delete(byte[] key, ColumnFamilyHandle cf = null)
+    public WriteBatch Delete(byte[] key, ColumnFamilyHandle? cf = null)
     {
         return Delete(key, (ulong)key.Length, cf);
     }
 
-    public WriteBatch Delete(byte[] key, ulong klen, ColumnFamilyHandle cf = null)
+    public WriteBatch Delete(byte[] key, ulong klen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -380,7 +380,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle cf = null)
+    public unsafe void Delete(byte* key, ulong klen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -392,7 +392,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         }
     }
 
-    public unsafe WriteBatch Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null)
+    public unsafe WriteBatch Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         {
@@ -408,7 +408,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -420,7 +420,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         }
     }
 
-    public WriteBatch DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle cf = null)
+    public WriteBatch DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle? cf = null)
     {
         fixed (byte* startKeyPtr = startKey)
         fixed (byte* endKeyPtr = endKey)
@@ -431,7 +431,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return this;
     }
 
-    public unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle cf = null)
+    public unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -443,7 +443,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         }
     }
 
-    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle cf = null)
+    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle? cf = null)
     {
         if (cf is null)
         {
@@ -487,7 +487,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
     {
         nuint size;
         var resultPtr = RocksDbNative.rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &size);
-        return RocksDbInterop.Bytes((nint)resultPtr, size);
+        return RocksDbInterop.Bytes((nint)resultPtr, size)!;
     }
 
     /// <summary>
@@ -497,7 +497,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
     /// <param name="offset"></param>
     /// <param name="size"></param>
     /// <returns>null if size was not large enough to hold the data</returns>
-    public byte[] ToBytes(byte[] buffer, int offset = 0, int size = -1)
+    public byte[]? ToBytes(byte[] buffer, int offset = 0, int size = -1)
     {
         if (size < 0)
         {
@@ -550,17 +550,17 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
 
     IWriteBatch IWriteBatch.Clear()
         => Clear();
-    IWriteBatch IWriteBatch.Put(string key, string val, Encoding encoding)
+    IWriteBatch IWriteBatch.Put(string key, string val, Encoding? encoding)
         => Put(key, val, encoding);
-    IWriteBatch IWriteBatch.Put(byte[] key, byte[] val, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(byte[] key, byte[] val, ColumnFamilyHandle? cf)
         => Put(key, val, cf);
-    IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf)
         => Put(key, klen, val, vlen, cf);
     IWriteBatch IWriteBatch.Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => Putv(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => PutvCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, ColumnFamilyHandle? cf)
         => Merge(key, klen, val, vlen, cf);
     IWriteBatch IWriteBatch.MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
         => MergeCf(columnFamily, key, klen, val, vlen);
@@ -568,21 +568,21 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         => Mergev(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
     IWriteBatch IWriteBatch.MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
         => MergevCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Delete(byte[] key, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(byte[] key, ColumnFamilyHandle? cf)
         => Delete(key, cf);
-    IWriteBatch IWriteBatch.Delete(byte[] key, ulong klen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(byte[] key, ulong klen, ColumnFamilyHandle? cf)
         => Delete(key, klen, cf);
-    IWriteBatch IWriteBatch.DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, ColumnFamilyHandle? cf)
         => DeleteRange(startKey, sklen, endKey, eklen, cf);
     IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
         => PutLogData(blob, len);
     IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
         => Iterate(state, put, deleted);
 
-    IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)
         => Put(key, value, cf);
-    IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)
         => Merge(key, value, cf);
-    IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
+    IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
         => Delete(key, cf);
 }

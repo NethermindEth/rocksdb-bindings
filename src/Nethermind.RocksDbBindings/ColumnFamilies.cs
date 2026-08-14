@@ -28,7 +28,7 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
         }
     }
 
-    public ColumnFamilies(ColumnFamilyOptions options = null)
+    public ColumnFamilies(ColumnFamilyOptions? options = null)
     {
         Descriptors.Add(new Descriptor(DefaultName, options ?? new ColumnFamilyOptions()));
     }

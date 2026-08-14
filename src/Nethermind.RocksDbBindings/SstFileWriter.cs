@@ -14,7 +14,7 @@ public unsafe class SstFileWriter : IDisposable
 
     internal dynamic References { get; } = new ExpandoObject();
 
-    public SstFileWriter(EnvOptions envOptions = null, ColumnFamilyOptions ioOptions = null)
+    public SstFileWriter(EnvOptions? envOptions = null, ColumnFamilyOptions? ioOptions = null)
     {
         if (envOptions == null)
             envOptions = new EnvOptions();

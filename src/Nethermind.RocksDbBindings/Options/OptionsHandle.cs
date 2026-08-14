@@ -23,8 +23,8 @@ public unsafe abstract class OptionsHandle
     internal dynamic References { get; } = new ExpandoObject();
 
     //Stores some path values for the RocksDb class
-    internal string WalPath { get; set; }
-    internal string LogPath { get; set; }
+    internal string? WalPath { get; set; }
+    internal string? LogPath { get; set; }
 
     public nint Handle { get; protected set; }
 

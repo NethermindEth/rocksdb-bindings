@@ -5,21 +5,21 @@ namespace Nethermind.RocksDbBindings;
 
 public class LiveFileMetadata
 {
-    public FileMetadata FileMetadata;
-    public FileDataMetadata FileDataMetadata;
+    public required FileMetadata FileMetadata;
+    public FileDataMetadata? FileDataMetadata;
 }
 
 public class FileMetadata
 {
-    public string FileName;
+    public required string FileName;
     public int FileLevel;
     public ulong FileSize;
 }
 
 public class FileDataMetadata
 {
-    public string SmallestKeyInFile;
-    public string LargestKeyInFile;
+    public required string SmallestKeyInFile;
+    public required string LargestKeyInFile;
     public ulong NumEntriesInFile;
     public ulong NumDeletionsInFile;
 }

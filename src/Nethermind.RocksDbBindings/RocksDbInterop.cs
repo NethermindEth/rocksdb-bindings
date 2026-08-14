@@ -60,7 +60,7 @@ internal static unsafe class RocksDbInterop
             throw new RocksDbNativeException((nint)errptr);
     }
 
-    public static string PtrToStringAndFree(sbyte* value, nuint length, Encoding encoding = null)
+    public static string? PtrToStringAndFree(sbyte* value, nuint length, Encoding? encoding = null)
     {
         if (value == null)
             return null;
@@ -76,7 +76,7 @@ internal static unsafe class RocksDbInterop
         }
     }
 
-    public static string NullTerminatedStringAndFree(sbyte* value)
+    public static string? NullTerminatedStringAndFree(sbyte* value)
     {
         if (value == null)
             return null;
@@ -91,7 +91,7 @@ internal static unsafe class RocksDbInterop
         }
     }
 
-    public static byte[] BytesAndFree(sbyte* value, nuint length)
+    public static byte[]? BytesAndFree(sbyte* value, nuint length)
     {
         if (value == null)
             return null;
@@ -108,7 +108,7 @@ internal static unsafe class RocksDbInterop
         }
     }
 
-    public static byte[] Bytes(nint value, nuint length)
+    public static byte[]? Bytes(nint value, nuint length)
     {
         if (value == nint.Zero)
             return null;
@@ -118,7 +118,7 @@ internal static unsafe class RocksDbInterop
         return result;
     }
 
-    public static T Deserialize<T>(nint value, nuint length, Func<Stream, T> deserializer)
+    public static T? Deserialize<T>(nint value, nuint length, Func<Stream, T> deserializer)
     {
         if (value == nint.Zero)
             return default;
@@ -127,7 +127,7 @@ internal static unsafe class RocksDbInterop
         return deserializer(stream);
     }
 
-    public static T Deserialize<T>(nint value, nuint length, ISpanDeserializer<T> deserializer)
+    public static T? Deserialize<T>(nint value, nuint length, ISpanDeserializer<T> deserializer)
         => value == nint.Zero ? default : deserializer.Deserialize(new ReadOnlySpan<byte>((void*)value, checked((int)length)));
 
     public static rocksdb_t* Db(nint value) => (rocksdb_t*)value;

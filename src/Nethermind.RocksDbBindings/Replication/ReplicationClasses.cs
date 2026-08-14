@@ -9,9 +9,9 @@ namespace Nethermind.RocksDbBindings;
 
 public class ReplicationFile : IDisposable
 {
-    public string FileName { get; set; }
+    public required string FileName { get; set; }
     public ulong FileSize { get; set; }
-    public Stream FileStream { get; set; }
+    public required Stream FileStream { get; set; }
 
     public void Dispose()
     {
@@ -22,13 +22,13 @@ public class ReplicationFile : IDisposable
 public class ReplicationBatch
 {
     public ulong SequenceNumber { get; set; }
-    public byte[] Data { get; set; }
+    public required byte[] Data { get; set; }
 }
 
 public class PooledReplicationBatch
 {
     public ulong SequenceNumber { get; set; }
-    public byte[] PooledData { get; set; }
+    public required byte[] PooledData { get; set; }
     public int Length { get; set; }
 }
 

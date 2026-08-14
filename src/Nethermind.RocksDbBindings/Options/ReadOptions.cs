@@ -95,7 +95,7 @@ public unsafe class ReadOptions
         return SetIterateLowerBound(key, (ulong)key.GetLongLength(0));
     }
 
-    public unsafe ReadOptions SetIterateLowerBound(string stringKey, Encoding encoding = null)
+    public unsafe ReadOptions SetIterateLowerBound(string stringKey, Encoding? encoding = null)
     {
         var key = (encoding ?? Encoding.UTF8).GetBytes(stringKey);
         return SetIterateLowerBound(key);
@@ -123,7 +123,7 @@ public unsafe class ReadOptions
         return SetIterateUpperBound(key, (ulong)key.GetLongLength(0));
     }
 
-    public unsafe ReadOptions SetIterateUpperBound(string stringKey, Encoding encoding = null)
+    public unsafe ReadOptions SetIterateUpperBound(string stringKey, Encoding? encoding = null)
     {
         var key = (encoding ?? Encoding.UTF8).GetBytes(stringKey);
         return SetIterateUpperBound(key);

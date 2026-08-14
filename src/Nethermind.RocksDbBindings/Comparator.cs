@@ -20,7 +20,7 @@ public abstract class StringComparatorBase : Comparator
 
     public string Name { get; }
 
-    public StringComparatorBase(Encoding encoding = null, string name = null, nint state = default(nint))
+    public StringComparatorBase(Encoding? encoding = null, string? name = null, nint state = default(nint))
     {
         Name = name ?? typeof(StringComparatorBase).Name;
         Encoding = encoding ?? Encoding.UTF8;
@@ -40,7 +40,7 @@ public class StringComparator : StringComparatorBase
 {
     public Comparison<string> CompareFunc { get; }
 
-    public StringComparator(IComparer<string> comparer = null, Encoding encoding = null, string name = null)
+    public StringComparator(IComparer<string>? comparer = null, Encoding? encoding = null, string? name = null)
         : base(encoding, name)
     {
         if (comparer == null)
@@ -48,7 +48,7 @@ public class StringComparator : StringComparatorBase
         CompareFunc = comparer.Compare;
     }
 
-    public StringComparator(bool ignoreCase, Encoding encoding = null, string name = null)
+    public StringComparator(bool ignoreCase, Encoding? encoding = null, string? name = null)
         : this(ignoreCase ? StringComparer.CurrentCultureIgnoreCase : StringComparer.CurrentCulture, encoding, name)
     {
     }

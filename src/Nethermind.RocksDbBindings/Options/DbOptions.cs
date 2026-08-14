@@ -181,7 +181,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// through EnableStatistics()
     /// </summary>
     /// <returns></returns>
-    public string GetStatisticsString()
+    public string? GetStatisticsString()
     {
         return RocksDbInterop.NullTerminatedStringAndFree(RocksDbNative.rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
     }

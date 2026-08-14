@@ -127,10 +127,8 @@ internal static unsafe class RocksDbInterop
         return deserializer(stream);
     }
 
-#if !NETSTANDARD2_0
     public static T Deserialize<T>(nint value, nuint length, ISpanDeserializer<T> deserializer)
         => value == nint.Zero ? default : deserializer.Deserialize(new ReadOnlySpan<byte>((void*)value, checked((int)length)));
-#endif
 
     public static rocksdb_t* Db(nint value) => (rocksdb_t*)value;
     public static rocksdb_backup_engine_t* BackupEngine(nint value) => (rocksdb_backup_engine_t*)value;

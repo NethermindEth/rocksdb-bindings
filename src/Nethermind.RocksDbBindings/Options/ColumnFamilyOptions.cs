@@ -62,15 +62,6 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return (T)this;
     }
 
-#if ROCKSDB_CUCKOO_TABLE_OPTIONS
-    public T set_cuckoo_table_factory(rocksdb_cuckoo_table_options_t* table_options)
-    {
-        // Args: table_options
-        RocksDbNative.rocksdb_options_set_cuckoo_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.CuckooTableOptions(table_options));
-        return GetThis();
-    }
-#endif
-
     /// <summary>
     /// Use this if you don't need to keep the data sorted, i.e. you'll never use
     /// an iterator, only Put() and Get() API calls

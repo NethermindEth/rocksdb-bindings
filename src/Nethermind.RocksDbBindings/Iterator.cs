@@ -38,9 +38,7 @@ public unsafe class Iterator : IDisposable
     {
         if (handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_iter_destroy(RocksDbInterop.Iterator(handle));
-#endif
             handle = nint.Zero;
         }
     }
@@ -103,7 +101,6 @@ public unsafe class Iterator : IDisposable
         return this;
     }
 
-#if !NETSTANDARD2_0
     public unsafe Iterator Seek(ReadOnlySpan<byte> key)
     {
         fixed (byte* keyPtr = key)
@@ -112,7 +109,6 @@ public unsafe class Iterator : IDisposable
             return this;
         }
     }
-#endif 
 
     public unsafe Iterator SeekForPrev(byte* key, ulong klen)
     {
@@ -145,7 +141,6 @@ public unsafe class Iterator : IDisposable
         return this;
     }
 
-#if !NETSTANDARD2_0
     public unsafe Iterator SeekForPrev(ReadOnlySpan<byte> key)
     {
         fixed (byte* keyPtr = key)
@@ -154,7 +149,6 @@ public unsafe class Iterator : IDisposable
             return this;
         }
     }
-#endif
 
     public Iterator Next()
     {
@@ -182,7 +176,6 @@ public unsafe class Iterator : IDisposable
         return RocksDbInterop.Bytes((nint)valuePtr, valueLength);
     }
 
-#if !NETSTANDARD2_0
     public T Key<T>(ISpanDeserializer<T> deserializer)
     {
         nuint keyLength;
@@ -210,7 +203,6 @@ public unsafe class Iterator : IDisposable
         var valuePtr = RocksDbNative.rocksdb_iter_value(RocksDbInterop.Iterator(handle), &valueLength);
         return new ReadOnlySpan<byte>((byte*)valuePtr, (int)valueLength);
     }
-#endif
 
     public T Key<T>(Func<Stream, T> deserializer)
     {

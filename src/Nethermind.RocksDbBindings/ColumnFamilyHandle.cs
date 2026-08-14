@@ -29,9 +29,7 @@ unsafe class ColumnFamilyHandleInternal : ColumnFamilyHandle, IDisposable
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_column_family_handle_destroy(RocksDbInterop.ColumnFamily(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

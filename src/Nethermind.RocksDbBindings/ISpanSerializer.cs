@@ -12,9 +12,7 @@ using System.IO;
 #pragma warning disable IDE1006 // Intentionally violating naming conventions because this is meant to match the C API
 namespace Nethermind.RocksDbBindings;
 
-#if !NETSTANDARD2_0
 public interface ISpanDeserializer<T>
 {
     T Deserialize(ReadOnlySpan<byte> buffer);
 }
-#endif

@@ -16,7 +16,6 @@ public interface MergeOperator
     void DeleteValue(nint value, nuint valueLength);
 }
 
-#if !NETSTANDARD2_0
 public static class MergeOperators
 {
     /// <summary>
@@ -125,4 +124,3 @@ public static class MergeOperators
         unsafe void MergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
     }
 }
-#endif

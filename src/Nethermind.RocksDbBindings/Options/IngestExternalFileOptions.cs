@@ -20,9 +20,7 @@ public unsafe class IngestExternalFileOptions
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

@@ -30,12 +30,10 @@ public unsafe class SliceTransform
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             // Commented out until a solution is found to rocksdb issue #1095 (https://github.com/facebook/rocksdb/issues/1095)
             // If you create one of these, use it in an Option which will destroy it when finished
             // Otherwise don't create one or it will leak
             // RocksDB owns this while attached to options; see rocksdb issue #1095.
-#endif
             Handle = nint.Zero;
         }
     }

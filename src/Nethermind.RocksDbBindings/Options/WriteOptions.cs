@@ -18,9 +18,7 @@ public unsafe class WriteOptions
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

@@ -25,9 +25,7 @@ public unsafe class BlockBasedTableOptions
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_block_based_options_destroy(RocksDbInterop.BlockBasedTableOptions(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

@@ -37,7 +37,6 @@ public class ReplicationConsumer
         }
     }
 
-#if !NETSTANDARD2_0
     public void IngestBatch(ulong sequenceNo, ReadOnlySpan<byte> batchData)
     {
         if (_db == null) throw new InvalidOperationException("DB is not initialized.");
@@ -47,6 +46,5 @@ public class ReplicationConsumer
             _db.Write(writeBatch);
         }
     }
-#endif
 
 }

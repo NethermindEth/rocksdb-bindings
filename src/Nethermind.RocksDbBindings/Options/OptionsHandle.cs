@@ -43,9 +43,7 @@ public unsafe abstract class OptionsHandle
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             DestroyHandle();
-#endif
             Handle = nint.Zero;
         }
     }

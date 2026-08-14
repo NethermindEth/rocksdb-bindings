@@ -20,9 +20,7 @@ public unsafe class EnvOptions
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

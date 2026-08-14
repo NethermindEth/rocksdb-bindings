@@ -28,9 +28,7 @@ public unsafe class Snapshot : IDisposable
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_release_snapshot(RocksDbInterop.Db(dbHandle), RocksDbInterop.Snapshot(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

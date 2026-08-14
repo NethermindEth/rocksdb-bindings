@@ -26,11 +26,9 @@ public unsafe class ReadOptions
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
             NativeMemory.Free((void*)iterateLowerBound);
             NativeMemory.Free((void*)iterateUpperBound);
-#endif
             Handle = nint.Zero;
         }
     }

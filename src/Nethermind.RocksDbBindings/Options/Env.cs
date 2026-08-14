@@ -47,9 +47,7 @@ public unsafe class Env
     {
         if (Handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_env_destroy(RocksDbInterop.Env(Handle));
-#endif
             Handle = nint.Zero;
         }
     }

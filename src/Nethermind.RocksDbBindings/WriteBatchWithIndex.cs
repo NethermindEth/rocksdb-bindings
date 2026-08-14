@@ -29,9 +29,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     {
         if (handle != nint.Zero)
         {
-#if !NODESTROY
             RocksDbNative.rocksdb_writebatch_wi_destroy(RocksDbInterop.WriteBatchWithIndex(handle));
-#endif
             handle = nint.Zero;
         }
     }
@@ -208,7 +206,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-#if !NETSTANDARD2_0
     public unsafe WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
@@ -242,7 +239,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
         return this;
     }
-#endif
 
     public WriteBatchWithIndex Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
     {
@@ -333,7 +329,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
     }
 
-#if !NETSTANDARD2_0
     public unsafe WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
@@ -349,7 +344,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         }
         return this;
     }
-#endif
 
     public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, ColumnFamilyHandle cf = null)
     {
@@ -493,12 +487,10 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
     IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
         => Iterate(state, put, deleted);
 
-#if !NETSTANDARD2_0
     IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
         => Put(key, value, cf);
     IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
         => Merge(key, value, cf);
     IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
         => Delete(key, cf);
-#endif
 }

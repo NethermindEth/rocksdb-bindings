@@ -314,7 +314,6 @@ public unsafe sealed class RocksDb : IDisposable
         return Get(key, key.GetLongLength(0), cf, readOptions);
     }
 
-#if !NETSTANDARD2_0
     public byte[] Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null, ReadOptions readOptions = null)
     {
         fixed (byte* keyPtr = key)
@@ -354,7 +353,6 @@ public unsafe sealed class RocksDb : IDisposable
         using var stream = new MemoryStream(value, writable: false);
         return deserializer(stream);
     }
-#endif
 
     public byte[] Get(byte[] key, long keyLength, ColumnFamilyHandle cf = null, ReadOptions readOptions = null)
     {
@@ -650,7 +648,6 @@ public unsafe sealed class RocksDb : IDisposable
         Remove(key, key.Length, cf, writeOptions);
     }
 
-#if !NETSTANDARD2_0
     public unsafe void Remove(ReadOnlySpan<byte> key, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
@@ -665,7 +662,6 @@ public unsafe sealed class RocksDb : IDisposable
             }
         }
     }
-#endif
 
     public void Remove(byte[] key, long keyLength, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {
@@ -698,7 +694,6 @@ public unsafe sealed class RocksDb : IDisposable
         Put(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
     }
 
-#if !NETSTANDARD2_0
     public void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {
         fixed (byte* keyPtr = key)
@@ -707,7 +702,6 @@ public unsafe sealed class RocksDb : IDisposable
             Put(keyPtr, (nuint)key.Length, valuePtr, (nuint)value.Length, cf, writeOptions);
         }
     }
-#endif
 
     public void Put(byte[] key, long keyLength, byte[] value, long valueLength, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {
@@ -731,7 +725,6 @@ public unsafe sealed class RocksDb : IDisposable
         Merge(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
     }
 
-#if !NETSTANDARD2_0
     public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {
         fixed (byte* keyPtr = key)
@@ -740,7 +733,6 @@ public unsafe sealed class RocksDb : IDisposable
             Merge(keyPtr, (nuint)key.Length, valuePtr, (nuint)value.Length, cf, writeOptions);
         }
     }
-#endif
 
     public void Merge(byte[] key, long keyLength, byte[] value, long valueLength, ColumnFamilyHandle cf = null, WriteOptions writeOptions = null)
     {

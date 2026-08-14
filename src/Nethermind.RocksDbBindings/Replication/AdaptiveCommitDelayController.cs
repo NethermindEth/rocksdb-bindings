@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-#if NET5_0_OR_GREATER
 
 namespace Nethermind.RocksDbBindings;
 
@@ -282,4 +281,3 @@ public sealed class AdaptiveCommitDelayController
         return result;
     }
 }
-#endif

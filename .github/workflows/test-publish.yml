@@ -83,13 +83,13 @@ jobs:
   publish:
     name: Publish
     needs: [notices, test]
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'No' || github.event_name == 'release'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish != 'No' || github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     env:
-      NUGET_HOST: ${{ github.event.inputs.publish == 'Staging' && 'https://int.nugettest.org' || 'https://www.nuget.org' }}
+      NUGET_HOST: ${{ inputs.publish == 'Staging' && 'https://int.nugettest.org' || 'https://www.nuget.org' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -101,8 +101,10 @@ jobs:
         working-directory: src
         run: |
           version_prefix=$(sed -n 's|.*<VersionPrefix>\(.*\)</VersionPrefix>.*|\1|p' Directory.Build.props)
-          echo "Detected VersionPrefix $version_prefix"
-          echo "version-prefix=$version_prefix" >> $GITHUB_OUTPUT
+          version_suffix=$(sed -n 's|.*<VersionSuffix>\(.*\)</VersionSuffix>.*|\1|p' Directory.Build.props)
+          version=$version_prefix${version_suffix:+-$version_suffix}
+          echo "Detected version $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
@@ -119,6 +121,6 @@ jobs:
         working-directory: src
         run: |
           dotnet pack ./Nethermind.RocksDbBindings -c release \
-            -p:VersionPrefix=${{ steps.version.outputs.version-prefix }}.${{ github.run_number }}
+            -p:Version=${{ steps.version.outputs.version }}.${{ github.run_number }}
           dotnet nuget push ./artifacts/package/release/*.nupkg \
             -k "${{ steps.login.outputs.NUGET_API_KEY }}" -s ${{ env.NUGET_HOST }}/api/v2/package

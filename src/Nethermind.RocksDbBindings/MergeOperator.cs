@@ -36,7 +36,9 @@ public static class MergeOperators
     /// Called when a Put/Delete is the *existing_value (or nullptr)
     /// </summary>
     /// <param name="key">The key that's associated with this merge operation.</param>
-    /// <param name="existingValue">null indicates that the key does not exist before this op</param>
+    /// <param name="hasExistingValue">false indicates that the key does not exist before this op</param>
+    /// <param name="existingValue">empty when <paramref name="hasExistingValue"/> is false, which is
+    /// also how an existing zero-length value arrives, so test that parameter rather than the length</param>
     /// <param name="operands">the sequence of merge operations to apply, front() first.</param>
     /// <param name="success">Client is responsible for filling the merge result here</param>
     /// <returns></returns>

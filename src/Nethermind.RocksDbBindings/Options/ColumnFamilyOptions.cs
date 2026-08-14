@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 
@@ -12,47 +15,126 @@ public class ColumnFamilyOptions : Options<ColumnFamilyOptions>
 {
 }
 
-internal class OptionsBase
+// The callbacks live here rather than on Options<T> because UnmanagedCallersOnly methods
+// cannot be declared in a generic type.
+internal unsafe class OptionsBase
 {
-    public delegate Comparator GetComparator();
-    public class ComparatorReferences
-    {
-        public required GetComparator GetComparator { get; set; }
-        public required DestructorDelegate DestructorDelegate { get; set; }
-        public required CompareDelegate CompareDelegate { get; set; }
-        public required NameDelegate NameDelegate { get; set; }
-    }
-
+    // The managed instance is reached through a GCHandle stored in the state that rocksdb
+    // hands back to every callback, so nothing has to outlive it on the managed side.
     [StructLayout(LayoutKind.Sequential)]
     internal struct ComparatorState
     {
-        public nint GetComparatorPtr { get; set; }
+        public nint Instance { get; set; }
         public nint NamePtr { get; set; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MergeOperatorState
     {
-        public nint GetMergeOperatorPtr { get; set; }
+        public nint Instance { get; set; }
         public nint NamePtr { get; set; }
     }
-}
 
-internal delegate MergeOperator GetMergeOperator();
-internal class MergeOperatorReferences
-{
-    public required GetMergeOperator GetMergeOperator { get; set; }
-    public required DestructorDelegate DestructorDelegate { get; set; }
-    public required NameDelegate NameDelegate { get; set; }
-    public required DeleteValueDelegate DeleteValueDelegate { get; set; }
-    public required FullMergeDelegate FullMergeDelegate { get; set; }
-    public required PartialMergeDelegate PartialMergeDelegate { get; set; }
+    // An exception cannot unwind through the native frames that called us, so report the
+    // culprit instead of letting the runtime tear the process down without one.
+    [DoesNotReturn]
+    private static void Fail(Exception exception)
+        => Environment.FailFast($"A RocksDB callback threw {exception.GetType()}.", exception);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static int Comparator_Compare(void* state, sbyte* a, nuint alen, sbyte* b, nuint blen)
+    {
+        try
+        {
+            var comparator = (Comparator)GCHandle.FromIntPtr(((ComparatorState*)state)->Instance).Target!;
+            return comparator.Compare((nint)a, alen, (nint)b, blen);
+        }
+        catch (Exception exception)
+        {
+            Fail(exception);
+            return 0;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static void Comparator_Destroy(void* state)
+    {
+        GCHandle.FromIntPtr(((ComparatorState*)state)->Instance).Free();
+        Utf8StringMarshaller.Free((byte*)((ComparatorState*)state)->NamePtr);
+        NativeMemory.Free(state);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static sbyte* Comparator_GetNamePtr(void* state)
+        => (sbyte*)((ComparatorState*)state)->NamePtr;
+
+    private static MergeOperator FromState(void* state)
+        => (MergeOperator)GCHandle.FromIntPtr(((MergeOperatorState*)state)->Instance).Target!;
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static sbyte* MergeOperator_PartialMerge(void* state, sbyte* key, nuint keyLength, sbyte** operandsList, nuint* operandsListLength, int numOperands, byte* success, nuint* newValueLength)
+    {
+        try
+        {
+            var result = FromState(state).PartialMerge(
+                (nint)key, keyLength, (nint)operandsList, (nint)operandsListLength, numOperands, out byte succeeded, out nint length);
+            *success = succeeded;
+            *newValueLength = (nuint)length;
+            return (sbyte*)result;
+        }
+        catch (Exception exception)
+        {
+            Fail(exception);
+            return null;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static sbyte* MergeOperator_FullMerge(void* state, sbyte* key, nuint keyLength, sbyte* existingValue, nuint existingValueLength, sbyte** operandsList, nuint* operandsListLength, int numOperands, byte* success, nuint* newValueLength)
+    {
+        try
+        {
+            var result = FromState(state).FullMerge(
+                (nint)key, keyLength, (nint)existingValue, existingValueLength, (nint)operandsList, (nint)operandsListLength, numOperands, out byte succeeded, out nint length);
+            *success = succeeded;
+            *newValueLength = (nuint)length;
+            return (sbyte*)result;
+        }
+        catch (Exception exception)
+        {
+            Fail(exception);
+            return null;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static void MergeOperator_DeleteValue(void* state, sbyte* value, nuint valueLength)
+    {
+        try
+        {
+            FromState(state).DeleteValue((nint)value, valueLength);
+        }
+        catch (Exception exception)
+        {
+            Fail(exception);
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static void MergeOperator_Destroy(void* state)
+    {
+        GCHandle.FromIntPtr(((MergeOperatorState*)state)->Instance).Free();
+        Utf8StringMarshaller.Free((byte*)((MergeOperatorState*)state)->NamePtr);
+        NativeMemory.Free(state);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static sbyte* MergeOperator_GetNamePtr(void* state)
+        => (sbyte*)((MergeOperatorState*)state)->NamePtr;
 }
 
 public unsafe abstract partial class Options<T> : OptionsHandle where T : Options<T>
 {
-    OptionsBase.ComparatorReferences? ComparatorRef { get; set; }
-    MergeOperatorReferences? MergeOperatorRef { get; set; }
 
     public T SetBlockBasedTableFactory(BlockBasedTableOptions table_options)
     {
@@ -170,7 +252,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// true.
     ///
     /// Default: 0
-    //// </summary>
+    /// </summary>
     public T SetCompactionReadaheadSize(ulong size)
     {
         RocksDbNative.rocksdb_options_compaction_readahead_size(RocksDbInterop.Options(Handle), (nuint)size);
@@ -199,26 +281,22 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// here has the same name and orders keys *exactly* the same as the
     /// comparator provided to previous open calls on the same DB.
     /// </summary>
+    /// <remarks>
+    /// RocksDB stores a comparator as a non-owning pointer and never destroys it, and neither does
+    /// this method, so the created comparator, its name and the managed instance behind it are held
+    /// for the life of the process.
+    /// </remarks>
     public T SetComparator(Comparator comparator)
     {
         // Allocate some memory for the name bytes
         var name = comparator.Name ?? comparator.GetType().FullName;
         var namePtr = (nint)Utf8StringMarshaller.ConvertToUnmanaged(name);
 
-        // Hold onto a reference to everything that needs to stay alive
-        ComparatorRef = new OptionsBase.ComparatorReferences
-        {
-            GetComparator = () => comparator,
-            CompareDelegate = Comparator_Compare,
-            DestructorDelegate = Comparator_Destroy,
-            NameDelegate = Comparator_GetNamePtr,
-        };
-
         // Allocate the state
         var state = new OptionsBase.ComparatorState
         {
             NamePtr = namePtr,
-            GetComparatorPtr = Marshal.GetFunctionPointerForDelegate(ComparatorRef.GetComparator)
+            Instance = GCHandle.ToIntPtr(GCHandle.Alloc(comparator))
         };
         var statePtr = (nint)NativeMemory.Alloc((nuint)sizeof(OptionsBase.ComparatorState));
         *(OptionsBase.ComparatorState*)statePtr = state;
@@ -226,31 +304,13 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         // Create the comparator
         nint handle = (nint)RocksDbNative.rocksdb_comparator_create(
             (void*)statePtr,
-            (delegate* unmanaged[Cdecl]<void*, void>)(void*)Marshal.GetFunctionPointerForDelegate(ComparatorRef.DestructorDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, int>)(void*)Marshal.GetFunctionPointerForDelegate(ComparatorRef.CompareDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*>)(void*)Marshal.GetFunctionPointerForDelegate(ComparatorRef.NameDelegate));
+            &OptionsBase.Comparator_Destroy,
+            &OptionsBase.Comparator_Compare,
+            &OptionsBase.Comparator_GetNamePtr);
 
         return SetComparator(handle);
     }
 
-
-    private unsafe int Comparator_Compare(nint state, nint a, nuint alen, nint b, nuint blen)
-    {
-        var getComparatorPtr = (*((OptionsBase.ComparatorState*)state)).GetComparatorPtr;
-        var getComparator = Marshal.GetDelegateForFunctionPointer<OptionsBase.GetComparator>(getComparatorPtr);
-        var comparator = getComparator();
-        return comparator.Compare(a, alen, b, blen);
-    }
-
-    private unsafe static void Comparator_Destroy(nint state)
-    {
-        var namePtr = (*((OptionsBase.ComparatorState*)state)).NamePtr;
-        Utf8StringMarshaller.Free((byte*)namePtr);
-        NativeMemory.Free((void*)state);
-    }
-
-    private unsafe static nint Comparator_GetNamePtr(nint state)
-        => (*((OptionsBase.ComparatorState*)state)).NamePtr;
 
 
     /// <summary>
@@ -271,22 +331,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         var name = mergeOperator.Name ?? mergeOperator.GetType().FullName;
         var namePtr = (nint)Utf8StringMarshaller.ConvertToUnmanaged(name);
 
-        // Hold onto a reference to everything that needs to stay alive
-        MergeOperatorRef = new MergeOperatorReferences
-        {
-            GetMergeOperator = () => mergeOperator,
-            DestructorDelegate = MergeOperator_Destroy,
-            NameDelegate = MergeOperator_GetNamePtr,
-            DeleteValueDelegate = MergeOperator_DeleteValue,
-            FullMergeDelegate = MergeOperator_FullMerge,
-            PartialMergeDelegate = MergeOperator_PartialMerge,
-        };
-
         // Allocate the state
         var state = new OptionsBase.MergeOperatorState
         {
             NamePtr = namePtr,
-            GetMergeOperatorPtr = Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.GetMergeOperator)
+            Instance = GCHandle.ToIntPtr(GCHandle.Alloc(mergeOperator))
         };
         var statePtr = (nint)NativeMemory.Alloc((nuint)sizeof(OptionsBase.MergeOperatorState));
         *(OptionsBase.MergeOperatorState*)statePtr = state;
@@ -294,48 +343,15 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         // Keep delete_value non-null so the allocating MergeOperator releases its results.
         nint handle = (nint)RocksDbNative.rocksdb_mergeoperator_create(
             (void*)statePtr,
-            (delegate* unmanaged[Cdecl]<void*, void>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.DestructorDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, sbyte**, nuint*, int, byte*, nuint*, sbyte*>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.FullMergeDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte**, nuint*, int, byte*, nuint*, sbyte*>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.PartialMergeDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.DeleteValueDelegate),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*>)(void*)Marshal.GetFunctionPointerForDelegate(MergeOperatorRef.NameDelegate));
+            &OptionsBase.MergeOperator_Destroy,
+            &OptionsBase.MergeOperator_FullMerge,
+            &OptionsBase.MergeOperator_PartialMerge,
+            &OptionsBase.MergeOperator_DeleteValue,
+            &OptionsBase.MergeOperator_GetNamePtr);
 
         return SetMergeOperator(handle);
     }
 
-    private static MergeOperator GetMergeOperatorFromPtr(nint getMergeOperatorPtr)
-    {
-        var getMergeOperator = Marshal.GetDelegateForFunctionPointer<GetMergeOperator>(getMergeOperatorPtr);
-        return getMergeOperator();
-    }
-
-    private unsafe static nint MergeOperator_PartialMerge(nint state, nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
-    {
-        var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
-        return mergeOperator.PartialMerge(key, keyLength, operandsList, operandsListLength, numOperands, out success, out newValueLength);
-    }
-
-    private unsafe static nint MergeOperator_FullMerge(nint state, nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
-    {
-        var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
-        return mergeOperator.FullMerge(key, keyLength, existingValue, existingValueLength, operandsList, operandsListLength, numOperands, out success, out newValueLength);
-    }
-
-    private unsafe static void MergeOperator_DeleteValue(nint state, nint value, nuint valueLength)
-    {
-        var mergeOperator = GetMergeOperatorFromPtr((*((OptionsBase.MergeOperatorState*)state)).GetMergeOperatorPtr);
-        mergeOperator.DeleteValue(value, valueLength);
-    }
-
-    private unsafe static void MergeOperator_Destroy(nint state)
-    {
-        var namePtr = (*((OptionsBase.MergeOperatorState*)state)).NamePtr;
-        Utf8StringMarshaller.Free((byte*)namePtr);
-        NativeMemory.Free((void*)state);
-    }
-
-    private unsafe static nint MergeOperator_GetNamePtr(nint state)
-        => (*((OptionsBase.MergeOperatorState*)state)).NamePtr;
 
     /// <summary>
     /// REQUIRES: The client must provide a merge operator if Merge operation
@@ -447,8 +463,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// properties hold:
     ///
     /// 1) key.starts_with(prefix(key))
-    /// 2) Compare(prefix(key), key) <= 0.
-    /// 3) If Compare(k1, k2) <= 0, then Compare(prefix(k1), prefix(k2)) <= 0
+    /// 2) Compare(prefix(key), key) &lt;= 0.
+    /// 3) If Compare(k1, k2) &lt;= 0, then Compare(prefix(k1), prefix(k2)) &lt;= 0
     /// 4) prefix(prefix(key)) == prefix(key)
     ///
     /// Default: nullptr
@@ -469,8 +485,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// properties hold:
     ///
     /// 1) key.starts_with(prefix(key))
-    /// 2) Compare(prefix(key), key) <= 0.
-    /// 3) If Compare(k1, k2) <= 0, then Compare(prefix(k1), prefix(k2)) <= 0
+    /// 2) Compare(prefix(key), key) &lt;= 0.
+    /// 3) If Compare(k1, k2) &lt;= 0, then Compare(prefix(k1), prefix(k2)) &lt;= 0
     /// 4) prefix(prefix(key)) == prefix(key)
     ///
     /// Default: nullptr
@@ -492,7 +508,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Number of files to trigger level-0 compaction. A value <0 means that
+    /// Number of files to trigger level-0 compaction. A value &lt;0 means that
     /// level-0 compaction will not be triggered by number of files at all.
     ///
     /// Default: 4
@@ -507,7 +523,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
 
     /// <summary>
     /// Soft limit on number of level-0 files. We start slowing down writes at this
-    /// point. A value <0 means that no writing slow down will be triggered by
+    /// point. A value &lt;0 means that no writing slow down will be triggered by
     /// number of files in level-0.
     ///
     /// Dynamically changeable through SetOptions() API
@@ -748,11 +764,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
 
     /// <summary>
     /// size of one block in arena memory allocation.
-    /// If <= 0, a proper value is automatically calculated (usually 1/8 of
+    /// If &lt;= 0, a proper value is automatically calculated (usually 1/8 of
     /// writer_buffer_size, rounded up to a multiple of 4KB).
     ///
     /// There are two additional restriction of the The specified size:
-    /// (1) size should be in the range of [4096, 2 << 30] and
+    /// (1) size should be in the range of [4096, 2 &lt;&lt; 30] and
     /// (2) be the multiple of the CPU word (which helps with the memory
     /// alignment).
     ///
@@ -919,7 +935,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// If inplace_callback function is not set,
     ///   Put(key, new_value) will update inplace the existing_value iff
     ///   * key exists in current memtable
-    ///   * new sizeof(new_value) <= sizeof(existing_value)
+    ///   * new sizeof(new_value) &lt;= sizeof(existing_value)
     ///   * existing_value for that key is a put i.e. kTypeValue
     /// If inplace_callback function is set, check doc for inplace_callback.
     /// Default: false.
@@ -1004,7 +1020,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Page size for huge page TLB for bloom in memtable. If <=0, not allocate
+    /// Page size for huge page TLB for bloom in memtable. If &lt;=0, not allocate
     /// from huge page TLB but from malloc.
     /// Need to reserve huge pages for it to be allocated. For example:
     ///      sysctl -w vm.nr_hugepages=20

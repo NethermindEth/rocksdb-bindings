@@ -398,13 +398,14 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public WriteBatchWithIndex Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
+    /// <inheritdoc cref="IWriteBatch.Iterate" />
+    public WriteBatchWithIndex Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
     {
         RocksDbNative.rocksdb_writebatch_wi_iterate(
             RocksDbInterop.WriteBatchWithIndex(handle),
-            (void*)state,
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void>)(void*)Marshal.GetFunctionPointerForDelegate(put),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void>)(void*)Marshal.GetFunctionPointerForDelegate(deleted));
+            state,
+            put,
+            deleted);
         return this;
     }
 
@@ -484,7 +485,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         => DeleteRange(startKey, sklen, endKey, eklen, cf);
     IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
         => PutLogData(blob, len);
-    IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
+    IWriteBatch IWriteBatch.Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
         => Iterate(state, put, deleted);
 
     IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)

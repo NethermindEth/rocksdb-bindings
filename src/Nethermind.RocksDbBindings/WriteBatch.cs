@@ -41,7 +41,14 @@ public interface IWriteBatch : IDisposable
     unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, ColumnFamilyHandle? cf = null);
     unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, ColumnFamilyHandle? cf = null);
     IWriteBatch PutLogData(byte[] blob, ulong len);
-    IWriteBatch Iterate(nint state, PutDelegate put, DeletedDelegate deleted);
+    /// <summary>
+    /// Replays the batch into <paramref name="put"/> and <paramref name="deleted"/>, each of which
+    /// must be a static method marked with
+    /// <c>[UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]</c> that catches all managed
+    /// exceptions; an exception cannot unwind through the rocksdb frames that invoked it, so one
+    /// that escapes terminates the process.
+    /// </summary>
+    unsafe IWriteBatch Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted);
     byte[] ToBytes();
     byte[]? ToBytes(byte[] buffer, int offset = 0, int size = -1);
     void SetSavePoint();
@@ -469,13 +476,14 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         return ToBytes();
     }
 
-    public WriteBatch Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
+    /// <inheritdoc cref="IWriteBatch.Iterate" />
+    public WriteBatch Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
     {
         RocksDbNative.rocksdb_writebatch_iterate(
             RocksDbInterop.WriteBatch(handle),
-            (void*)state,
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void>)(void*)Marshal.GetFunctionPointerForDelegate(put),
-            (delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void>)(void*)Marshal.GetFunctionPointerForDelegate(deleted));
+            state,
+            put,
+            deleted);
         return this;
     }
 
@@ -576,7 +584,7 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
         => DeleteRange(startKey, sklen, endKey, eklen, cf);
     IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
         => PutLogData(blob, len);
-    IWriteBatch IWriteBatch.Iterate(nint state, PutDelegate put, DeletedDelegate deleted)
+    IWriteBatch IWriteBatch.Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
         => Iterate(state, put, deleted);
 
     IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf)

@@ -4,7 +4,10 @@
 using System;
 using System.CodeDom.Compiler;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
+[assembly: DisableRuntimeMarshalling]
 
 namespace Nethermind.RocksDbBindings.Native;
 
@@ -858,10 +861,10 @@ public static unsafe partial class RocksDbNative
     public static extern void rocksdb_multi_get_cf_with_ts(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, [NativeTypeName("const rocksdb_column_family_handle_t *const *")] rocksdb_column_family_handle_t** column_families, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const char *const *")] sbyte** keys_list, [NativeTypeName("const size_t *")] nuint* keys_list_sizes, [NativeTypeName("char **")] sbyte** values_list, [NativeTypeName("size_t *")] nuint* values_list_sizes, [NativeTypeName("char **")] sbyte** timestamps_list, [NativeTypeName("size_t *")] nuint* timestamps_list_sizes, [NativeTypeName("char **")] sbyte** errs);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void rocksdb_batched_multi_get_cf(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const char *const *")] sbyte** keys_list, [NativeTypeName("const size_t *")] nuint* keys_list_sizes, rocksdb_pinnableslice_t** values, [NativeTypeName("char **")] sbyte** errs, [NativeTypeName("const bool")] byte sorted_input);
+    public static extern void rocksdb_batched_multi_get_cf(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const char *const *")] sbyte** keys_list, [NativeTypeName("const size_t *")] nuint* keys_list_sizes, rocksdb_pinnableslice_t** values, [NativeTypeName("char **")] sbyte** errs, [NativeTypeName("const bool")] bool sorted_input);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void rocksdb_batched_multi_get_cf_slice(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const rocksdb_slice_t *")] rocksdb_slice_t* keys_list, rocksdb_pinnableslice_t** values, [NativeTypeName("char **")] sbyte** errs, [NativeTypeName("const bool")] byte sorted_input);
+    public static extern void rocksdb_batched_multi_get_cf_slice(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* column_family, [NativeTypeName("size_t")] nuint num_keys, [NativeTypeName("const rocksdb_slice_t *")] rocksdb_slice_t* keys_list, rocksdb_pinnableslice_t** values, [NativeTypeName("char **")] sbyte** errs, [NativeTypeName("const bool")] bool sorted_input);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("unsigned char")]
@@ -1336,7 +1339,7 @@ public static unsafe partial class RocksDbNative
     public static extern void rocksdb_writebatch_wi_update_timestamps(rocksdb_writebatch_wi_t* wbwi, [NativeTypeName("const char *")] sbyte* ts, [NativeTypeName("size_t")] nuint tslen, void* state, [NativeTypeName("size_t (*)(void *, uint32_t)")] delegate* unmanaged[Cdecl]<void*, uint, nuint> get_ts_size, [NativeTypeName("char **")] sbyte** errptr);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void rocksdb_load_latest_options([NativeTypeName("const char *")] sbyte* db_path, rocksdb_env_t* env, [NativeTypeName("bool")] byte ignore_unknown_options, rocksdb_cache_t* cache, rocksdb_options_t** db_options, [NativeTypeName("size_t *")] nuint* num_column_families, [NativeTypeName("char ***")] sbyte*** column_family_names, rocksdb_options_t*** column_family_options, [NativeTypeName("char **")] sbyte** errptr);
+    public static extern void rocksdb_load_latest_options([NativeTypeName("const char *")] sbyte* db_path, rocksdb_env_t* env, bool ignore_unknown_options, rocksdb_cache_t* cache, rocksdb_options_t** db_options, [NativeTypeName("size_t *")] nuint* num_column_families, [NativeTypeName("char ***")] sbyte*** column_family_names, rocksdb_options_t*** column_family_options, [NativeTypeName("char **")] sbyte** errptr);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_load_latest_options_destroy(rocksdb_options_t* db_options, [NativeTypeName("char **")] sbyte** list_column_family_names, rocksdb_options_t** list_column_family_options, [NativeTypeName("size_t")] nuint len);
@@ -3127,7 +3130,7 @@ public static unsafe partial class RocksDbNative
     public static extern rocksdb_ratelimiter_t* rocksdb_ratelimiter_create_auto_tuned([NativeTypeName("int64_t")] long rate_bytes_per_sec, [NativeTypeName("int64_t")] long refill_period_us, [NativeTypeName("int32_t")] int fairness);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern rocksdb_ratelimiter_t* rocksdb_ratelimiter_create_with_mode([NativeTypeName("int64_t")] long rate_bytes_per_sec, [NativeTypeName("int64_t")] long refill_period_us, [NativeTypeName("int32_t")] int fairness, int mode, [NativeTypeName("bool")] byte auto_tuned);
+    public static extern rocksdb_ratelimiter_t* rocksdb_ratelimiter_create_with_mode([NativeTypeName("int64_t")] long rate_bytes_per_sec, [NativeTypeName("int64_t")] long refill_period_us, [NativeTypeName("int32_t")] int fairness, int mode, bool auto_tuned);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_ratelimiter_destroy(rocksdb_ratelimiter_t* param0);
@@ -3687,21 +3690,19 @@ public static unsafe partial class RocksDbNative
     public static extern nuint rocksdb_cache_get_occupancy_count([NativeTypeName("const rocksdb_cache_t *")] rocksdb_cache_t* cache);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern rocksdb_write_buffer_manager_t* rocksdb_write_buffer_manager_create([NativeTypeName("size_t")] nuint buffer_size, [NativeTypeName("bool")] byte allow_stall);
+    public static extern rocksdb_write_buffer_manager_t* rocksdb_write_buffer_manager_create([NativeTypeName("size_t")] nuint buffer_size, bool allow_stall);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern rocksdb_write_buffer_manager_t* rocksdb_write_buffer_manager_create_with_cache([NativeTypeName("size_t")] nuint buffer_size, [NativeTypeName("const rocksdb_cache_t *")] rocksdb_cache_t* cache, [NativeTypeName("bool")] byte allow_stall);
+    public static extern rocksdb_write_buffer_manager_t* rocksdb_write_buffer_manager_create_with_cache([NativeTypeName("size_t")] nuint buffer_size, [NativeTypeName("const rocksdb_cache_t *")] rocksdb_cache_t* cache, bool allow_stall);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_write_buffer_manager_destroy(rocksdb_write_buffer_manager_t* wbm);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    [return: NativeTypeName("bool")]
-    public static extern byte rocksdb_write_buffer_manager_enabled(rocksdb_write_buffer_manager_t* wbm);
+    public static extern bool rocksdb_write_buffer_manager_enabled(rocksdb_write_buffer_manager_t* wbm);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    [return: NativeTypeName("bool")]
-    public static extern byte rocksdb_write_buffer_manager_cost_to_cache(rocksdb_write_buffer_manager_t* wbm);
+    public static extern bool rocksdb_write_buffer_manager_cost_to_cache(rocksdb_write_buffer_manager_t* wbm);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("size_t")]
@@ -3723,7 +3724,7 @@ public static unsafe partial class RocksDbNative
     public static extern void rocksdb_write_buffer_manager_set_buffer_size(rocksdb_write_buffer_manager_t* wbm, [NativeTypeName("size_t")] nuint new_size);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void rocksdb_write_buffer_manager_set_allow_stall(rocksdb_write_buffer_manager_t* wbm, [NativeTypeName("bool")] byte new_allow_stall);
+    public static extern void rocksdb_write_buffer_manager_set_allow_stall(rocksdb_write_buffer_manager_t* wbm, bool new_allow_stall);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern rocksdb_sst_file_manager_t* rocksdb_sst_file_manager_create(rocksdb_env_t* env);
@@ -3738,12 +3739,10 @@ public static unsafe partial class RocksDbNative
     public static extern void rocksdb_sst_file_manager_set_compaction_buffer_size(rocksdb_sst_file_manager_t* sfm, [NativeTypeName("uint64_t")] ulong compaction_buffer_size);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    [return: NativeTypeName("bool")]
-    public static extern byte rocksdb_sst_file_manager_is_max_allowed_space_reached(rocksdb_sst_file_manager_t* sfm);
+    public static extern bool rocksdb_sst_file_manager_is_max_allowed_space_reached(rocksdb_sst_file_manager_t* sfm);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    [return: NativeTypeName("bool")]
-    public static extern byte rocksdb_sst_file_manager_is_max_allowed_space_reached_including_compactions(rocksdb_sst_file_manager_t* sfm);
+    public static extern bool rocksdb_sst_file_manager_is_max_allowed_space_reached_including_compactions(rocksdb_sst_file_manager_t* sfm);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("uint64_t")]

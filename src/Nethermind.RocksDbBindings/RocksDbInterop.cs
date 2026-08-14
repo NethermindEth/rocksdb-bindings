@@ -9,46 +9,6 @@ using System.Text;
 
 namespace Nethermind.RocksDbBindings;
 
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void PutDelegate(nint state, nint key, nuint keyLength, nint value, nuint valueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeletedDelegate(nint state, nint key, nuint keyLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void PutCfDelegate(nint state, uint cfid, nint key, nuint keyLength, nint value, nuint valueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeletedCfDelegate(nint state, uint cfid, nint key, nuint keyLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void MergeCfDelegate(nint state, uint cfid, nint key, nuint keyLength, nint value, nuint valueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nuint GetTsSizeDelegate(nint state, uint cfid);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DestructorDelegate(nint state);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void Destructor_Delegate(nint state);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nint NameDelegate(nint state);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte FilterDelegate(nint state, int level, nint key, nuint keyLength, nint existingValue, nuint valueLength, nint newValue, nint newValueLength, out byte valueChanged);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nint CreateCompactionFilterDelegate(nint state, nint context);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareDelegate(nint state, nint a, nuint aLength, nint b, nuint bLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareTsDelegate(nint state, nint aTimestamp, nuint aTimestampLength, nint bTimestamp, nuint bTimestampLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate int CompareWithoutTsDelegate(nint state, nint a, nuint aLength, byte aHasTimestamp, nint b, nuint bLength, byte bHasTimestamp);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nint FullMergeDelegate(nint state, nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int operandsCount, out byte success, out nint newValueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nint PartialMergeDelegate(nint state, nint key, nuint keyLength, nint operandsList, nint operandsListLength, int operandsCount, out byte success, out nint newValueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate void DeleteValueDelegate(nint state, nint value, nuint valueLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate nint TransformDelegate(nint state, nint key, nuint length, nint destinationLength);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte InDomainDelegate(nint state, nint key, nuint length);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-public delegate byte InRangeDelegate(nint state, nint key, nuint length);
 
 internal static unsafe class RocksDbInterop
 {

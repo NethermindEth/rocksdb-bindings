@@ -44,6 +44,7 @@ public unsafe class BloomFilterPolicy
     /// trailing spaces in keys.
     /// </summary>
     /// <param name="bits_per_key">Bits per key.</param>
+    /// <param name="use_block_based_builder">Whether to use the legacy block-based bloom filter.</param>
     public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true)
     {
         nint handle = use_block_based_builder

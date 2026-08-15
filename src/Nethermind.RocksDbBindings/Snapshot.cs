@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Nethermind.RocksDbBindings;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 /// <summary>
 /// A Snapshot is an immutable object and can therefore be safely
@@ -28,7 +24,7 @@ public unsafe class Snapshot : IDisposable
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_release_snapshot(RocksDbInterop.Db(dbHandle), RocksDbInterop.Snapshot(Handle));
+            rocksdb_release_snapshot(RocksDbInterop.Db(dbHandle), RocksDbInterop.Snapshot(Handle));
             Handle = nint.Zero;
         }
     }

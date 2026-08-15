@@ -1,19 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.IO;
-
 namespace Nethermind.RocksDbBindings;
 
-public class ReplicationConsumer
+public class ReplicationConsumer(RocksDb db)
 {
-    private readonly RocksDb _db;
-
-    public ReplicationConsumer(RocksDb db)
-    {
-        _db = db;
-    }
+    private readonly RocksDb _db = db;
 
     public static void IngestFile(ReplicationFile file, string destinationDbPath)
     {

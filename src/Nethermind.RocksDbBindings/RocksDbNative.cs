@@ -11,7 +11,10 @@ public static partial class RocksDbNative
 {
     private const string LibraryName = "rocksdb";
 
-    static RocksDbNative() => AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
+    static RocksDbNative()
+    {
+        AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
+    }
 
     private static nint OnResolvingUnmanagedDll(Assembly context, string name)
     {

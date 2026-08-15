@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
 using System.Dynamic;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -28,15 +29,12 @@ public unsafe abstract class OptionsHandle
 
     public nint Handle { get; protected set; }
 
-    public OptionsHandle()
-        : this(createHandle: true)
-    {
-    }
+    public OptionsHandle() : this(createHandle: true) { }
 
     protected OptionsHandle(bool createHandle)
     {
         if (createHandle)
-            Handle = (nint)RocksDbNative.rocksdb_options_create();
+            Handle = (nint)rocksdb_options_create();
     }
 
     ~OptionsHandle()
@@ -48,8 +46,5 @@ public unsafe abstract class OptionsHandle
         }
     }
 
-    protected virtual void DestroyHandle()
-    {
-        RocksDbNative.rocksdb_options_destroy(RocksDbInterop.Options(Handle));
-    }
+    protected virtual void DestroyHandle() => rocksdb_options_destroy(RocksDbInterop.Options(Handle));
 }

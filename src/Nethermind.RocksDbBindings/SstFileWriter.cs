@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
 using System.Dynamic;
 using System.Text;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -21,7 +21,7 @@ public unsafe class SstFileWriter : IDisposable
         var opts = ioOptions ?? new ColumnFamilyOptions();
         References.EnvOptions = envOptions;
         References.IoOptions = ioOptions;
-        Handle = (nint)RocksDbNative.rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(envOptions.Handle), RocksDbInterop.Options(opts.Handle));
+        Handle = (nint)rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(envOptions.Handle), RocksDbInterop.Options(opts.Handle));
     }
 
     public void Dispose()
@@ -30,7 +30,7 @@ public unsafe class SstFileWriter : IDisposable
         {
             var handle = Handle;
             Handle = nint.Zero;
-            RocksDbNative.rocksdb_sstfilewriter_destroy(RocksDbInterop.SstFileWriter(handle));
+            rocksdb_sstfilewriter_destroy(RocksDbInterop.SstFileWriter(handle));
         }
     }
 
@@ -38,14 +38,11 @@ public unsafe class SstFileWriter : IDisposable
     {
         using var nativeName = new RocksSafePath(filename);
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_sstfilewriter_open(RocksDbInterop.SstFileWriter(Handle), (sbyte*)nativeName.Handle, &errptr);
+        rocksdb_sstfilewriter_open(RocksDbInterop.SstFileWriter(Handle), (sbyte*)nativeName.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public void Add(string key, string val)
-    {
-        Add(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(val));
-    }
+    public void Add(string key, string val) => Add(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(val));
 
     public void Add(byte[] key, byte[] val)
     {
@@ -53,7 +50,7 @@ public unsafe class SstFileWriter : IDisposable
         fixed (byte* valuePtr = val)
         {
             sbyte* errptr = null;
-            RocksDbNative.rocksdb_sstfilewriter_add(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.GetLongLength(0), (sbyte*)valuePtr, (nuint)val.GetLongLength(0), &errptr);
+            rocksdb_sstfilewriter_add(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.GetLongLength(0), (sbyte*)valuePtr, (nuint)val.GetLongLength(0), &errptr);
             RocksDbInterop.ThrowIfError(errptr);
         }
     }
@@ -61,7 +58,7 @@ public unsafe class SstFileWriter : IDisposable
     public void Finish()
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_sstfilewriter_finish(RocksDbInterop.SstFileWriter(Handle), &errptr);
+        rocksdb_sstfilewriter_finish(RocksDbInterop.SstFileWriter(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -71,7 +68,7 @@ public unsafe class SstFileWriter : IDisposable
         fixed (byte* valuePtr = val)
         {
             sbyte* errptr = null;
-            RocksDbNative.rocksdb_sstfilewriter_put(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)val.Length, &errptr);
+            rocksdb_sstfilewriter_put(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)val.Length, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
         }
     }
@@ -82,7 +79,7 @@ public unsafe class SstFileWriter : IDisposable
         fixed (byte* valuePtr = val)
         {
             sbyte* errptr = null;
-            RocksDbNative.rocksdb_sstfilewriter_merge(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)val.Length, &errptr);
+            rocksdb_sstfilewriter_merge(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)val.Length, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
         }
     }
@@ -92,7 +89,7 @@ public unsafe class SstFileWriter : IDisposable
         fixed (byte* keyPtr = key)
         {
             sbyte* errptr = null;
-            RocksDbNative.rocksdb_sstfilewriter_delete(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, &errptr);
+            rocksdb_sstfilewriter_delete(RocksDbInterop.SstFileWriter(Handle), (sbyte*)keyPtr, (nuint)key.Length, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
         }
     }

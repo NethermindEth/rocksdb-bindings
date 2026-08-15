@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -9,7 +9,7 @@ public unsafe class WriteOptions
 {
     public WriteOptions()
     {
-        Handle = (nint)RocksDbNative.rocksdb_writeoptions_create();
+        Handle = (nint)rocksdb_writeoptions_create();
     }
 
     public nint Handle { get; protected set; }
@@ -18,20 +18,20 @@ public unsafe class WriteOptions
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(Handle));
+            rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(Handle));
             Handle = nint.Zero;
         }
     }
 
     public WriteOptions SetSync(bool value)
     {
-        RocksDbNative.rocksdb_writeoptions_set_sync(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_writeoptions_set_sync(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public WriteOptions DisableWal(int disable)
     {
-        RocksDbNative.rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(Handle), disable);
+        rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(Handle), disable);
         return this;
     }
 

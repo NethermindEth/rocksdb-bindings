@@ -1,21 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-
 namespace Nethermind.RocksDbBindings;
 
 //Note: DisableFileDeletions() should be set for the database in order to correctly replicate data
-public class ReplicationSource
+public class ReplicationSource(RocksDb db)
 {
-    private readonly RocksDb _db;
-
-    public ReplicationSource(RocksDb db)
-    {
-        _db = db;
-    }
+    private readonly RocksDb _db = db;
 
     public ReplicationSession GetInitialState(string tempPath)
     {

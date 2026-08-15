@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Linq;
-using System.Collections.Generic;
-using System.IO;
-
 namespace Nethermind.RocksDbBindings;
 
 // TODO: consider somehow reusing the actual unmanaged comparer
@@ -54,7 +49,7 @@ public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
                     if (*((long*)x1) != *((long*)x2)) return false;
                 if ((l & 4) != 0) { if (*((int*)x1) != *((int*)x2)) return false; x1 += 4; x2 += 4; }
                 if ((l & 2) != 0) { if (*((short*)x1) != *((short*)x2)) return false; x1 += 2; x2 += 2; }
-                if ((l & 1) != 0) if (*((byte*)x1) != *((byte*)x2)) return false;
+                if ((l & 1) != 0) if (*x1 != *x2) return false;
                 return true;
             }
         }
@@ -79,16 +74,13 @@ public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
                     if (*((long*)x1) != *((long*)x2)) return false;
                 if ((l & 4) != 0) { if (*((int*)x1) != *((int*)x2)) return false; x1 += 4; x2 += 4; }
                 if ((l & 2) != 0) { if (*((short*)x1) != *((short*)x2)) return false; x1 += 2; x2 += 2; }
-                if ((l & 1) != 0) if (*((byte*)x1) != *((byte*)x2)) return false;
+                if ((l & 1) != 0) if (*x1 != *x2) return false;
                 return true;
             }
         }
     }
 
-    public int GetHashCode(byte[] obj)
-    {
-        return MurMurHash3.Hash(new MemoryStream(obj));
-    }
+    public int GetHashCode(byte[] obj) => MurMurHash3.Hash(new MemoryStream(obj));
 }
 
 /*
@@ -161,7 +153,7 @@ public static class MurMurHash3
                         h1 ^= k1;
                         break;
                     case 1:
-                        k1 = (uint)(chunk[0]);
+                        k1 = chunk[0];
                         k1 *= c1;
                         k1 = Rotl32(k1, 15);
                         k1 *= c2;
@@ -183,10 +175,7 @@ public static class MurMurHash3
         }
     }
 
-    private static uint Rotl32(uint x, byte r)
-    {
-        return (x << r) | (x >> (32 - r));
-    }
+    private static uint Rotl32(uint x, byte r) => (x << r) | (x >> (32 - r));
 
     private static uint Fmix(uint h)
     {

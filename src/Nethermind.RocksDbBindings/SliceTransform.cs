@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-
 namespace Nethermind.RocksDbBindings;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 public unsafe class SliceTransform
 {
@@ -11,18 +11,18 @@ public unsafe class SliceTransform
 
     private SliceTransform(nint handle)
     {
-        this.Handle = handle;
+        Handle = handle;
     }
 
     public static SliceTransform CreateFixedPrefix(/*(size_t)*/ ulong fixed_prefix_length)
     {
-        nint handle = (nint)RocksDbNative.rocksdb_slicetransform_create_fixed_prefix((nuint)fixed_prefix_length);
+        nint handle = (nint)rocksdb_slicetransform_create_fixed_prefix((nuint)fixed_prefix_length);
         return new SliceTransform(handle);
     }
 
     public static SliceTransform CreateNoOp()
     {
-        nint handle = (nint)RocksDbNative.rocksdb_slicetransform_create_noop();
+        nint handle = (nint)rocksdb_slicetransform_create_noop();
         return new SliceTransform(handle);
     }
 

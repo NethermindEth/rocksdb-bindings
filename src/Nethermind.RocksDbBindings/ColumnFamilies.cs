@@ -1,12 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -16,16 +11,10 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
 
     public static readonly string DefaultName = "default";
 
-    public class Descriptor
+    public class Descriptor(string name, ColumnFamilyOptions options)
     {
-        public string Name { get; }
-        public ColumnFamilyOptions Options { get; }
-
-        public Descriptor(string name, ColumnFamilyOptions options)
-        {
-            this.Name = name;
-            this.Options = options;
-        }
+        public string Name { get; } = name;
+        public ColumnFamilyOptions Options { get; } = options;
     }
 
     public ColumnFamilies(ColumnFamilyOptions? options = null)
@@ -45,18 +34,9 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
             Descriptors.Add(descriptor);
     }
 
-    public void Add(string name, ColumnFamilyOptions options)
-    {
-        Add(new Descriptor(name, options));
-    }
+    public void Add(string name, ColumnFamilyOptions options) => Add(new Descriptor(name, options));
 
-    public IEnumerator<Descriptor> GetEnumerator()
-    {
-        return Descriptors.GetEnumerator();
-    }
+    public IEnumerator<Descriptor> GetEnumerator() => Descriptors.GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return Descriptors.GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => Descriptors.GetEnumerator();
 }

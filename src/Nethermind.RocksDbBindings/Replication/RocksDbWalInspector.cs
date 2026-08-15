@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using ZstdSharp;
 
 namespace Nethermind.RocksDbBindings;
@@ -226,15 +222,12 @@ public static class RocksDbWalInspector
         return seq;
     }
 
-    private static bool IsRecyclableType(byte typeByte)
-    {
-        return typeByte == (byte)RecordType.RecyclableFullType
+    private static bool IsRecyclableType(byte typeByte) => typeByte == (byte)RecordType.RecyclableFullType
             || typeByte == (byte)RecordType.RecyclableFirstType
             || typeByte == (byte)RecordType.RecyclableMiddleType
             || typeByte == (byte)RecordType.RecyclableLastType
             || typeByte == (byte)RecordType.RecyclableUserDefinedTimestampSizeType
             || typeByte == (byte)RecordType.RecyclePredecessorWalInfoType;
-    }
 
     private static int ReadBlock(Stream stream, byte[] buffer, int offset, int count)
     {

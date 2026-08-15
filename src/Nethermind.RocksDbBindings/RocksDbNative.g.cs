@@ -6588,10 +6588,7 @@ internal sealed partial class NativeTypeNameAttribute : Attribute
 
     /// <summary>Initializes a new instance of the <see cref="NativeTypeNameAttribute" /> class.</summary>
     /// <param name="name">The name of the type that was used in the native signature.</param>
-    public NativeTypeNameAttribute(string name)
-    {
-        _name = name;
-    }
+    public NativeTypeNameAttribute(string name) => _name = name;
 
     /// <summary>Gets the name of the type that was used in the native signature.</summary>
     public string Name => _name;
@@ -6606,10 +6603,7 @@ internal sealed partial class NativeAnnotationAttribute : Attribute
 
     /// <summary>Initializes a new instance of the <see cref="NativeAnnotationAttribute" /> class.</summary>
     /// <param name="annotation">The annotation that was used in the native declaration.</param>
-    public NativeAnnotationAttribute(string annotation)
-    {
-        _annotation = annotation;
-    }
+    public NativeAnnotationAttribute(string annotation) => _annotation = annotation;
 
     /// <summary>Gets the annotation that was used in the native declaration.</summary>
     public string Annotation => _annotation;

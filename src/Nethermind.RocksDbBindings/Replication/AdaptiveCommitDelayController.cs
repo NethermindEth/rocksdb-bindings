@@ -10,16 +10,10 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-public sealed class ReplicaLagSample
+public sealed class ReplicaLagSample(int replicaIndex, long lagVersions)
 {
-    public int ReplicaIndex { get; }
-    public long LagVersions { get; }
-
-    public ReplicaLagSample(int replicaIndex, long lagVersions)
-    {
-        ReplicaIndex = replicaIndex;
-        LagVersions = Math.Max(0, lagVersions);
-    }
+    public int ReplicaIndex { get; } = replicaIndex;
+    public long LagVersions { get; } = Math.Max(0, lagVersions);
 }
 
 public sealed record CommitDelaySnapshot(

@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-
 namespace Nethermind.RocksDbBindings;
 
 public class ReplicationFile : IDisposable
@@ -13,10 +9,7 @@ public class ReplicationFile : IDisposable
     public ulong FileSize { get; set; }
     public required Stream FileStream { get; set; }
 
-    public void Dispose()
-    {
-        FileStream?.Dispose();
-    }
+    public void Dispose() => FileStream?.Dispose();
 }
 
 public class ReplicationBatch
@@ -32,14 +25,9 @@ public class PooledReplicationBatch
     public int Length { get; set; }
 }
 
-public class ReplicationSession : IDisposable
+public class ReplicationSession(string tempPath) : IDisposable
 {
-    private readonly string _tempPath;
-
-    public ReplicationSession(string tempPath)
-    {
-        _tempPath = tempPath;
-    }
+    private readonly string _tempPath = tempPath;
 
     public IEnumerable<ReplicationFile> Files
     {

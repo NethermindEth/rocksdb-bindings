@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Nethermind.RocksDbBindings;
@@ -14,17 +11,11 @@ public interface Comparator
     int Compare(nint a, nuint alen, nint b, nuint blen);
 }
 
-public abstract class StringComparatorBase : Comparator
+public abstract class StringComparatorBase(Encoding? encoding = null, string? name = null, nint state = default(nint)) : Comparator
 {
-    public Encoding Encoding { get; }
+    public Encoding Encoding { get; } = encoding ?? Encoding.UTF8;
 
-    public string Name { get; }
-
-    public StringComparatorBase(Encoding? encoding = null, string? name = null, nint state = default(nint))
-    {
-        Name = name ?? typeof(StringComparatorBase).Name;
-        Encoding = encoding ?? Encoding.UTF8;
-    }
+    public string Name { get; } = name ?? typeof(StringComparatorBase).Name;
 
     public abstract int Compare(string a, string b);
 

@@ -1,18 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
-using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 
-namespace Nethermind.RocksDbBindings;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
+namespace Nethermind.RocksDbBindings;
 
 public unsafe sealed class RocksDb : IDisposable
 {
@@ -33,16 +30,13 @@ public unsafe sealed class RocksDb : IDisposable
 
     private RocksDb(nint handle, dynamic? optionsReferences, dynamic? cfOptionsRefs, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
     {
-        this.Handle = handle;
+        Handle = handle;
         References.Options = optionsReferences;
         References.CfOptions = cfOptionsRefs;
         this.columnFamilies = columnFamilies;
     }
 
-    ~RocksDb()
-    {
-        ReleaseUnmanagedResources();
-    }
+    ~RocksDb() => ReleaseUnmanagedResources();
 
     public void Dispose()
     {
@@ -74,7 +68,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             var handle = Handle;
             Handle = nint.Zero;
-            RocksDbNative.rocksdb_close(RocksDbInterop.Db(handle));
+            rocksdb_close(RocksDbInterop.Db(handle));
         }
     }
 
@@ -83,7 +77,7 @@ public unsafe sealed class RocksDb : IDisposable
         using (var pathSafe = new RocksSafePath(path))
         {
             sbyte* errptr = null;
-            nint db = (nint)RocksDbNative.rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
+            nint db = (nint)rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return new RocksDb(db, optionsReferences: null, cfOptionsRefs: null)
             {
@@ -99,7 +93,7 @@ public unsafe sealed class RocksDb : IDisposable
         using (var pathSafe = new RocksSafePath(path))
         {
             sbyte* errptr = null;
-            nint db = (nint)RocksDbNative.rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
+            nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return new RocksDb(db, optionsReferences: null, cfOptionsRefs: null)
             {
@@ -116,7 +110,7 @@ public unsafe sealed class RocksDb : IDisposable
         using (var secondaryPathSafe = new RocksSafePath(secondaryPath))
         {
             sbyte* errptr = null;
-            nint db = (nint)RocksDbNative.rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
+            nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return new RocksDb(db, optionsReferences: null, cfOptionsRefs: null)
             {
@@ -132,7 +126,7 @@ public unsafe sealed class RocksDb : IDisposable
         using (var pathSafe = new RocksSafePath(path))
         {
             sbyte* errptr = null;
-            nint db = (nint)RocksDbNative.rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
+            nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return new RocksDb(db, optionsReferences: null, cfOptionsRefs: null)
             {
@@ -155,7 +149,7 @@ public unsafe sealed class RocksDb : IDisposable
             fixed (nint* cfHandlesPtr = cfhandles)
             {
                 sbyte* errptr = null;
-                nint db = (nint)RocksDbNative.rocksdb_open_column_families(
+                nint db = (nint)rocksdb_open_column_families(
                     RocksDbInterop.Options(options.Handle),
                     (sbyte*)pathSafe.Handle,
                     cfnames.Length,
@@ -195,7 +189,7 @@ public unsafe sealed class RocksDb : IDisposable
             fixed (nint* cfHandlesPtr = cfhandles)
             {
                 sbyte* errptr = null;
-                nint db = (nint)RocksDbNative.rocksdb_open_for_read_only_column_families(
+                nint db = (nint)rocksdb_open_for_read_only_column_families(
                     RocksDbInterop.Options(options.Handle),
                     (sbyte*)pathSafe.Handle,
                     cfnames.Length,
@@ -237,7 +231,7 @@ public unsafe sealed class RocksDb : IDisposable
             fixed (nint* cfHandlesPtr = cfhandles)
             {
                 sbyte* errptr = null;
-                var db = (nint)RocksDbNative.rocksdb_open_as_secondary_column_families(
+                var db = (nint)rocksdb_open_as_secondary_column_families(
                     RocksDbInterop.Options(options.Handle),
                     (sbyte*)pathSafe.Handle,
                     (sbyte*)secondaryPathSafe.Handle,
@@ -278,7 +272,7 @@ public unsafe sealed class RocksDb : IDisposable
     public Checkpoint Checkpoint()
     {
         sbyte* errptr = null;
-        var checkpoint = (nint)RocksDbNative.rocksdb_checkpoint_object_create(RocksDbInterop.Db(Handle), &errptr);
+        var checkpoint = (nint)rocksdb_checkpoint_object_create(RocksDbInterop.Db(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new Checkpoint(checkpoint);
     }
@@ -290,7 +284,7 @@ public unsafe sealed class RocksDb : IDisposable
         using var nativeKeys = new NativeUtf8StringArray(keys);
         using var nativeValues = new NativeUtf8StringArray(values);
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_set_options(RocksDbInterop.Db(Handle), keys.Length, nativeKeys.Pointer, nativeValues.Pointer, &errptr);
+        rocksdb_set_options(RocksDbInterop.Db(Handle), keys.Length, nativeKeys.Pointer, nativeValues.Pointer, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -303,17 +297,14 @@ public unsafe sealed class RocksDb : IDisposable
             nuint valueLength;
             sbyte* errptr = null;
             var valuePtr = cf is null
-                ? RocksDbNative.rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)keyBytes.Length, &valueLength, &errptr)
-                : RocksDbNative.rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)keyBytes.Length, &valueLength, &errptr);
+                ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)keyBytes.Length, &valueLength, &errptr)
+                : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)keyBytes.Length, &valueLength, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return RocksDbInterop.PtrToStringAndFree(valuePtr, valueLength, encoding);
         }
     }
 
-    public byte[]? Get(byte[] key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
-    {
-        return Get(key, key.GetLongLength(0), cf, readOptions);
-    }
+    public byte[]? Get(byte[] key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), cf, readOptions);
 
     public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
@@ -393,10 +384,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// <param name="cf"></param>
     /// <param name="readOptions"></param>
     /// <returns>The actual length of the database field if it exists, otherwise -1</returns>
-    public long Get(byte[] key, byte[] buffer, long offset, long length, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
-    {
-        return Get(key, key.GetLongLength(0), buffer, offset, length, cf, readOptions);
-    }
+    public long Get(byte[] key, byte[] buffer, long offset, long length, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), buffer, offset, length, cf, readOptions);
 
     /// <summary>
     /// Reads the contents of the database value associated with <paramref name="key"/>, if present, into the supplied
@@ -420,8 +408,8 @@ public unsafe sealed class RocksDb : IDisposable
             fixed (byte* keyPtr = key)
             {
                 var ptr = cf is null
-                    ? RocksDbNative.rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)keyLength, &valueLength, &errptr)
-                    : RocksDbNative.rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)keyLength, &valueLength, &errptr);
+                    ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)keyLength, &valueLength, &errptr)
+                    : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)keyLength, &valueLength, &errptr);
                 RocksDbInterop.ThrowIfError(errptr);
                 if (ptr == null)
                 {
@@ -430,7 +418,7 @@ public unsafe sealed class RocksDb : IDisposable
 
                 var copyLength = Math.Min(length, (long)valueLength);
                 new ReadOnlySpan<byte>(ptr, (int)copyLength).CopyTo(buffer.AsSpan((int)offset, (int)copyLength));
-                RocksDbNative.rocksdb_free(ptr);
+                rocksdb_free(ptr);
                 return (long)valueLength;
             }
         }
@@ -477,7 +465,7 @@ public unsafe sealed class RocksDb : IDisposable
             {
                 if (cfHandles is null)
                 {
-                    RocksDbNative.rocksdb_multi_get(
+                    rocksdb_multi_get(
                         RocksDbInterop.Db(Handle),
                         RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle),
                         (nuint)count,
@@ -491,7 +479,7 @@ public unsafe sealed class RocksDb : IDisposable
                 {
                     fixed (rocksdb_column_family_handle_t** cfHandlesPtr = cfHandles)
                     {
-                        RocksDbNative.rocksdb_multi_get_cf(
+                        rocksdb_multi_get_cf(
                             RocksDbInterop.Db(Handle),
                             RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle),
                             cfHandlesPtr,
@@ -515,7 +503,7 @@ public unsafe sealed class RocksDb : IDisposable
                 if (firstError == null)
                     firstError = errptrs[i];
                 else
-                    RocksDbNative.rocksdb_free(errptrs[i]);
+                    rocksdb_free(errptrs[i]);
             }
 
             RocksDbInterop.ThrowIfError(firstError);
@@ -533,8 +521,8 @@ public unsafe sealed class RocksDb : IDisposable
         nuint valueLength;
         sbyte* errptr = null;
         var valuePtr = cf is null
-            ? RocksDbNative.rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : RocksDbNative.rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
+            ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
+            : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
     }
@@ -544,12 +532,12 @@ public unsafe sealed class RocksDb : IDisposable
         nuint valueLength;
         sbyte* errptr = null;
         var valuePtr = cf is null
-            ? RocksDbNative.rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : RocksDbNative.rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
+            ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
+            : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         if (valuePtr == null)
             return false;
-        RocksDbNative.rocksdb_free(valuePtr);
+        rocksdb_free(valuePtr);
         return true;
     }
 
@@ -558,11 +546,11 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         if (cf is null)
         {
-            RocksDbNative.rocksdb_delete(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, &errptr);
         }
         else
         {
-            RocksDbNative.rocksdb_delete_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         }
         RocksDbInterop.ThrowIfError(errptr);
     }
@@ -572,11 +560,11 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         if (cf is null)
         {
-            RocksDbNative.rocksdb_put(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            RocksDbNative.rocksdb_put_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         RocksDbInterop.ThrowIfError(errptr);
     }
@@ -586,11 +574,11 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         if (cf is null)
         {
-            RocksDbNative.rocksdb_merge(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            RocksDbNative.rocksdb_merge_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge_cf(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         RocksDbInterop.ThrowIfError(errptr);
     }
@@ -625,14 +613,14 @@ public unsafe sealed class RocksDb : IDisposable
     public void Write(WriteBatch writeBatch, WriteOptions? writeOptions = null)
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_write(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
+        rocksdb_write(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     public void Write(WriteBatchWithIndex writeBatch, WriteOptions? writeOptions = null)
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_write_writebatch_wi(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
+        rocksdb_write_writebatch_wi(RocksDbInterop.Db(Handle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -645,10 +633,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Remove(byte[] key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
-    {
-        Remove(key, key.Length, cf, writeOptions);
-    }
+    public void Remove(byte[] key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Remove(key, key.Length, cf, writeOptions);
 
     public unsafe void Remove(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
@@ -691,10 +676,7 @@ public unsafe sealed class RocksDb : IDisposable
         Put(keyBytes, keyBytes.LongLength, valueBytes, valueBytes.LongLength, cf, writeOptions);
     }
 
-    public void Put(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
-    {
-        Put(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
-    }
+    public void Put(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Put(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
 
     public void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
@@ -722,10 +704,7 @@ public unsafe sealed class RocksDb : IDisposable
         Merge(keyBytes, keyBytes.LongLength, valueBytes, valueBytes.LongLength, cf, writeOptions);
     }
 
-    public void Merge(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
-    {
-        Merge(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
-    }
+    public void Merge(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Merge(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
 
     public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
@@ -748,41 +727,34 @@ public unsafe sealed class RocksDb : IDisposable
     public Iterator NewIterator(ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         nint iteratorHandle = cf is null
-            ? (nint)RocksDbNative.rocksdb_create_iterator(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle))
-            : (nint)RocksDbNative.rocksdb_create_iterator_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle));
+            ? (nint)rocksdb_create_iterator(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle))
+            : (nint)rocksdb_create_iterator_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle));
         // Note: passing in read options here only to ensure that it is not collected before the iterator
         return new Iterator(iteratorHandle, readOptions);
     }
 
-    public Iterator[] NewIterators(ColumnFamilyHandle[] cfs, ReadOptions[] readOptions)
-    {
-        throw new NotImplementedException("TODO: Implement NewIterators()");
-        // See rocksdb_create_iterators
-    }
+    public Iterator[] NewIterators(ColumnFamilyHandle[] cfs, ReadOptions[] readOptions) => throw new NotImplementedException("TODO: Implement NewIterators()");// See rocksdb_create_iterators
 
     public Snapshot CreateSnapshot()
     {
-        nint snapshotHandle = (nint)RocksDbNative.rocksdb_create_snapshot(RocksDbInterop.Db(Handle));
+        nint snapshotHandle = (nint)rocksdb_create_snapshot(RocksDbInterop.Db(Handle));
         return new Snapshot(Handle, snapshotHandle);
     }
 
-    public static IEnumerable<string> ListColumnFamilies(DbOptions options, string name)
-    {
-        return TryListColumnFamilies(options, name, out var columnFamilies)
+    public static IEnumerable<string> ListColumnFamilies(DbOptions options, string name) => TryListColumnFamilies(options, name, out var columnFamilies)
             ? columnFamilies
             : Array.Empty<string>();
-    }
 
     public static bool TryListColumnFamilies(DbOptions options, string name, out string[] columnFamilies)
     {
         using var path = new RocksSafePath(name);
         nuint lencf;
         sbyte* errptr = null;
-        var result = RocksDbNative.rocksdb_list_column_families(RocksDbInterop.Options(options.Handle), (sbyte*)path.Handle, &lencf, &errptr);
+        var result = rocksdb_list_column_families(RocksDbInterop.Options(options.Handle), (sbyte*)path.Handle, &lencf, &errptr);
         if (errptr != null)
         {
             columnFamilies = Array.Empty<string>();
-            RocksDbNative.rocksdb_free(errptr);
+            rocksdb_free(errptr);
             return false;
         }
 
@@ -793,7 +765,7 @@ public unsafe sealed class RocksDb : IDisposable
             columnFamilies[i] = Utf8StringMarshaller.ConvertToManaged((byte*)result[i])!;
         }
 
-        RocksDbNative.rocksdb_list_column_families_destroy(result, lencf);
+        rocksdb_list_column_families_destroy(result, lencf);
         return true;
     }
 
@@ -801,7 +773,7 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var nativeName = new RocksSafePath(name);
         sbyte* errptr = null;
-        var cfh = (nint)RocksDbNative.rocksdb_create_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.Options(cfOptions.Handle), (sbyte*)nativeName.Handle, &errptr);
+        var cfh = (nint)rocksdb_create_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.Options(cfOptions.Handle), (sbyte*)nativeName.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         var cfhw = new ColumnFamilyHandleInternal(cfh);
         (columnFamilies ??= new Dictionary<string, ColumnFamilyHandleInternal>()).Add(name, cfhw);
@@ -812,15 +784,12 @@ public unsafe sealed class RocksDb : IDisposable
     {
         var cf = GetColumnFamily(name);
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_drop_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
+        rocksdb_drop_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         columnFamilies?.Remove(name);
     }
 
-    public ColumnFamilyHandle GetDefaultColumnFamily()
-    {
-        return GetColumnFamily(ColumnFamilies.DefaultName);
-    }
+    public ColumnFamilyHandle GetDefaultColumnFamily() => GetColumnFamily(ColumnFamilies.DefaultName);
 
     public ColumnFamilyHandle GetColumnFamily(string name)
     {
@@ -852,13 +821,13 @@ public unsafe sealed class RocksDb : IDisposable
     public string? GetProperty(string propertyName)
     {
         using var property = new RocksSafePath(propertyName);
-        return RocksDbInterop.NullTerminatedStringAndFree(RocksDbNative.rocksdb_property_value(RocksDbInterop.Db(Handle), (sbyte*)property.Handle));
+        return RocksDbInterop.NullTerminatedStringAndFree(rocksdb_property_value(RocksDbInterop.Db(Handle), (sbyte*)property.Handle));
     }
 
     public string? GetProperty(string propertyName, ColumnFamilyHandle cf)
     {
         using var property = new RocksSafePath(propertyName);
-        return RocksDbInterop.NullTerminatedStringAndFree(RocksDbNative.rocksdb_property_value_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)property.Handle));
+        return RocksDbInterop.NullTerminatedStringAndFree(rocksdb_property_value_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)property.Handle));
     }
 
     public void IngestExternalFiles(string[] files, IngestExternalFileOptions ingestOptions, ColumnFamilyHandle? cf = null)
@@ -867,11 +836,11 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         if (cf is null)
         {
-            RocksDbNative.rocksdb_ingest_external_file(RocksDbInterop.Db(Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
+            rocksdb_ingest_external_file(RocksDbInterop.Db(Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
         }
         else
         {
-            RocksDbNative.rocksdb_ingest_external_file_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
+            rocksdb_ingest_external_file_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
         }
         RocksDbInterop.ThrowIfError(errptr);
     }
@@ -883,11 +852,11 @@ public unsafe sealed class RocksDb : IDisposable
         {
             if (cf is null)
             {
-                RocksDbNative.rocksdb_compact_range(RocksDbInterop.Db(Handle), (sbyte*)startPtr, (nuint)(start?.GetLongLength(0) ?? 0L), (sbyte*)limitPtr, (nuint)(limit?.GetLongLength(0) ?? 0L));
+                rocksdb_compact_range(RocksDbInterop.Db(Handle), (sbyte*)startPtr, (nuint)(start?.GetLongLength(0) ?? 0L), (sbyte*)limitPtr, (nuint)(limit?.GetLongLength(0) ?? 0L));
             }
             else
             {
-                RocksDbNative.rocksdb_compact_range_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startPtr, (nuint)(start?.GetLongLength(0) ?? 0L), (sbyte*)limitPtr, (nuint)(limit?.GetLongLength(0) ?? 0L));
+                rocksdb_compact_range_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startPtr, (nuint)(start?.GetLongLength(0) ?? 0L), (sbyte*)limitPtr, (nuint)(limit?.GetLongLength(0) ?? 0L));
             }
         }
     }
@@ -905,21 +874,21 @@ public unsafe sealed class RocksDb : IDisposable
     public void TryCatchUpWithPrimary()
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_try_catch_up_with_primary(RocksDbInterop.Db(Handle), &errptr);
+        rocksdb_try_catch_up_with_primary(RocksDbInterop.Db(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     public void DisableFileDeletions()
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_disable_file_deletions(RocksDbInterop.Db(Handle), &errptr);
+        rocksdb_disable_file_deletions(RocksDbInterop.Db(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     public void EnableFileDeletions()
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_enable_file_deletions(RocksDbInterop.Db(Handle), &errptr);
+        rocksdb_enable_file_deletions(RocksDbInterop.Db(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -927,20 +896,17 @@ public unsafe sealed class RocksDb : IDisposable
     {
         // options is null for now as we don't have a wrapper and pass null to C API
         sbyte* errptr = null;
-        nint iteratorHandle = (nint)RocksDbNative.rocksdb_get_updates_since(RocksDbInterop.Db(Handle), (nuint)sequenceNumber, null, &errptr);
+        nint iteratorHandle = (nint)rocksdb_get_updates_since(RocksDbInterop.Db(Handle), (nuint)sequenceNumber, null, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new TransactionLogIterator(iteratorHandle);
     }
 
-    public ulong GetLatestSequenceNumber()
-    {
-        return (ulong)RocksDbNative.rocksdb_get_latest_sequence_number(RocksDbInterop.Db(Handle));
-    }
+    public ulong GetLatestSequenceNumber() => rocksdb_get_latest_sequence_number(RocksDbInterop.Db(Handle));
 
     public void Flush(FlushOptions flushOptions)
     {
         sbyte* errptr = null;
-        RocksDbNative.rocksdb_flush(RocksDbInterop.Db(Handle), RocksDbInterop.FlushOptions(flushOptions.Handle), &errptr);
+        rocksdb_flush(RocksDbInterop.Db(Handle), RocksDbInterop.FlushOptions(flushOptions.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -953,7 +919,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// <returns><c>LiveFilesMetadata</c> or null in case of failure</returns>
     public List<LiveFileMetadata>? GetLiveFilesMetadata(bool populateFileMetadataOnly = false)
     {
-        nint buffer = (nint)RocksDbNative.rocksdb_livefiles(RocksDbInterop.Db(Handle));
+        nint buffer = (nint)rocksdb_livefiles(RocksDbInterop.Db(Handle));
         if (buffer == nint.Zero)
         {
             return null;
@@ -963,15 +929,15 @@ public unsafe sealed class RocksDb : IDisposable
         {
             List<LiveFileMetadata> filesMetadata = new List<LiveFileMetadata>();
 
-            int fileCount = RocksDbNative.rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
+            int fileCount = rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
             for (int index = 0; index < fileCount; index++)
             {
-                var fileMetadata = RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
+                var fileMetadata = rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
                 string fileName = Utf8StringMarshaller.ConvertToManaged((byte*)fileMetadata)!;
 
-                int level = RocksDbNative.rocksdb_livefiles_level(RocksDbInterop.LiveFiles(buffer), index);
+                int level = rocksdb_livefiles_level(RocksDbInterop.LiveFiles(buffer), index);
 
-                ulong fileSize = (ulong)RocksDbNative.rocksdb_livefiles_size(RocksDbInterop.LiveFiles(buffer), index);
+                ulong fileSize = rocksdb_livefiles_size(RocksDbInterop.LiveFiles(buffer), index);
 
                 LiveFileMetadata liveFileMetadata = new LiveFileMetadata
                 {
@@ -986,16 +952,16 @@ public unsafe sealed class RocksDb : IDisposable
                 if (!populateFileMetadataOnly)
                 {
                     nuint smallestKeySize;
-                    var smallestKeyPtr = RocksDbNative.rocksdb_livefiles_smallestkey(RocksDbInterop.LiveFiles(buffer), index, &smallestKeySize);
+                    var smallestKeyPtr = rocksdb_livefiles_smallestkey(RocksDbInterop.LiveFiles(buffer), index, &smallestKeySize);
                     // These keys are length-delimited rather than null-terminated, so decode by size
                     string smallestKey = DefaultEncoding.GetString((byte*)smallestKeyPtr, checked((int)smallestKeySize));
 
                     nuint largestKeySize;
-                    var largestKeyPtr = RocksDbNative.rocksdb_livefiles_largestkey(RocksDbInterop.LiveFiles(buffer), index, &largestKeySize);
+                    var largestKeyPtr = rocksdb_livefiles_largestkey(RocksDbInterop.LiveFiles(buffer), index, &largestKeySize);
                     string largestKey = DefaultEncoding.GetString((byte*)largestKeyPtr, checked((int)largestKeySize));
 
-                    ulong entries = (ulong)RocksDbNative.rocksdb_livefiles_entries(RocksDbInterop.LiveFiles(buffer), index);
-                    ulong deletions = (ulong)RocksDbNative.rocksdb_livefiles_deletions(RocksDbInterop.LiveFiles(buffer), index);
+                    ulong entries = rocksdb_livefiles_entries(RocksDbInterop.LiveFiles(buffer), index);
+                    ulong deletions = rocksdb_livefiles_deletions(RocksDbInterop.LiveFiles(buffer), index);
 
                     liveFileMetadata.FileDataMetadata = new FileDataMetadata
                     {
@@ -1013,7 +979,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
         finally
         {
-            RocksDbNative.rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
+            rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
             buffer = nint.Zero;
         }
     }
@@ -1025,7 +991,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// <returns></returns>
     public List<string> GetLiveFileNames()
     {
-        nint buffer = (nint)RocksDbNative.rocksdb_livefiles(RocksDbInterop.Db(Handle));
+        nint buffer = (nint)rocksdb_livefiles(RocksDbInterop.Db(Handle));
         if (buffer == nint.Zero)
         {
             return new List<string>();
@@ -1035,11 +1001,11 @@ public unsafe sealed class RocksDb : IDisposable
         {
             List<string> liveFiles = new List<string>();
 
-            int fileCount = RocksDbNative.rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
+            int fileCount = rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
 
             for (int index = 0; index < fileCount; index++)
             {
-                var fileMetadata = RocksDbNative.rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
+                var fileMetadata = rocksdb_livefiles_name(RocksDbInterop.LiveFiles(buffer), index);
                 string fileName = Utf8StringMarshaller.ConvertToManaged((byte*)fileMetadata)!;
                 liveFiles.Add(fileName);
             }
@@ -1048,7 +1014,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
         finally
         {
-            RocksDbNative.rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
+            rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
             buffer = nint.Zero;
         }
     }

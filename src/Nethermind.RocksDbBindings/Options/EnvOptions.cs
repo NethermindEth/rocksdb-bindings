@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -13,14 +11,14 @@ public unsafe class EnvOptions
 
     public EnvOptions()
     {
-        Handle = (nint)RocksDbNative.rocksdb_envoptions_create();
+        Handle = (nint)rocksdb_envoptions_create();
     }
 
     ~EnvOptions()
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
+            rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
             Handle = nint.Zero;
         }
     }

@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -17,7 +15,7 @@ public unsafe class ReadOptions
 
     public ReadOptions()
     {
-        Handle = (nint)RocksDbNative.rocksdb_readoptions_create();
+        Handle = (nint)rocksdb_readoptions_create();
     }
 
     public nint Handle { get; protected set; }
@@ -26,7 +24,7 @@ public unsafe class ReadOptions
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
+            rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
             NativeMemory.Free((void*)iterateLowerBound);
             NativeMemory.Free((void*)iterateUpperBound);
             Handle = nint.Zero;
@@ -35,25 +33,25 @@ public unsafe class ReadOptions
 
     public ReadOptions SetBackgroundPurgeOnIteratorCleanup(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_background_purge_on_iterator_cleanup(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_background_purge_on_iterator_cleanup(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetVerifyChecksums(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_verify_checksums(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_verify_checksums(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetFillCache(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_fill_cache(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_fill_cache(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetSnapshot(Snapshot snapshot)
     {
-        RocksDbNative.rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(snapshot.Handle));
+        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(snapshot.Handle));
         return this;
     }
 
@@ -69,14 +67,14 @@ public unsafe class ReadOptions
     /// <returns></returns>
     public ReadOptions SetPrefixSameAsStart(bool prefixSameAsStart)
     {
-        RocksDbNative.rocksdb_readoptions_set_prefix_same_as_start(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(prefixSameAsStart));
+        rocksdb_readoptions_set_prefix_same_as_start(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(prefixSameAsStart));
         return this;
     }
 
     public unsafe ReadOptions SetIterateLowerBound(byte* key, ulong keylen)
     {
         nuint klen = (nuint)keylen;
-        RocksDbNative.rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, (nuint)klen);
+        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, klen);
         return this;
     }
 
@@ -86,14 +84,11 @@ public unsafe class ReadOptions
         iterateLowerBound = (nint)NativeMemory.Alloc((nuint)key.Length);
         key.CopyTo(new Span<byte>((void*)iterateLowerBound, key.Length));
         nuint klen = (nuint)keyLen;
-        RocksDbNative.rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateLowerBound, (nuint)klen);
+        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateLowerBound, klen);
         return this;
     }
 
-    public ReadOptions SetIterateLowerBound(byte[] key)
-    {
-        return SetIterateLowerBound(key, (ulong)key.GetLongLength(0));
-    }
+    public ReadOptions SetIterateLowerBound(byte[] key) => SetIterateLowerBound(key, (ulong)key.GetLongLength(0));
 
     public unsafe ReadOptions SetIterateLowerBound(string stringKey, Encoding? encoding = null)
     {
@@ -104,7 +99,7 @@ public unsafe class ReadOptions
     public unsafe ReadOptions SetIterateUpperBound(byte* key, ulong keylen)
     {
         nuint klen = (nuint)keylen;
-        RocksDbNative.rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, (nuint)klen);
+        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, klen);
         return this;
     }
 
@@ -114,14 +109,11 @@ public unsafe class ReadOptions
         iterateUpperBound = (nint)NativeMemory.Alloc((nuint)key.Length);
         key.CopyTo(new Span<byte>((void*)iterateUpperBound, key.Length));
         nuint klen = (nuint)keyLen;
-        RocksDbNative.rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateUpperBound, (nuint)klen);
+        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateUpperBound, klen);
         return this;
     }
 
-    public ReadOptions SetIterateUpperBound(byte[] key)
-    {
-        return SetIterateUpperBound(key, (ulong)key.GetLongLength(0));
-    }
+    public ReadOptions SetIterateUpperBound(byte[] key) => SetIterateUpperBound(key, (ulong)key.GetLongLength(0));
 
     public unsafe ReadOptions SetIterateUpperBound(string stringKey, Encoding? encoding = null)
     {
@@ -131,42 +123,42 @@ public unsafe class ReadOptions
 
     public ReadOptions SetReadTier(int value)
     {
-        RocksDbNative.rocksdb_readoptions_set_read_tier(RocksDbInterop.ReadOptions(Handle), value);
+        rocksdb_readoptions_set_read_tier(RocksDbInterop.ReadOptions(Handle), value);
         return this;
     }
 
     public ReadOptions SetTailing(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetReadaheadSize(ulong size)
     {
         nuint readaheadSize = (nuint)size;
-        RocksDbNative.rocksdb_readoptions_set_readahead_size(RocksDbInterop.ReadOptions(Handle), (nuint)readaheadSize);
+        rocksdb_readoptions_set_readahead_size(RocksDbInterop.ReadOptions(Handle), readaheadSize);
         return this;
     }
     public ReadOptions SetAutoReadaheadSize(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_auto_readahead_size(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_auto_readahead_size(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
     public ReadOptions SetAsyncIO(bool value)
     {
-        RocksDbNative.rocksdb_readoptions_set_async_io(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        rocksdb_readoptions_set_async_io(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetPinData(bool enable)
     {
-        RocksDbNative.rocksdb_readoptions_set_pin_data(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
+        rocksdb_readoptions_set_pin_data(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
         return this;
     }
 
     public ReadOptions SetTotalOrderSeek(bool enable)
     {
-        RocksDbNative.rocksdb_readoptions_set_total_order_seek(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
+        rocksdb_readoptions_set_total_order_seek(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
         return this;
     }
 }

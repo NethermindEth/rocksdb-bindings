@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 
-namespace Nethermind.RocksDbBindings;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
+namespace Nethermind.RocksDbBindings;
 
 internal static unsafe class RocksDbInterop
 {
@@ -26,13 +25,14 @@ internal static unsafe class RocksDbInterop
             return null;
 
         encoding ??= Encoding.UTF8;
+
         try
         {
             return encoding.GetString((byte*)value, checked((int)length));
         }
         finally
         {
-            RocksDbNative.rocksdb_free(value);
+            rocksdb_free(value);
         }
     }
 
@@ -47,7 +47,7 @@ internal static unsafe class RocksDbInterop
         }
         finally
         {
-            RocksDbNative.rocksdb_free(value);
+            rocksdb_free(value);
         }
     }
 
@@ -64,7 +64,7 @@ internal static unsafe class RocksDbInterop
         }
         finally
         {
-            RocksDbNative.rocksdb_free(value);
+            rocksdb_free(value);
         }
     }
 
@@ -132,7 +132,7 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
         if (strings is null)
         {
             Pointer = null;
-            values = Array.Empty<RocksSafePath>();
+            values = [];
             return;
         }
 

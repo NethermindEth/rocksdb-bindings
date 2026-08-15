@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -13,37 +11,31 @@ public unsafe class Cache
 
     private Cache(nint handle)
     {
-        this.Handle = handle;
+        Handle = handle;
     }
 
     ~Cache()
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_cache_destroy(RocksDbInterop.Cache(Handle));
+            rocksdb_cache_destroy(RocksDbInterop.Cache(Handle));
             Handle = nint.Zero;
         }
     }
 
     public static Cache CreateLru(ulong capacity)
     {
-        nint handle = (nint)RocksDbNative.rocksdb_cache_create_lru((nuint)capacity);
+        nint handle = (nint)rocksdb_cache_create_lru((nuint)capacity);
         return new Cache(handle);
     }
 
     public Cache SetCapacity(ulong capacity)
     {
-        RocksDbNative.rocksdb_cache_set_capacity(RocksDbInterop.Cache(Handle), (nuint)capacity);
+        rocksdb_cache_set_capacity(RocksDbInterop.Cache(Handle), (nuint)capacity);
         return this;
     }
 
-    public ulong GetUsage()
-    {
-        return (ulong)RocksDbNative.rocksdb_cache_get_usage(RocksDbInterop.Cache(Handle));
-    }
+    public ulong GetUsage() => rocksdb_cache_get_usage(RocksDbInterop.Cache(Handle));
 
-    public ulong GetPinnedUsage()
-    {
-        return (ulong)RocksDbNative.rocksdb_cache_get_pinned_usage(RocksDbInterop.Cache(Handle));
-    }
+    public ulong GetPinnedUsage() => rocksdb_cache_get_pinned_usage(RocksDbInterop.Cache(Handle));
 }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-
 namespace Nethermind.RocksDbBindings;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 public unsafe class BloomFilterPolicy
 {
@@ -11,7 +11,7 @@ public unsafe class BloomFilterPolicy
 
     private BloomFilterPolicy(nint handle)
     {
-        this.Handle = handle;
+        Handle = handle;
     }
 
     ~BloomFilterPolicy()
@@ -48,8 +48,8 @@ public unsafe class BloomFilterPolicy
     public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true)
     {
         nint handle = use_block_based_builder
-            ? (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom(bits_per_key)
-            : (nint)RocksDbNative.rocksdb_filterpolicy_create_bloom_full(bits_per_key);
+            ? (nint)rocksdb_filterpolicy_create_bloom(bits_per_key)
+            : (nint)rocksdb_filterpolicy_create_bloom_full(bits_per_key);
         return new BloomFilterPolicy(handle);
     }
 }

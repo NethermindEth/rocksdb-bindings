@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public class DbOptions : Options<DbOptions>
-{
-}
+public class DbOptions : Options<DbOptions> { }
 
 // Summaries taken from:
 // rocksdb/include/rocksdb/options.h
@@ -24,7 +22,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T IncreaseParallelism(int totalThreads)
     {
-        RocksDbNative.rocksdb_options_increase_parallelism(RocksDbInterop.Options(Handle), totalThreads);
+        rocksdb_options_increase_parallelism(RocksDbInterop.Options(Handle), totalThreads);
         return (T)this;
     }
 
@@ -35,7 +33,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     public T SetCreateIfMissing(bool value = true)
     {
         CreateIfMissing = value; // remember this so that we can change treatment of column families during creation
-        RocksDbNative.rocksdb_options_set_create_if_missing(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_create_if_missing(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -45,7 +43,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCreateMissingColumnFamilies(bool value = true)
     {
-        RocksDbNative.rocksdb_options_set_create_missing_column_families(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_create_missing_column_families(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -55,7 +53,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetErrorIfExists(bool value = true)
     {
-        RocksDbNative.rocksdb_options_set_error_if_exists(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_error_if_exists(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -69,7 +67,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetParanoidChecks(bool value = true)
     {
-        RocksDbNative.rocksdb_options_set_paranoid_checks(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_paranoid_checks(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -80,7 +78,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetEnv(nint env)
     {
-        RocksDbNative.rocksdb_options_set_env(RocksDbInterop.Options(Handle), RocksDbInterop.Env(env));
+        rocksdb_options_set_env(RocksDbInterop.Options(Handle), RocksDbInterop.Env(env));
         return (T)this;
     }
 
@@ -92,7 +90,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetInfoLog(nint logger)
     {
-        RocksDbNative.rocksdb_options_set_info_log(RocksDbInterop.Options(Handle), RocksDbInterop.Logger(logger));
+        rocksdb_options_set_info_log(RocksDbInterop.Options(Handle), RocksDbInterop.Logger(logger));
         return (T)this;
     }
 
@@ -106,7 +104,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxOpenFiles(int value)
     {
-        RocksDbNative.rocksdb_options_set_max_open_files(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_max_open_files(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -119,7 +117,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T SetMaxFileOpeningThreads(int value)
     {
-        RocksDbNative.rocksdb_options_set_max_file_opening_threads(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_max_file_opening_threads(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -133,7 +131,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxTotalWalSize(ulong n)
     {
-        RocksDbNative.rocksdb_options_set_max_total_wal_size(RocksDbInterop.Options(Handle), (nuint)n);
+        rocksdb_options_set_max_total_wal_size(RocksDbInterop.Options(Handle), (nuint)n);
         return (T)this;
     }
 
@@ -145,13 +143,13 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T SetWalRecoveryMode(Recovery mode)
     {
-        RocksDbNative.rocksdb_options_set_wal_recovery_mode(RocksDbInterop.Options(Handle), (int)mode);
+        rocksdb_options_set_wal_recovery_mode(RocksDbInterop.Options(Handle), (int)mode);
         return (T)this;
     }
 
     public T SetWalCompression(Compression compression)
     {
-        RocksDbNative.rocksdb_options_set_wal_compression(RocksDbInterop.Options(Handle), (int)compression);
+        rocksdb_options_set_wal_compression(RocksDbInterop.Options(Handle), (int)compression);
         return (T)this;
     }
 
@@ -162,7 +160,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T EnableStatistics()
     {
-        RocksDbNative.rocksdb_options_enable_statistics(RocksDbInterop.Options(Handle));
+        rocksdb_options_enable_statistics(RocksDbInterop.Options(Handle));
         return (T)this;
     }
     /// <summary>
@@ -172,7 +170,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T SkipStatsUpdateOnOpen(bool val = false)
     {
-        RocksDbNative.rocksdb_options_set_skip_stats_update_on_db_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(val));
+        rocksdb_options_set_skip_stats_update_on_db_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(val));
         return (T)this;
     }
 
@@ -181,10 +179,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// through EnableStatistics()
     /// </summary>
     /// <returns></returns>
-    public string? GetStatisticsString()
-    {
-        return RocksDbInterop.NullTerminatedStringAndFree(RocksDbNative.rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
-    }
+    public string? GetStatisticsString() => RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
 
     /// <summary>
     /// Maximum number of concurrent background compaction jobs, submitted to
@@ -201,7 +196,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBackgroundCompactions(int value)
     {
-        RocksDbNative.rocksdb_options_set_max_background_compactions(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_max_background_compactions(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -224,7 +219,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBackgroundFlushes(int value)
     {
-        RocksDbNative.rocksdb_options_set_max_background_flushes(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_max_background_flushes(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -237,7 +232,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxLogFileSize(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_max_log_file_size(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_max_log_file_size(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -249,7 +244,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLogFileTimeToRoll(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_log_file_time_to_roll(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_log_file_time_to_roll(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -259,7 +254,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetKeepLogFileNum(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_keep_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_keep_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -275,7 +270,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetRecycleLogFileNum(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_recycle_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_recycle_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -286,7 +281,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxManifestFileSize(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_max_manifest_file_size(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_max_manifest_file_size(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -295,7 +290,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetTableCacheNumShardbits(int value)
     {
-        RocksDbNative.rocksdb_options_set_table_cache_numshardbits(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_table_cache_numshardbits(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -308,7 +303,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseFsync(int value)
     {
-        RocksDbNative.rocksdb_options_set_use_fsync(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_use_fsync(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -323,7 +318,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     {
         using (var safePath = new RocksSafePath(value))
         {
-            RocksDbNative.rocksdb_options_set_db_log_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
+            rocksdb_options_set_db_log_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
         }
         LogPath = value;
         return (T)this;
@@ -341,7 +336,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     {
         using (var safePath = new RocksSafePath(value))
         {
-            RocksDbNative.rocksdb_options_set_wal_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
+            rocksdb_options_set_wal_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
         }
         WalPath = value;
         return (T)this;
@@ -363,7 +358,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalTtlSeconds(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_WAL_ttl_seconds(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_WAL_ttl_seconds(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -383,7 +378,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalSizeLimitMB(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_WAL_size_limit_MB(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_WAL_size_limit_MB(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -395,7 +390,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetManifestPreallocationSize(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_manifest_preallocation_size(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_manifest_preallocation_size(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -404,7 +399,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAllowMmapReads(bool value)
     {
-        RocksDbNative.rocksdb_options_set_allow_mmap_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_allow_mmap_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -415,7 +410,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAllowMmapWrites(bool value)
     {
-        RocksDbNative.rocksdb_options_set_allow_mmap_writes(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_allow_mmap_writes(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -432,7 +427,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseDirectReads(bool value)
     {
-        RocksDbNative.rocksdb_options_set_use_direct_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_use_direct_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -445,7 +440,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseDirectIoForFlushAndCompaction(bool value)
     {
-        RocksDbNative.rocksdb_options_set_use_direct_io_for_flush_and_compaction(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_use_direct_io_for_flush_and_compaction(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -454,7 +449,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetIsFdCloseOnExec(bool value)
     {
-        RocksDbNative.rocksdb_options_set_is_fd_close_on_exec(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_is_fd_close_on_exec(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -464,7 +459,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetStatsDumpPeriodSec(uint value)
     {
-        RocksDbNative.rocksdb_options_set_stats_dump_period_sec(RocksDbInterop.Options(Handle), value);
+        rocksdb_options_set_stats_dump_period_sec(RocksDbInterop.Options(Handle), value);
         return (T)this;
     }
 
@@ -475,7 +470,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAdviseRandomOnOpen(bool value)
     {
-        RocksDbNative.rocksdb_options_set_advise_random_on_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_advise_random_on_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -493,7 +488,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDbWriteBufferSize(ulong size)
     {
-        RocksDbNative.rocksdb_options_set_db_write_buffer_size(RocksDbInterop.Options(Handle), (nuint)size);
+        rocksdb_options_set_db_write_buffer_size(RocksDbInterop.Options(Handle), (nuint)size);
         return (T)this;
     }
 
@@ -506,7 +501,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseAdaptiveMutex(bool value)
     {
-        RocksDbNative.rocksdb_options_set_use_adaptive_mutex(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_use_adaptive_mutex(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -526,7 +521,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetBytesPerSync(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_bytes_per_sync(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_bytes_per_sync(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -543,7 +538,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T SetAllowConcurrentMemtableWrite(bool value)
     {
-        RocksDbNative.rocksdb_options_set_allow_concurrent_memtable_write(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_allow_concurrent_memtable_write(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -558,7 +553,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <returns></returns>
     public T SetEnableWriteThreadAdaptiveYield(bool value)
     {
-        RocksDbNative.rocksdb_options_set_enable_write_thread_adaptive_yield(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_enable_write_thread_adaptive_yield(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -570,7 +565,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDeleteObsoleteFilesPeriodMicros(ulong value)
     {
-        RocksDbNative.rocksdb_options_set_delete_obsolete_files_period_micros(RocksDbInterop.Options(Handle), (nuint)value);
+        rocksdb_options_set_delete_obsolete_files_period_micros(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
@@ -585,7 +580,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T PrepareForBulkLoad()
     {
-        RocksDbNative.rocksdb_options_prepare_for_bulk_load(RocksDbInterop.Options(Handle));
+        rocksdb_options_prepare_for_bulk_load(RocksDbInterop.Options(Handle));
         return (T)this;
     }
 

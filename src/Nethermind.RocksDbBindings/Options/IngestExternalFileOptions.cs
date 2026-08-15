@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -13,39 +11,39 @@ public unsafe class IngestExternalFileOptions
 
     public IngestExternalFileOptions()
     {
-        Handle = (nint)RocksDbNative.rocksdb_ingestexternalfileoptions_create();
+        Handle = (nint)rocksdb_ingestexternalfileoptions_create();
     }
 
     ~IngestExternalFileOptions()
     {
         if (Handle != nint.Zero)
         {
-            RocksDbNative.rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
+            rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
             Handle = nint.Zero;
         }
     }
 
     public IngestExternalFileOptions SetMoveFiles(bool moveFiles)
     {
-        RocksDbNative.rocksdb_ingestexternalfileoptions_set_move_files(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(moveFiles));
+        rocksdb_ingestexternalfileoptions_set_move_files(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(moveFiles));
         return this;
     }
 
     public IngestExternalFileOptions SetSnapshotConsistency(bool snapshotConsistency)
     {
-        RocksDbNative.rocksdb_ingestexternalfileoptions_set_snapshot_consistency(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(snapshotConsistency));
+        rocksdb_ingestexternalfileoptions_set_snapshot_consistency(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(snapshotConsistency));
         return this;
     }
 
     public IngestExternalFileOptions SetAllowGlobalSeqno(bool allow)
     {
-        RocksDbNative.rocksdb_ingestexternalfileoptions_set_allow_global_seqno(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(allow));
+        rocksdb_ingestexternalfileoptions_set_allow_global_seqno(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(allow));
         return this;
     }
 
     public IngestExternalFileOptions SetAllowBlockingFlush(bool allow)
     {
-        RocksDbNative.rocksdb_ingestexternalfileoptions_set_allow_blocking_flush(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(allow));
+        rocksdb_ingestexternalfileoptions_set_allow_blocking_flush(RocksDbInterop.IngestExternalFileOptions(Handle), RocksDbInterop.Bool(allow));
         return this;
     }
 }

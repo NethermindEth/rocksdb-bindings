@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace Nethermind.RocksDbBindings;
 
@@ -48,10 +45,7 @@ public static class MergeOperators
     public static MergeOperator Create(
         string name,
         PartialMergeFunc partialMerge,
-        FullMergeFunc fullMerge)
-    {
-        return new MergeOperatorImpl(name, partialMerge, fullMerge);
-    }
+        FullMergeFunc fullMerge) => new MergeOperatorImpl(name, partialMerge, fullMerge);
 
     public ref struct OperandsEnumerator
     {
@@ -65,25 +59,15 @@ public static class MergeOperators
         }
 
         public int Count => _operandsList.Length;
-        public unsafe ReadOnlySpan<byte> Get(int index)
-        {
-            return new Span<byte>((void*)_operandsList[index], (int)_operandsListLength[index]);
-        }
+        public unsafe ReadOnlySpan<byte> Get(int index) => new Span<byte>((void*)_operandsList[index], (int)_operandsListLength[index]);
     }
 
 
-    private class MergeOperatorImpl : MergeOperator
+    private class MergeOperatorImpl(string name, MergeOperators.PartialMergeFunc partialMerge, MergeOperators.FullMergeFunc fullMerge) : MergeOperator
     {
-        public string Name { get; }
-        private PartialMergeFunc PartialMerge { get; }
-        private FullMergeFunc FullMerge { get; }
-
-        public MergeOperatorImpl(string name, PartialMergeFunc partialMerge, FullMergeFunc fullMerge)
-        {
-            Name = name;
-            PartialMerge = partialMerge;
-            FullMerge = fullMerge;
-        }
+        public string Name { get; } = name;
+        private PartialMergeFunc PartialMerge { get; } = partialMerge;
+        private FullMergeFunc FullMerge { get; } = fullMerge;
 
         unsafe nint MergeOperator.PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
@@ -96,7 +80,7 @@ public static class MergeOperators
 
             var ret = (nint)NativeMemory.Alloc((nuint)value.Length);
             value.CopyTo(new Span<byte>((void*)ret, value.Length));
-            newValueLength = (nint)value.Length;
+            newValueLength = value.Length;
 
             success = RocksDbInterop.Bool(_success);
 
@@ -116,7 +100,7 @@ public static class MergeOperators
 
             var ret = (nint)NativeMemory.Alloc((nuint)value.Length);
             value.CopyTo(new Span<byte>((void*)ret, value.Length));
-            newValueLength = (nint)value.Length;
+            newValueLength = value.Length;
 
             success = RocksDbInterop.Bool(_success);
 

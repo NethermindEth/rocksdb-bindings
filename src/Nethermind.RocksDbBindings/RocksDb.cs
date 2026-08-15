@@ -733,7 +733,42 @@ public unsafe sealed class RocksDb : IDisposable
         return new Iterator(iteratorHandle, readOptions);
     }
 
-    public Iterator[] NewIterators(IColumnFamilyHandle[] cfs, ReadOptions[] readOptions) => throw new NotImplementedException("TODO: Implement NewIterators()");// See rocksdb_create_iterators
+    /// <remarks>
+    /// The returned iterators read from a single consistent view of the database, which is what
+    /// separate <see cref="NewIterator" /> calls do not give you. They share one
+    /// <paramref name="readOptions" />, because that is all the C API accepts, and every one of
+    /// them must be disposed before the database is closed.
+    /// </remarks>
+    public Iterator[] NewIterators(IColumnFamilyHandle[] cfs, ReadOptions? readOptions = null)
+    {
+        var options = readOptions ?? DefaultReadOptions;
+        var cfHandles = new nint[cfs.Length];
+        var iteratorHandles = new nint[cfs.Length];
+
+        for (int i = 0; i < cfs.Length; i++)
+            cfHandles[i] = cfs[i].Handle;
+
+        fixed (nint* cfHandlesPtr = cfHandles)
+        fixed (nint* iteratorHandlesPtr = iteratorHandles)
+        {
+            sbyte* errptr = null;
+            rocksdb_create_iterators(
+                RocksDbInterop.Db(Handle),
+                RocksDbInterop.ReadOptions(options.Handle),
+                (rocksdb_column_family_handle_t**)cfHandlesPtr,
+                (rocksdb_iterator_t**)iteratorHandlesPtr,
+                (nuint)cfs.Length,
+                &errptr);
+            RocksDbInterop.ThrowIfError(errptr);
+        }
+
+        var iterators = new Iterator[cfs.Length];
+
+        for (int i = 0; i < cfs.Length; i++)
+            iterators[i] = new Iterator(iteratorHandles[i], options);
+
+        return iterators;
+    }
 
     public Snapshot CreateSnapshot()
     {

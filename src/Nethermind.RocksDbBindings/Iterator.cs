@@ -10,9 +10,10 @@ namespace Nethermind.RocksDbBindings;
 public unsafe class Iterator : IDisposable
 {
     private nint handle;
-#pragma warning disable CS0414
-    private ReadOptions? readOptions;
-#pragma warning restore CS0414
+
+    // The native iterator reads from the read options directly, so they are held here to keep the
+    // garbage collector from finalizing them while the iterator is still alive.
+    private ReadOptions? ReadOptions { get; }
 
     internal Iterator(nint handle)
     {
@@ -21,11 +22,7 @@ public unsafe class Iterator : IDisposable
 
     internal Iterator(nint handle, ReadOptions? readOptions) : this(handle)
     {
-        // Note: passing readOptions in here has no actual effect except to keep readOptions
-        // from being garbage collected whilst the Iterator is still alive because the
-        // the iterator on the native side will actually read things from some of the readOptions
-        // directly
-        this.readOptions = readOptions;
+        ReadOptions = readOptions;
     }
 
     public nint Handle { get { return handle; } }

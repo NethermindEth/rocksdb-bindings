@@ -5,7 +5,7 @@
 
 C# bindings for [RocksDB](https://github.com/facebook/rocksdb).
 
-As of now, a large portion of the C# code is derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp) licensed under the [BSD-2-Clause](https://github.com/curiosity-ai/rocksdb-sharp/blob/master/LICENSE).
+The C# API was originally derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), licensed under the [BSD-2-Clause](https://github.com/curiosity-ai/rocksdb-sharp/blob/master/LICENSE). It is now being extensively refactored and modernized.
 
 ## License
 

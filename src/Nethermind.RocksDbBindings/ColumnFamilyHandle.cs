@@ -5,14 +5,12 @@ namespace Nethermind.RocksDbBindings;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
-#pragma warning disable IDE1006 // Naming (missing I) for backward source-compatibility reasons
-public interface ColumnFamilyHandle
-#pragma warning restore IDE1006
+public interface IColumnFamilyHandle
 {
     nint Handle { get; }
 }
 
-unsafe class ColumnFamilyHandleInternal(nint handle) : ColumnFamilyHandle, IDisposable
+unsafe class ColumnFamilyHandleInternal(nint handle) : IColumnFamilyHandle, IDisposable
 {
     public nint Handle { get; protected set; } = handle;
 

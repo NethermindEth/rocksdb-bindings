@@ -288,7 +288,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public string? Get(string key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, Encoding? encoding = null)
+    public string? Get(string key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, Encoding? encoding = null)
     {
         encoding ??= DefaultEncoding;
         var keyBytes = encoding.GetBytes(key);
@@ -304,9 +304,9 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public byte[]? Get(byte[] key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), cf, readOptions);
+    public byte[]? Get(byte[] key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), cf, readOptions);
 
-    public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -314,7 +314,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public bool GetFixedSizeValue(ReadOnlySpan<byte> key, Span<byte> fixedSizeValueOutput, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public bool GetFixedSizeValue(ReadOnlySpan<byte> key, Span<byte> fixedSizeValueOutput, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         var value = Get(key, cf, readOptions);
         if (value is null || value.Length != fixedSizeValueOutput.Length)
@@ -323,7 +323,7 @@ public unsafe sealed class RocksDb : IDisposable
         return true;
     }
 
-    public bool HasKey(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -331,13 +331,13 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public T? Get<T>(ReadOnlySpan<byte> key, ISpanDeserializer<T> deserializer, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public T? Get<T>(ReadOnlySpan<byte> key, ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         var value = Get(key, cf, readOptions);
         return value is null ? default : deserializer.Deserialize(value);
     }
 
-    public T? Get<T>(ReadOnlySpan<byte> key, Func<Stream, T> deserializer, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public T? Get<T>(ReadOnlySpan<byte> key, Func<Stream, T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         var value = Get(key, cf, readOptions);
         if (value is null)
@@ -346,7 +346,7 @@ public unsafe sealed class RocksDb : IDisposable
         return deserializer(stream);
     }
 
-    public byte[]? Get(byte[] key, long keyLength, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public byte[]? Get(byte[] key, long keyLength, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -354,7 +354,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public bool HasKey(byte[] key, long keyLength, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public bool HasKey(byte[] key, long keyLength, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         fixed (byte* keyPtr = key)
         {
@@ -362,7 +362,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public bool HasKey(string key, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, Encoding? encoding = null)
+    public bool HasKey(string key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, Encoding? encoding = null)
     {
         encoding ??= DefaultEncoding;
         var keyBytes = encoding.GetBytes(key);
@@ -384,7 +384,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// <param name="cf"></param>
     /// <param name="readOptions"></param>
     /// <returns>The actual length of the database field if it exists, otherwise -1</returns>
-    public long Get(byte[] key, byte[] buffer, long offset, long length, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), buffer, offset, length, cf, readOptions);
+    public long Get(byte[] key, byte[] buffer, long offset, long length, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null) => Get(key, key.GetLongLength(0), buffer, offset, length, cf, readOptions);
 
     /// <summary>
     /// Reads the contents of the database value associated with <paramref name="key"/>, if present, into the supplied
@@ -399,7 +399,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// <param name="cf"></param>
     /// <param name="readOptions"></param>
     /// <returns>The actual length of the database field if it exists, otherwise -1</returns>
-    public long Get(byte[] key, long keyLength, byte[] buffer, long offset, long length, ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public long Get(byte[] key, long keyLength, byte[] buffer, long offset, long length, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         unsafe
         {
@@ -424,7 +424,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys, ColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
+    public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
         if (keys is null)
             throw new ArgumentNullException(nameof(keys));
@@ -516,7 +516,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    private byte[]? Get(byte* key, nuint keyLength, ColumnFamilyHandle? cf, ReadOptions? readOptions)
+    private byte[]? Get(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
         nuint valueLength;
         sbyte* errptr = null;
@@ -527,7 +527,7 @@ public unsafe sealed class RocksDb : IDisposable
         return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
     }
 
-    private bool HasKey(byte* key, nuint keyLength, ColumnFamilyHandle? cf, ReadOptions? readOptions)
+    private bool HasKey(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
         nuint valueLength;
         sbyte* errptr = null;
@@ -541,7 +541,7 @@ public unsafe sealed class RocksDb : IDisposable
         return true;
     }
 
-    private void Remove(byte* key, nuint keyLength, ColumnFamilyHandle? cf, WriteOptions? writeOptions)
+    private void Remove(byte* key, nuint keyLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         sbyte* errptr = null;
         if (cf is null)
@@ -555,7 +555,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    private void Put(byte* key, nuint keyLength, byte* value, nuint valueLength, ColumnFamilyHandle? cf, WriteOptions? writeOptions)
+    private void Put(byte* key, nuint keyLength, byte* value, nuint valueLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         sbyte* errptr = null;
         if (cf is null)
@@ -569,7 +569,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    private void Merge(byte* key, nuint keyLength, byte* value, nuint valueLength, ColumnFamilyHandle? cf, WriteOptions? writeOptions)
+    private void Merge(byte* key, nuint keyLength, byte* value, nuint valueLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         sbyte* errptr = null;
         if (cf is null)
@@ -583,7 +583,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public KeyValuePair<string, string?>[] MultiGet(string[] keys, ColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
+    public KeyValuePair<string, string?>[] MultiGet(string[] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
         if (keys is null)
             throw new ArgumentNullException(nameof(keys));
@@ -624,7 +624,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public void Remove(string key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Remove(string key, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         var keyBytes = DefaultEncoding.GetBytes(key);
         fixed (byte* keyPtr = keyBytes)
@@ -633,9 +633,9 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Remove(byte[] key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Remove(key, key.Length, cf, writeOptions);
+    public void Remove(byte[] key, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Remove(key, key.Length, cf, writeOptions);
 
-    public unsafe void Remove(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public unsafe void Remove(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         {
@@ -650,7 +650,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Remove(byte[] key, long keyLength, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Remove(byte[] key, long keyLength, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         if (cf is null)
         {
@@ -668,7 +668,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Put(string key, string value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null, Encoding? encoding = null)
+    public void Put(string key, string value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null, Encoding? encoding = null)
     {
         encoding ??= DefaultEncoding;
         var keyBytes = encoding.GetBytes(key);
@@ -676,9 +676,9 @@ public unsafe sealed class RocksDb : IDisposable
         Put(keyBytes, keyBytes.LongLength, valueBytes, valueBytes.LongLength, cf, writeOptions);
     }
 
-    public void Put(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Put(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
+    public void Put(byte[] key, byte[] value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Put(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
 
-    public void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = value)
@@ -687,7 +687,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Put(byte[] key, long keyLength, byte[] value, long valueLength, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Put(byte[] key, long keyLength, byte[] value, long valueLength, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = value)
@@ -696,7 +696,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Merge(string key, string value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null, Encoding? encoding = null)
+    public void Merge(string key, string value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null, Encoding? encoding = null)
     {
         encoding ??= DefaultEncoding;
         var keyBytes = encoding.GetBytes(key);
@@ -704,9 +704,9 @@ public unsafe sealed class RocksDb : IDisposable
         Merge(keyBytes, keyBytes.LongLength, valueBytes, valueBytes.LongLength, cf, writeOptions);
     }
 
-    public void Merge(byte[] key, byte[] value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Merge(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
+    public void Merge(byte[] key, byte[] value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null) => Merge(key, key.GetLongLength(0), value, value.GetLongLength(0), cf, writeOptions);
 
-    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = value)
@@ -715,7 +715,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void Merge(byte[] key, long keyLength, byte[] value, long valueLength, ColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
+    public void Merge(byte[] key, long keyLength, byte[] value, long valueLength, IColumnFamilyHandle? cf = null, WriteOptions? writeOptions = null)
     {
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = value)
@@ -724,7 +724,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public Iterator NewIterator(ColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public Iterator NewIterator(IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         nint iteratorHandle = cf is null
             ? (nint)rocksdb_create_iterator(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle))
@@ -733,7 +733,7 @@ public unsafe sealed class RocksDb : IDisposable
         return new Iterator(iteratorHandle, readOptions);
     }
 
-    public Iterator[] NewIterators(ColumnFamilyHandle[] cfs, ReadOptions[] readOptions) => throw new NotImplementedException("TODO: Implement NewIterators()");// See rocksdb_create_iterators
+    public Iterator[] NewIterators(IColumnFamilyHandle[] cfs, ReadOptions[] readOptions) => throw new NotImplementedException("TODO: Implement NewIterators()");// See rocksdb_create_iterators
 
     public Snapshot CreateSnapshot()
     {
@@ -769,7 +769,7 @@ public unsafe sealed class RocksDb : IDisposable
         return true;
     }
 
-    public ColumnFamilyHandle CreateColumnFamily(ColumnFamilyOptions cfOptions, string name)
+    public IColumnFamilyHandle CreateColumnFamily(ColumnFamilyOptions cfOptions, string name)
     {
         using var nativeName = new RocksSafePath(name);
         sbyte* errptr = null;
@@ -789,9 +789,9 @@ public unsafe sealed class RocksDb : IDisposable
         columnFamilies?.Remove(name);
     }
 
-    public ColumnFamilyHandle GetDefaultColumnFamily() => GetColumnFamily(ColumnFamilies.DefaultName);
+    public IColumnFamilyHandle GetDefaultColumnFamily() => GetColumnFamily(ColumnFamilies.DefaultName);
 
-    public ColumnFamilyHandle GetColumnFamily(string name)
+    public IColumnFamilyHandle GetColumnFamily(string name)
     {
         if (columnFamilies is null)
         {
@@ -801,7 +801,7 @@ public unsafe sealed class RocksDb : IDisposable
         return columnFamilies[name];
     }
 
-    public bool TryGetColumnFamily(string name, [MaybeNullWhen(false)] out ColumnFamilyHandle handle)
+    public bool TryGetColumnFamily(string name, [MaybeNullWhen(false)] out IColumnFamilyHandle handle)
     {
         if (columnFamilies is null)
         {
@@ -824,13 +824,13 @@ public unsafe sealed class RocksDb : IDisposable
         return RocksDbInterop.NullTerminatedStringAndFree(rocksdb_property_value(RocksDbInterop.Db(Handle), (sbyte*)property.Handle));
     }
 
-    public string? GetProperty(string propertyName, ColumnFamilyHandle cf)
+    public string? GetProperty(string propertyName, IColumnFamilyHandle cf)
     {
         using var property = new RocksSafePath(propertyName);
         return RocksDbInterop.NullTerminatedStringAndFree(rocksdb_property_value_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)property.Handle));
     }
 
-    public void IngestExternalFiles(string[] files, IngestExternalFileOptions ingestOptions, ColumnFamilyHandle? cf = null)
+    public void IngestExternalFiles(string[] files, IngestExternalFileOptions ingestOptions, IColumnFamilyHandle? cf = null)
     {
         using var nativeFiles = new NativeUtf8StringArray(files);
         sbyte* errptr = null;
@@ -845,7 +845,7 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public void CompactRange(byte[]? start, byte[]? limit, ColumnFamilyHandle? cf = null)
+    public void CompactRange(byte[]? start, byte[]? limit, IColumnFamilyHandle? cf = null)
     {
         fixed (byte* startPtr = start)
         fixed (byte* limitPtr = limit)
@@ -861,7 +861,7 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    public void CompactRange(string? start, string? limit, ColumnFamilyHandle? cf = null, Encoding? encoding = null)
+    public void CompactRange(string? start, string? limit, IColumnFamilyHandle? cf = null, Encoding? encoding = null)
     {
         if (encoding is null)
         {

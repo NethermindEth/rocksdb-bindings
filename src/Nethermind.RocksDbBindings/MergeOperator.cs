@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.RocksDbBindings;
 
-public interface MergeOperator
+public interface IMergeOperator
 {
     string Name { get; }
     nint PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength);
@@ -42,7 +42,7 @@ public static class MergeOperators
     public delegate byte[] FullMergeFunc(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, OperandsEnumerator operands, out bool success);
 
 
-    public static MergeOperator Create(
+    public static IMergeOperator Create(
         string name,
         PartialMergeFunc partialMerge,
         FullMergeFunc fullMerge) => new MergeOperatorImpl(name, partialMerge, fullMerge);
@@ -63,13 +63,13 @@ public static class MergeOperators
     }
 
 
-    private class MergeOperatorImpl(string name, MergeOperators.PartialMergeFunc partialMerge, MergeOperators.FullMergeFunc fullMerge) : MergeOperator
+    private class MergeOperatorImpl(string name, MergeOperators.PartialMergeFunc partialMerge, MergeOperators.FullMergeFunc fullMerge) : IMergeOperator
     {
         public string Name { get; } = name;
         private PartialMergeFunc PartialMerge { get; } = partialMerge;
         private FullMergeFunc FullMerge { get; } = fullMerge;
 
-        unsafe nint MergeOperator.PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
+        unsafe nint IMergeOperator.PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
             var keySpan = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
             var operandsListSpan = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
@@ -87,7 +87,7 @@ public static class MergeOperators
             return ret;
         }
 
-        unsafe nint MergeOperator.FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
+        unsafe nint IMergeOperator.FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
         {
             var keySpan = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
             var operandsListSpan = new ReadOnlySpan<nint>((void*)operandsList, numOperands);
@@ -107,6 +107,6 @@ public static class MergeOperators
             return ret;
         }
 
-        unsafe void MergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
+        unsafe void IMergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
     }
 }

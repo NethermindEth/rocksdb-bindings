@@ -5,13 +5,13 @@ using System.Text;
 
 namespace Nethermind.RocksDbBindings;
 
-public interface Comparator
+public interface IComparator
 {
     string Name { get; }
     int Compare(nint a, nuint alen, nint b, nuint blen);
 }
 
-public abstract class StringComparatorBase(Encoding? encoding = null, string? name = null, nint state = default(nint)) : Comparator
+public abstract class StringComparatorBase(Encoding? encoding = null, string? name = null) : IComparator
 {
     public Encoding Encoding { get; } = encoding ?? Encoding.UTF8;
 

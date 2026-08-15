@@ -43,7 +43,7 @@ internal unsafe class OptionsBase
     {
         try
         {
-            var comparator = (Comparator)GCHandle.FromIntPtr(((ComparatorState*)state)->Instance).Target!;
+            var comparator = (IComparator)GCHandle.FromIntPtr(((ComparatorState*)state)->Instance).Target!;
             return comparator.Compare((nint)a, alen, (nint)b, blen);
         }
         catch (Exception exception)
@@ -65,8 +65,8 @@ internal unsafe class OptionsBase
     internal static sbyte* Comparator_GetNamePtr(void* state)
         => (sbyte*)((ComparatorState*)state)->NamePtr;
 
-    private static MergeOperator FromState(void* state)
-        => (MergeOperator)GCHandle.FromIntPtr(((MergeOperatorState*)state)->Instance).Target!;
+    private static IMergeOperator FromState(void* state)
+        => (IMergeOperator)GCHandle.FromIntPtr(((MergeOperatorState*)state)->Instance).Target!;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static sbyte* MergeOperator_PartialMerge(void* state, sbyte* key, nuint keyLength, sbyte** operandsList, nuint* operandsListLength, int numOperands, byte* success, nuint* newValueLength)
@@ -283,7 +283,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// this method, so the created comparator, its name and the managed instance behind it are held
     /// for the life of the process.
     /// </remarks>
-    public T SetComparator(Comparator comparator)
+    public T SetComparator(IComparator comparator)
     {
         // Allocate some memory for the name bytes
         var name = comparator.Name ?? comparator.GetType().FullName;
@@ -322,7 +322,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// openning the DB in this case.
     /// Default: nullptr
     /// </summary>
-    public T SetMergeOperator(MergeOperator mergeOperator)
+    public T SetMergeOperator(IMergeOperator mergeOperator)
     {
         // Allocate some memory for the name bytes
         var name = mergeOperator.Name ?? mergeOperator.GetType().FullName;
@@ -337,7 +337,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         var statePtr = (nint)NativeMemory.Alloc((nuint)sizeof(OptionsBase.MergeOperatorState));
         *(OptionsBase.MergeOperatorState*)statePtr = state;
 
-        // Keep delete_value non-null so the allocating MergeOperator releases its results.
+        // Keep delete_value non-null so the allocating IMergeOperator releases its results.
         nint handle = (nint)rocksdb_mergeoperator_create(
             (void*)statePtr,
             &OptionsBase.MergeOperator_Destroy,

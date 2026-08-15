@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System.Dynamic;
-
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
@@ -11,11 +9,9 @@ public unsafe class BlockBasedTableOptions
 {
     public nint Handle { get; protected set; }
 
-    // The following exists only to retain a reference to those types which are used in-place by rocksdb
-    // and not copied (or reference things that are used in-place).  The idea is to have managed references
-    // track the behavior of the unmanaged reference as much as possible.  This prevents access violations
-    // when the garbage collector cleans up the last managed reference
-    internal dynamic References { get; } = new ExpandoObject();
+    // Held so the garbage collector cannot finalize them while rocksdb still points at them.
+    private BloomFilterPolicy? FilterPolicy { get; set; }
+    private Cache? BlockCache { get; set; }
 
     public BlockBasedTableOptions()
     {
@@ -57,8 +53,7 @@ public unsafe class BlockBasedTableOptions
 
     public BlockBasedTableOptions SetFilterPolicy(BloomFilterPolicy filterPolicy)
     {
-        // store a managed reference to prevent garbage collection
-        References.FilterPolicy = filterPolicy;
+        FilterPolicy = filterPolicy;
         rocksdb_block_based_options_set_filter_policy(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.FilterPolicy(filterPolicy.Handle));
         return this;
     }
@@ -77,7 +72,7 @@ public unsafe class BlockBasedTableOptions
 
     public BlockBasedTableOptions SetBlockCache(Cache blockCache)
     {
-        References.BlockCache = blockCache;
+        BlockCache = blockCache;
         rocksdb_block_based_options_set_block_cache(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.Cache(blockCache.Handle));
         return this;
     }

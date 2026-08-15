@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System.Dynamic;
-
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
@@ -17,11 +15,10 @@ Note on SetXXX() syntax:
 */
 public unsafe abstract class OptionsHandle
 {
-    // The following exists only to retain a reference to those types which are used in-place by rocksdb
-    // and not copied (or reference things that are used in-place).  The idea is to have managed references
-    // track the behavior of the unmanaged reference as much as possible.  This prevents access violations
-    // when the garbage collector cleans up the last managed reference
-    internal dynamic References { get; } = new ExpandoObject();
+    // RocksDB uses these in place rather than copying them, so the managed wrappers are held here to
+    // keep the garbage collector from running their finalizers while rocksdb still points at them.
+    internal BlockBasedTableOptions? BlockBasedTableFactory { get; set; }
+    internal SliceTransform? PrefixExtractor { get; set; }
 
     //Stores some path values for the RocksDb class
     internal string? WalPath { get; set; }

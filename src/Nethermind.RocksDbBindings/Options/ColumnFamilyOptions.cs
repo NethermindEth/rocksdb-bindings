@@ -135,7 +135,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
 
     public T SetBlockBasedTableFactory(BlockBasedTableOptions table_options)
     {
-        References.BlockBasedTableFactory = table_options;
+        BlockBasedTableFactory = table_options;
         // Args: table_options
         rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.BlockBasedTableOptions(table_options.Handle));
         return (T)this;
@@ -490,7 +490,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetPrefixExtractor(SliceTransform sliceTransform)
     {
-        References.PrefixExtractor = sliceTransform;
+        PrefixExtractor = sliceTransform;
         rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(Handle), RocksDbInterop.SliceTransform(sliceTransform.Handle));
         return (T)this;
     }

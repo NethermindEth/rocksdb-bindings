@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System.Dynamic;
 using System.Text;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
@@ -12,16 +11,15 @@ public unsafe class SstFileWriter : IDisposable
 {
     public nint Handle { get; protected set; }
 
-    internal dynamic References { get; } = new ExpandoObject();
+    // Held so the garbage collector cannot finalize them while rocksdb still points at them.
+    private EnvOptions EnvOptions { get; }
+    private ColumnFamilyOptions IoOptions { get; }
 
     public SstFileWriter(EnvOptions? envOptions = null, ColumnFamilyOptions? ioOptions = null)
     {
-        if (envOptions == null)
-            envOptions = new EnvOptions();
-        var opts = ioOptions ?? new ColumnFamilyOptions();
-        References.EnvOptions = envOptions;
-        References.IoOptions = ioOptions;
-        Handle = (nint)rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(envOptions.Handle), RocksDbInterop.Options(opts.Handle));
+        EnvOptions = envOptions ?? new EnvOptions();
+        IoOptions = ioOptions ?? new ColumnFamilyOptions();
+        Handle = (nint)rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(EnvOptions.Handle), RocksDbInterop.Options(IoOptions.Handle));
     }
 
     public void Dispose()

@@ -3,28 +3,6 @@
 
 namespace Nethermind.RocksDbBindings;
 
-public class ReplicationFile : IDisposable
-{
-    public required string FileName { get; set; }
-    public ulong FileSize { get; set; }
-    public required Stream FileStream { get; set; }
-
-    public void Dispose() => FileStream?.Dispose();
-}
-
-public class ReplicationBatch
-{
-    public ulong SequenceNumber { get; set; }
-    public required byte[] Data { get; set; }
-}
-
-public class PooledReplicationBatch
-{
-    public ulong SequenceNumber { get; set; }
-    public required byte[] PooledData { get; set; }
-    public int Length { get; set; }
-}
-
 public class ReplicationSession(string tempPath) : IDisposable
 {
     private readonly string _tempPath = tempPath;

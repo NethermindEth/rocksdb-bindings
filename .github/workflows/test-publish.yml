@@ -72,10 +72,10 @@ jobs:
           fi
           missing=""
           for port in $ports; do
-            grep -qiw -- "$port" THIRD-PARTY-NOTICES.txt || missing="$missing $port"
+            grep -qiw -- "$port" THIRD-PARTY-NOTICES || missing="$missing $port"
           done
           if [ -n "$missing" ]; then
-            echo "::error::Missing from THIRD-PARTY-NOTICES.txt:$missing"
+            echo "::error::Missing from THIRD-PARTY-NOTICES:$missing"
             exit 1
           fi
           echo "Attributed: $(echo $ports | tr '\n' ' ')"

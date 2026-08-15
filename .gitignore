@@ -53,6 +53,9 @@ Generated\ Files/
 [Bb]uild[Ll]og.*
 *.trx
 
+# Test runner output
+[Tt]est[Rr]esults/
+
 # NUnit
 *.VisualState.xml
 TestResult.xml
@@ -413,6 +416,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Coding agent scratch files
+.testagent/
 
 # Project-specific files
 !generation/*.rsp

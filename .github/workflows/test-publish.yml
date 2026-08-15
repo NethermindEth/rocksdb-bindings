@@ -24,11 +24,11 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          # - ubuntu-24.04-arm
-          # - macos-latest
-          # - macos-latest-large
-          # - windows-latest
-          # - windows-11-arm
+          - ubuntu-26.04-arm
+          - macos-latest
+          - macos-26-intel
+          - windows-latest
+          - windows-11-arm
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
@@ -39,20 +39,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
-      - name: Install dependencies
-        working-directory: src
-        run: dotnet restore
-
-      # TODO: Replace with proper tests
-      - name: Build
-        working-directory: src/Nethermind.RocksDbBindings
-        run: |
-          dotnet build -c release
-
-      # - name: Test
-      #   working-directory: src/Nethermind.RocksDbBindings.Tests
-      #   run: |
-      #     dotnet test -c release --no-restore
+      - name: Test
+        working-directory: src/Nethermind.RocksDbBindings.Tests
+        run: dotnet test -c release
 
   notices:
     name: Notices

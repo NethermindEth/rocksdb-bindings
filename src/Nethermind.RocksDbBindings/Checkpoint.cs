@@ -7,7 +7,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 public unsafe class Checkpoint(nint handle) : IDisposable
 {
-    public nint Handle { get; } = handle;
+    public nint Handle { get; private set; } = handle;
 
     public void Save(string checkpointDir, ulong logSizeForFlush = 0)
     {
@@ -17,5 +17,12 @@ public unsafe class Checkpoint(nint handle) : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-    public void Dispose() => rocksdb_checkpoint_object_destroy(RocksDbInterop.Checkpoint(Handle));
+    public void Dispose()
+    {
+        if (Handle != nint.Zero)
+        {
+            rocksdb_checkpoint_object_destroy(RocksDbInterop.Checkpoint(Handle));
+            Handle = nint.Zero;
+        }
+    }
 }

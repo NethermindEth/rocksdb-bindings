@@ -72,6 +72,18 @@ public class ReplicationTests
     }
 
     [Test]
+    public async Task Checkpoint_DisposedTwice_DoesNotDestroyTheHandleTwice()
+    {
+        using var primary = Primary();
+
+        var checkpoint = primary.Db.Checkpoint();
+        checkpoint.Dispose();
+        checkpoint.Dispose();
+
+        await Assert.That(checkpoint.Handle).IsEqualTo(nint.Zero);
+    }
+
+    [Test]
     public async Task ReplicationSession_DescribesEveryFileInItsDirectory()
     {
         using var directory = new TempDirectory();

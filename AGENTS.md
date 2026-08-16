@@ -12,6 +12,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 ## Coding guidelines
 
 - Follow [.editorconfig](./.editorconfig).
+- Do not assume; measure, research, ask if unsure.
 - Keep comments short and to the point.
 - Add tests for new code and bug fixes.
 - Use conventional commits; keep scoped and imperative.

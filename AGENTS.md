@@ -15,6 +15,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 - Keep comments short and to the point.
 - Add tests for new code and bug fixes.
 - Use conventional commits; keep scoped and imperative.
-- Do not edit `RocksDbNative.g.cs`; regenerate it if needed.
+- Do not edit `RocksDbNative.g.cs`; regenerate it if needed using the [Dockerfile](./generation/Dockerfile). Do not install ClangSharp locally.
+- Prefer the latest versions of GitHub Actions and runners.
 - Update [THIRD-PARTY-NOTICES](./THIRD-PARTY-NOTICES) when introducing a dependency if needed.
-- Keep [AGENTS.md](./AGENTS.md) in sync with the ongoing development (only if needed).
+- Keep [AGENTS.md](./AGENTS.md) in sync with the ongoing development.

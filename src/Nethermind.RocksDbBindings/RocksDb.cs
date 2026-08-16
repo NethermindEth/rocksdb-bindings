@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Text;
@@ -351,7 +352,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// True when the key exists; <paramref name="slice"/> then holds the value and must be disposed.
     /// </returns>
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
-    public bool TryGetPinned(ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    public bool TryGetPinned(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         rocksdb_pinnableslice_t* pinned;
         fixed (byte* keyPtr = key)
@@ -383,6 +384,66 @@ public unsafe sealed class RocksDb : IDisposable
 
         slice = new PinnedSlice((nint)pinned, (nint)valuePtr, (int)valueLength);
         return true;
+    }
+
+    /// <summary>
+    /// Reads the value for <paramref name="key"/> into a native allocation independent of the
+    /// database, returned as a span the caller owns.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="TryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/>,
+    /// which pins block-cache or memtable memory until released, this copies the value into its
+    /// own allocation, so the span may be held for a long time without affecting the database.
+    /// Every non-empty returned span must be released exactly once with
+    /// <see cref="DangerousReleaseMemory"/>. An empty span means the key does not exist or its
+    /// value is empty, and needs no release; use
+    /// <see cref="TryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/>
+    /// to distinguish the two.
+    /// </remarks>
+    /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
+    public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        var options = readOptions ?? DefaultReadOptions;
+        nuint valueLength;
+        sbyte* errptr = null;
+        sbyte* valuePtr;
+        fixed (byte* keyPtr = key)
+        {
+            valuePtr = cf is null
+                ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions(options.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+        }
+        GC.KeepAlive(this);
+        GC.KeepAlive(options);
+        RocksDbInterop.ThrowIfError(errptr);
+
+        if (valuePtr is null)
+            return default;
+
+        if (valueLength > int.MaxValue)
+        {
+            rocksdb_free(valuePtr);
+            throw new NotSupportedException($"The value is {valueLength} bytes; values over {int.MaxValue} bytes cannot be exposed as a span.");
+        }
+
+        // An empty span is never released by the caller, so its allocation is freed here.
+        if (valueLength == 0)
+        {
+            rocksdb_free(valuePtr);
+            return default;
+        }
+
+        return new Span<byte>(valuePtr, (int)valueLength);
+    }
+
+    /// <summary>
+    /// Frees a native allocation returned by <see cref="GetSpan"/>. Call exactly once per
+    /// non-empty span, and never touch the span afterwards.
+    /// </summary>
+    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+    {
+        if (!span.IsEmpty)
+            rocksdb_free(Unsafe.AsPointer(ref MemoryMarshal.GetReference(span)));
     }
 
     /// <summary>

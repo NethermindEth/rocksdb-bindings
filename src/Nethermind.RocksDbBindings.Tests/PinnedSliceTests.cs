@@ -81,8 +81,9 @@ public class PinnedSliceTests
     [Test]
     public async Task TryGetPinned_ReadsFromTheGivenColumnFamily()
     {
-        var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
-        var families = new ColumnFamilies { { "blocks", new ColumnFamilyOptions() } };
+        using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using var familyOptions = new ColumnFamilyOptions();
+        var families = new ColumnFamilies { { "blocks", familyOptions } };
         using var database = TestDatabase.Create(options, families);
         var blocks = database.Db.GetColumnFamily("blocks");
         database.Db.Put(Key, Value, blocks);
@@ -218,5 +219,73 @@ public class PinnedSliceTests
             await Assert.That(value).IsNotNull();
             await Assert.That(value!.Length).IsEqualTo(0);
         }
+    }
+
+    private static byte[] GetSpanCopy(RocksDb db, byte[] key, IColumnFamilyHandle? cf = null)
+    {
+        var span = db.GetSpan(key, cf);
+        try
+        {
+            return span.ToArray();
+        }
+        finally
+        {
+            db.DangerousReleaseMemory(span);
+        }
+    }
+
+    [Test]
+    public async Task GetSpan_ReturnsAReleasableCopyOfTheValue()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, Value);
+
+        await Assert.That(GetSpanCopy(database.Db, Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task GetSpan_ReadsFromTheGivenColumnFamily()
+    {
+        using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using var familyOptions = new ColumnFamilyOptions();
+        var families = new ColumnFamilies { { "blocks", familyOptions } };
+        using var database = TestDatabase.Create(options, families);
+        var blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put(Key, "in default"u8);
+        database.Db.Put(Key, "in blocks"u8, blocks);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(GetSpanCopy(database.Db, Key, blocks)).IsEquivalentTo("in blocks"u8.ToArray(), CollectionOrdering.Matching);
+            await Assert.That(GetSpanCopy(database.Db, Key)).IsEquivalentTo("in default"u8.ToArray(), CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    public async Task GetSpan_IsEmptyForAMissingKeyAndForAnEmptyValue()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, ReadOnlySpan<byte>.Empty);
+
+        var missing = database.Db.GetSpan("missing"u8).IsEmpty;
+        var empty = database.Db.GetSpan(Key).IsEmpty;
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(missing).IsTrue();
+            await Assert.That(empty).IsTrue();
+        }
+    }
+
+    [Test]
+    public async Task DangerousReleaseMemory_IgnoresAnEmptySpan()
+    {
+        using var database = TestDatabase.Create();
+
+        database.Db.DangerousReleaseMemory(ReadOnlySpan<byte>.Empty);
+
+        // The database still works, proving nothing was freed by mistake.
+        database.Db.Put(Key, Value);
+        await Assert.That(database.Db.Get(Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
     }
 }

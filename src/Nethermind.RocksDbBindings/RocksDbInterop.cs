@@ -111,6 +111,7 @@ internal static unsafe class RocksDbInterop
     public static rocksdb_logger_t* Logger(nint value) => (rocksdb_logger_t*)value;
     public static rocksdb_mergeoperator_t* MergeOperator(nint value) => (rocksdb_mergeoperator_t*)value;
     public static rocksdb_options_t* Options(nint value) => (rocksdb_options_t*)value;
+    public static rocksdb_pinnableslice_t* PinnableSlice(nint value) => (rocksdb_pinnableslice_t*)value;
     public static rocksdb_readoptions_t* ReadOptions(nint value) => (rocksdb_readoptions_t*)value;
     public static rocksdb_slicetransform_t* SliceTransform(nint value) => (rocksdb_slicetransform_t*)value;
     public static rocksdb_snapshot_t* Snapshot(nint value) => (rocksdb_snapshot_t*)value;

@@ -300,13 +300,90 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
+    /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public bool GetFixedSizeValue(ReadOnlySpan<byte> key, Span<byte> fixedSizeValueOutput, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        var value = Get(key, cf, readOptions);
-        if (value is null || value.Length != fixedSizeValueOutput.Length)
+        if (!TryGetPinned(key, out var slice, cf, readOptions))
             return false;
-        value.CopyTo(fixedSizeValueOutput);
+
+        try
+        {
+            if (slice.Value.Length != fixedSizeValueOutput.Length)
+                return false;
+            slice.Value.CopyTo(fixedSizeValueOutput);
+            return true;
+        }
+        finally
+        {
+            slice.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads the value for <paramref name="key"/> without copying it out of rocksdb-owned memory.
+    /// </summary>
+    /// <returns>
+    /// True when the key exists; <paramref name="slice"/> then holds the value and must be disposed.
+    /// </returns>
+    /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
+    public bool TryGetPinned(ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        rocksdb_pinnableslice_t* pinned;
+        fixed (byte* keyPtr = key)
+        {
+            pinned = GetPinned(keyPtr, (nuint)key.Length, cf, readOptions);
+        }
+
+        if (pinned is null)
+        {
+            slice = default;
+            return false;
+        }
+
+        nuint valueLength;
+        var valuePtr = rocksdb_pinnableslice_value(pinned, &valueLength);
+        if (valuePtr is null)
+        {
+            rocksdb_pinnableslice_destroy(pinned);
+            slice = default;
+            return false;
+        }
+
+        // Destroy before throwing: nothing owns the handle until the PinnedSlice is constructed.
+        if (valueLength > int.MaxValue)
+        {
+            rocksdb_pinnableslice_destroy(pinned);
+            throw new NotSupportedException($"The value is {valueLength} bytes; values over {int.MaxValue} bytes cannot be exposed as a span.");
+        }
+
+        slice = new PinnedSlice((nint)pinned, (nint)valuePtr, (int)valueLength);
         return true;
+    }
+
+    /// <summary>
+    /// Copies the value for <paramref name="key"/> into <paramref name="destination"/>.
+    /// </summary>
+    /// <returns>The value length, or -1 when the key does not exist.</returns>
+    /// <exception cref="ArgumentException">The value does not fit in <paramref name="destination"/>.</exception>
+    /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
+    public int Get(ReadOnlySpan<byte> key, Span<byte> destination, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        if (!TryGetPinned(key, out var slice, cf, readOptions))
+            return -1;
+
+        try
+        {
+            var value = slice.Value;
+            if (value.Length > destination.Length)
+                throw new ArgumentException($"The value is {value.Length} bytes but the destination holds {destination.Length}.", nameof(destination));
+
+            value.CopyTo(destination);
+            return value.Length;
+        }
+        finally
+        {
+            slice.Dispose();
+        }
     }
 
     public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
@@ -317,10 +394,20 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
+    /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public T? Get<T>(ReadOnlySpan<byte> key, ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        var value = Get(key, cf, readOptions);
-        return value is null ? default : deserializer.Deserialize(value);
+        if (!TryGetPinned(key, out var slice, cf, readOptions))
+            return default;
+
+        try
+        {
+            return deserializer.Deserialize(slice.Value);
+        }
+        finally
+        {
+            slice.Dispose();
+        }
     }
 
     public T? Get<T>(ReadOnlySpan<byte> key, Func<Stream, T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
@@ -501,28 +588,47 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
+    private rocksdb_pinnableslice_t* GetPinned(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
+    {
+        sbyte* errptr = null;
+        var pinned = cf is null
+            ? rocksdb_get_pinned(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return pinned;
+    }
+
+    // Reads through a pinned slice instead of rocksdb_get: one copy into the managed array
+    // rather than a native malloc, a copy, and a free.
     private byte[]? Get(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        nuint valueLength;
-        sbyte* errptr = null;
-        var valuePtr = cf is null
-            ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
-        RocksDbInterop.ThrowIfError(errptr);
-        return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
+        var pinned = GetPinned(key, keyLength, cf, readOptions);
+        if (pinned is null)
+            return null;
+
+        try
+        {
+            nuint valueLength;
+            var valuePtr = rocksdb_pinnableslice_value(pinned, &valueLength);
+            if (valuePtr is null)
+                return null;
+
+            var result = new byte[checked((int)valueLength)];
+            new ReadOnlySpan<byte>(valuePtr, result.Length).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(pinned);
+        }
     }
 
     private bool HasKey(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        nuint valueLength;
-        sbyte* errptr = null;
-        var valuePtr = cf is null
-            ? rocksdb_get(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : rocksdb_get_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
-        RocksDbInterop.ThrowIfError(errptr);
-        if (valuePtr == null)
+        var pinned = GetPinned(key, keyLength, cf, readOptions);
+        if (pinned is null)
             return false;
-        rocksdb_free(valuePtr);
+        rocksdb_pinnableslice_destroy(pinned);
         return true;
     }
 

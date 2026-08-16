@@ -55,9 +55,9 @@ public unsafe sealed class RocksDb : IDisposable
 
     private void ReleaseUnmanagedResources()
     {
-        if (columnFamilies is object)
+        if (columnFamilies is not null)
         {
-            foreach (var cfh in columnFamilies.Values)
+            foreach (ColumnFamilyHandleInternal cfh in columnFamilies.Values)
             {
                 cfh.Dispose();
             }
@@ -74,188 +74,174 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb Open(OptionsHandle options, string path)
     {
-        using (var pathSafe = new RocksSafePath(path))
+        using var pathSafe = new RocksSafePath(path);
+        sbyte* errptr = null;
+        nint db = (nint)rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return new RocksDb(db, options, columnFamilyOptions: null)
         {
-            sbyte* errptr = null;
-            nint db = (nint)rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
-            RocksDbInterop.ThrowIfError(errptr);
-            return new RocksDb(db, options, columnFamilyOptions: null)
-            {
-                Path = path,
-                LogPath = options.LogPath,
-                WalPath = options.WalPath,
-            };
-        }
+            Path = path,
+            LogPath = options.LogPath,
+            WalPath = options.WalPath,
+        };
     }
 
     public static RocksDb OpenReadOnly(OptionsHandle options, string path, bool errorIfLogFileExists)
     {
-        using (var pathSafe = new RocksSafePath(path))
+        using var pathSafe = new RocksSafePath(path);
+        sbyte* errptr = null;
+        nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return new RocksDb(db, options, columnFamilyOptions: null)
         {
-            sbyte* errptr = null;
-            nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
-            RocksDbInterop.ThrowIfError(errptr);
-            return new RocksDb(db, options, columnFamilyOptions: null)
-            {
-                Path = path,
-                LogPath = options.LogPath,
-                WalPath = options.WalPath,
-            };
-        }
+            Path = path,
+            LogPath = options.LogPath,
+            WalPath = options.WalPath,
+        };
     }
 
     public static RocksDb OpenAsSecondary(OptionsHandle options, string path, string secondaryPath)
     {
-        using (var pathSafe = new RocksSafePath(path))
-        using (var secondaryPathSafe = new RocksSafePath(secondaryPath))
+        using var pathSafe = new RocksSafePath(path);
+        using var secondaryPathSafe = new RocksSafePath(secondaryPath);
+        sbyte* errptr = null;
+        nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return new RocksDb(db, options, columnFamilyOptions: null)
         {
-            sbyte* errptr = null;
-            nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
-            RocksDbInterop.ThrowIfError(errptr);
-            return new RocksDb(db, options, columnFamilyOptions: null)
-            {
-                Path = path,
-                LogPath = options.LogPath,
-                WalPath = options.WalPath,
-            };
-        }
+            Path = path,
+            LogPath = options.LogPath,
+            WalPath = options.WalPath,
+        };
     }
 
     public static RocksDb OpenWithTtl(OptionsHandle options, string path, int ttlSeconds)
     {
-        using (var pathSafe = new RocksSafePath(path))
+        using var pathSafe = new RocksSafePath(path);
+        sbyte* errptr = null;
+        nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return new RocksDb(db, options, columnFamilyOptions: null)
+        {
+            Path = path,
+            LogPath = options.LogPath,
+            WalPath = options.WalPath,
+        };
+    }
+
+    public static RocksDb Open(DbOptions options, string path, ColumnFamilies columnFamilies)
+    {
+        using var pathSafe = new RocksSafePath(path);
+        string[] cfnames = [.. columnFamilies.Names];
+        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        nint[] cfhandles = new nint[cfnames.Length];
+        using var cfNameArray = new NativeUtf8StringArray(cfnames);
+        fixed (nint* cfOptionsPtr = cfoptions)
+        fixed (nint* cfHandlesPtr = cfhandles)
         {
             sbyte* errptr = null;
-            nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
+            nint db = (nint)rocksdb_open_column_families(
+                RocksDbInterop.Options(options.Handle),
+                (sbyte*)pathSafe.Handle,
+                cfnames.Length,
+                cfNameArray.Pointer,
+                (rocksdb_options_t**)cfOptionsPtr,
+                (rocksdb_column_family_handle_t**)cfHandlesPtr,
+                &errptr);
             RocksDbInterop.ThrowIfError(errptr);
-            return new RocksDb(db, options, columnFamilyOptions: null)
+            var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
+            foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
+            {
+                cfHandleMap.Add(pair.Name, pair.Handle);
+            }
+
+            return new RocksDb(db,
+                options,
+                [.. columnFamilies.Select(cfd => cfd.Options)],
+                columnFamilies: cfHandleMap)
             {
                 Path = path,
                 LogPath = options.LogPath,
                 WalPath = options.WalPath,
             };
-        }
-    }
-
-    public static RocksDb Open(DbOptions options, string path, ColumnFamilies columnFamilies)
-    {
-        using (var pathSafe = new RocksSafePath(path))
-        {
-            string[] cfnames = columnFamilies.Names.ToArray();
-            nint[] cfoptions = columnFamilies.OptionHandles.ToArray();
-            nint[] cfhandles = new nint[cfnames.Length];
-            using var cfNameArray = new NativeUtf8StringArray(cfnames);
-            fixed (nint* cfOptionsPtr = cfoptions)
-            fixed (nint* cfHandlesPtr = cfhandles)
-            {
-                sbyte* errptr = null;
-                nint db = (nint)rocksdb_open_column_families(
-                    RocksDbInterop.Options(options.Handle),
-                    (sbyte*)pathSafe.Handle,
-                    cfnames.Length,
-                    cfNameArray.Pointer,
-                    (rocksdb_options_t**)cfOptionsPtr,
-                    (rocksdb_column_family_handle_t**)cfHandlesPtr,
-                    &errptr);
-                RocksDbInterop.ThrowIfError(errptr);
-                var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
-                foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
-                {
-                    cfHandleMap.Add(pair.Name, pair.Handle);
-                }
-
-                return new RocksDb(db,
-                    options,
-                    columnFamilies.Select(cfd => cfd.Options).ToArray(),
-                    columnFamilies: cfHandleMap)
-                {
-                    Path = path,
-                    LogPath = options.LogPath,
-                    WalPath = options.WalPath,
-                };
-            }
         }
     }
 
     public static RocksDb OpenReadOnly(DbOptions options, string path, ColumnFamilies columnFamilies, bool errIfLogFileExists)
     {
-        using (var pathSafe = new RocksSafePath(path))
+        using var pathSafe = new RocksSafePath(path);
+        string[] cfnames = [.. columnFamilies.Names];
+        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        nint[] cfhandles = new nint[cfnames.Length];
+        using var cfNameArray = new NativeUtf8StringArray(cfnames);
+        fixed (nint* cfOptionsPtr = cfoptions)
+        fixed (nint* cfHandlesPtr = cfhandles)
         {
-            string[] cfnames = columnFamilies.Names.ToArray();
-            nint[] cfoptions = columnFamilies.OptionHandles.ToArray();
-            nint[] cfhandles = new nint[cfnames.Length];
-            using var cfNameArray = new NativeUtf8StringArray(cfnames);
-            fixed (nint* cfOptionsPtr = cfoptions)
-            fixed (nint* cfHandlesPtr = cfhandles)
+            sbyte* errptr = null;
+            nint db = (nint)rocksdb_open_for_read_only_column_families(
+                RocksDbInterop.Options(options.Handle),
+                (sbyte*)pathSafe.Handle,
+                cfnames.Length,
+                cfNameArray.Pointer,
+                (rocksdb_options_t**)cfOptionsPtr,
+                (rocksdb_column_family_handle_t**)cfHandlesPtr,
+                RocksDbInterop.Bool(errIfLogFileExists),
+                &errptr);
+            RocksDbInterop.ThrowIfError(errptr);
+            var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
+            foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
             {
-                sbyte* errptr = null;
-                nint db = (nint)rocksdb_open_for_read_only_column_families(
-                    RocksDbInterop.Options(options.Handle),
-                    (sbyte*)pathSafe.Handle,
-                    cfnames.Length,
-                    cfNameArray.Pointer,
-                    (rocksdb_options_t**)cfOptionsPtr,
-                    (rocksdb_column_family_handle_t**)cfHandlesPtr,
-                    RocksDbInterop.Bool(errIfLogFileExists),
-                    &errptr);
-                RocksDbInterop.ThrowIfError(errptr);
-                var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
-                foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
-                {
-                    cfHandleMap.Add(pair.Name, pair.Handle);
-                }
-
-                return new RocksDb(db,
-                    options,
-                    columnFamilies.Select(cfd => cfd.Options).ToArray(),
-                    columnFamilies: cfHandleMap)
-                {
-                    Path = path,
-                    LogPath = options.LogPath,
-                    WalPath = options.WalPath,
-                };
+                cfHandleMap.Add(pair.Name, pair.Handle);
             }
+
+            return new RocksDb(db,
+                options,
+                [.. columnFamilies.Select(cfd => cfd.Options)],
+                columnFamilies: cfHandleMap)
+            {
+                Path = path,
+                LogPath = options.LogPath,
+                WalPath = options.WalPath,
+            };
         }
     }
 
     public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath, ColumnFamilies columnFamilies)
     {
-        using (var pathSafe = new RocksSafePath(path))
-        using (var secondaryPathSafe = new RocksSafePath(secondaryPath))
+        using var pathSafe = new RocksSafePath(path);
+        using var secondaryPathSafe = new RocksSafePath(secondaryPath);
+        string[] cfnames = [.. columnFamilies.Names];
+        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        nint[] cfhandles = new nint[cfnames.Length];
+        using var cfNameArray = new NativeUtf8StringArray(cfnames);
+        fixed (nint* cfOptionsPtr = cfoptions)
+        fixed (nint* cfHandlesPtr = cfhandles)
         {
-            string[] cfnames = columnFamilies.Names.ToArray();
-            nint[] cfoptions = columnFamilies.OptionHandles.ToArray();
-            nint[] cfhandles = new nint[cfnames.Length];
-            using var cfNameArray = new NativeUtf8StringArray(cfnames);
-            fixed (nint* cfOptionsPtr = cfoptions)
-            fixed (nint* cfHandlesPtr = cfhandles)
+            sbyte* errptr = null;
+            var db = (nint)rocksdb_open_as_secondary_column_families(
+                RocksDbInterop.Options(options.Handle),
+                (sbyte*)pathSafe.Handle,
+                (sbyte*)secondaryPathSafe.Handle,
+                cfnames.Length,
+                cfNameArray.Pointer,
+                (rocksdb_options_t**)cfOptionsPtr,
+                (rocksdb_column_family_handle_t**)cfHandlesPtr,
+                &errptr);
+            RocksDbInterop.ThrowIfError(errptr);
+            var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
+            foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
             {
-                sbyte* errptr = null;
-                var db = (nint)rocksdb_open_as_secondary_column_families(
-                    RocksDbInterop.Options(options.Handle),
-                    (sbyte*)pathSafe.Handle,
-                    (sbyte*)secondaryPathSafe.Handle,
-                    cfnames.Length,
-                    cfNameArray.Pointer,
-                    (rocksdb_options_t**)cfOptionsPtr,
-                    (rocksdb_column_family_handle_t**)cfHandlesPtr,
-                    &errptr);
-                RocksDbInterop.ThrowIfError(errptr);
-                var cfHandleMap = new Dictionary<string, ColumnFamilyHandleInternal>();
-                foreach (var pair in cfnames.Zip(cfhandles.Select(cfh => new ColumnFamilyHandleInternal(cfh)), (name, cfh) => new { Name = name, Handle = cfh }))
-                {
-                    cfHandleMap.Add(pair.Name, pair.Handle);
-                }
-                return new RocksDb(db,
-                    options,
-                    columnFamilies.Select(cfd => cfd.Options).ToArray(),
-                    columnFamilies: cfHandleMap)
-                {
-                    Path = path,
-                    LogPath = options.LogPath,
-                    WalPath = options.WalPath,
-                };
+                cfHandleMap.Add(pair.Name, pair.Handle);
             }
+            return new RocksDb(db,
+                options,
+                [.. columnFamilies.Select(cfd => cfd.Options)],
+                columnFamilies: cfHandleMap)
+            {
+                Path = path,
+                LogPath = options.LogPath,
+                WalPath = options.WalPath,
+            };
         }
     }
 
@@ -426,8 +412,7 @@ public unsafe sealed class RocksDb : IDisposable
 
     public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
-        if (keys is null)
-            throw new ArgumentNullException(nameof(keys));
+        ArgumentNullException.ThrowIfNull(keys);
 
         var count = keys.Length;
         if (cf is not null && cf.Length != count)
@@ -440,7 +425,8 @@ public unsafe sealed class RocksDb : IDisposable
         var valuePtrs = new sbyte*[count];
         var valueLengths = new nuint[count];
         var errptrs = new sbyte*[count];
-        var cfHandles = cf is null ? null : new rocksdb_column_family_handle_t*[count];
+        rocksdb_column_family_handle_t*[]? cfHandles = cf is null
+            ? null : new rocksdb_column_family_handle_t*[count];
 
         try
         {
@@ -453,8 +439,7 @@ public unsafe sealed class RocksDb : IDisposable
                 keyPtrs[i] = (sbyte*)keyHandles[i].GetAddressOfArrayData();
                 keyLengths[i] = (nuint)keys[i].Length;
 
-                if (cfHandles is not null)
-                    cfHandles[i] = RocksDbInterop.ColumnFamily(cf![i].Handle);
+                cfHandles?[i] = RocksDbInterop.ColumnFamily(cf![i].Handle);
             }
 
             fixed (sbyte** keyPtrsPtr = keyPtrs)
@@ -585,8 +570,7 @@ public unsafe sealed class RocksDb : IDisposable
 
     public KeyValuePair<string, string?>[] MultiGet(string[] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
-        if (keys is null)
-            throw new ArgumentNullException(nameof(keys));
+        ArgumentNullException.ThrowIfNull(keys);
 
         var encodedKeys = new byte[keys.Length][];
         for (var i = 0; i < keys.Length; i++)
@@ -597,7 +581,7 @@ public unsafe sealed class RocksDb : IDisposable
             encodedKeys[i] = DefaultEncoding.GetBytes(keys[i]);
         }
 
-        var values = MultiGet(encodedKeys, cf, readOptions);
+        KeyValuePair<byte[], byte[]?>[] values = MultiGet(encodedKeys, cf, readOptions);
         var result = new KeyValuePair<string, string?>[keys.Length];
         for (var i = 0; i < keys.Length; i++)
         {
@@ -741,7 +725,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// </remarks>
     public Iterator[] NewIterators(IColumnFamilyHandle[] cfs, ReadOptions? readOptions = null)
     {
-        var options = readOptions ?? DefaultReadOptions;
+        ReadOptions options = readOptions ?? DefaultReadOptions;
         var cfHandles = new nint[cfs.Length];
         var iteratorHandles = new nint[cfs.Length];
 
@@ -778,7 +762,7 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static IEnumerable<string> ListColumnFamilies(DbOptions options, string name) => TryListColumnFamilies(options, name, out var columnFamilies)
             ? columnFamilies
-            : Array.Empty<string>();
+            : [];
 
     public static bool TryListColumnFamilies(DbOptions options, string name, out string[] columnFamilies)
     {
@@ -788,7 +772,7 @@ public unsafe sealed class RocksDb : IDisposable
         var result = rocksdb_list_column_families(RocksDbInterop.Options(options.Handle), (sbyte*)path.Handle, &lencf, &errptr);
         if (errptr != null)
         {
-            columnFamilies = Array.Empty<string>();
+            columnFamilies = [];
             rocksdb_free(errptr);
             return false;
         }
@@ -811,13 +795,13 @@ public unsafe sealed class RocksDb : IDisposable
         var cfh = (nint)rocksdb_create_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.Options(cfOptions.Handle), (sbyte*)nativeName.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         var cfhw = new ColumnFamilyHandleInternal(cfh);
-        (columnFamilies ??= new Dictionary<string, ColumnFamilyHandleInternal>()).Add(name, cfhw);
+        (columnFamilies ??= []).Add(name, cfhw);
         return cfhw;
     }
 
     public void DropColumnFamily(string name)
     {
-        var cf = GetColumnFamily(name);
+        IColumnFamilyHandle cf = GetColumnFamily(name);
         sbyte* errptr = null;
         rocksdb_drop_column_family(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
@@ -843,7 +827,7 @@ public unsafe sealed class RocksDb : IDisposable
             throw new RocksDbException("Database not opened for column families");
         }
 
-        if (columnFamilies.TryGetValue(name, out var internalHandle))
+        if (columnFamilies.TryGetValue(name, out ColumnFamilyHandleInternal? internalHandle))
         {
             handle = internalHandle;
             return true;
@@ -898,10 +882,7 @@ public unsafe sealed class RocksDb : IDisposable
 
     public void CompactRange(string? start, string? limit, IColumnFamilyHandle? cf = null, Encoding? encoding = null)
     {
-        if (encoding is null)
-        {
-            encoding = Encoding.UTF8;
-        }
+        encoding ??= Encoding.UTF8;
 
         CompactRange(start is null ? null : encoding.GetBytes(start), limit is null ? null : encoding.GetBytes(limit), cf);
     }
@@ -962,7 +943,7 @@ public unsafe sealed class RocksDb : IDisposable
 
         try
         {
-            List<LiveFileMetadata> filesMetadata = new List<LiveFileMetadata>();
+            List<LiveFileMetadata> filesMetadata = [];
 
             int fileCount = rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
             for (int index = 0; index < fileCount; index++)
@@ -974,7 +955,7 @@ public unsafe sealed class RocksDb : IDisposable
 
                 ulong fileSize = rocksdb_livefiles_size(RocksDbInterop.LiveFiles(buffer), index);
 
-                LiveFileMetadata liveFileMetadata = new LiveFileMetadata
+                LiveFileMetadata liveFileMetadata = new()
                 {
                     FileMetadata = new FileMetadata
                     {
@@ -1015,7 +996,6 @@ public unsafe sealed class RocksDb : IDisposable
         finally
         {
             rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
-            buffer = nint.Zero;
         }
     }
 
@@ -1029,12 +1009,12 @@ public unsafe sealed class RocksDb : IDisposable
         nint buffer = (nint)rocksdb_livefiles(RocksDbInterop.Db(Handle));
         if (buffer == nint.Zero)
         {
-            return new List<string>();
+            return [];
         }
 
         try
         {
-            List<string> liveFiles = new List<string>();
+            List<string> liveFiles = [];
 
             int fileCount = rocksdb_livefiles_count(RocksDbInterop.LiveFiles(buffer));
 
@@ -1050,7 +1030,6 @@ public unsafe sealed class RocksDb : IDisposable
         finally
         {
             rocksdb_livefiles_destroy(RocksDbInterop.LiveFiles(buffer));
-            buffer = nint.Zero;
         }
     }
 }

@@ -65,15 +65,18 @@ public sealed class AdaptiveCommitDelayController
         double trendWeight = 2.0,
         double burstWeight = 1.5)
     {
-        if (replicaCount <= 0) throw new ArgumentOutOfRangeException(nameof(replicaCount));
-        if (historySize <= 0) throw new ArgumentOutOfRangeException(nameof(historySize));
-        if (emaAlpha <= 0 || emaAlpha > 1) throw new ArgumentOutOfRangeException(nameof(emaAlpha));
-        if (minDelayMs < 0) throw new ArgumentOutOfRangeException(nameof(minDelayMs));
-        if (maxDelayMs < minDelayMs) throw new ArgumentOutOfRangeException(nameof(maxDelayMs));
-        if (delayPerLagUnitMs < 0) throw new ArgumentOutOfRangeException(nameof(delayPerLagUnitMs));
-        if (lagUnit < 0) throw new ArgumentOutOfRangeException(nameof(lagUnit));
-        if (trendWeight < 0) throw new ArgumentOutOfRangeException(nameof(trendWeight));
-        if (burstWeight < 0) throw new ArgumentOutOfRangeException(nameof(burstWeight));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(replicaCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(historySize);
+
+        if (emaAlpha is <= 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(emaAlpha));
+
+        ArgumentOutOfRangeException.ThrowIfNegative(minDelayMs);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDelayMs, minDelayMs);
+        ArgumentOutOfRangeException.ThrowIfNegative(delayPerLagUnitMs);
+        ArgumentOutOfRangeException.ThrowIfNegative(lagUnit);
+        ArgumentOutOfRangeException.ThrowIfNegative(trendWeight);
+        ArgumentOutOfRangeException.ThrowIfNegative(burstWeight);
 
         _latestReplicaLag = new long[replicaCount];
         _history = new long[historySize];
@@ -91,9 +94,9 @@ public sealed class AdaptiveCommitDelayController
 
     public void ReportLag(ReplicaLagSample sample)
     {
-        if (sample == null) throw new ArgumentNullException(nameof(sample));
+        ArgumentNullException.ThrowIfNull(sample);
         if ((uint)sample.ReplicaIndex >= (uint)_latestReplicaLag.Length)
-            throw new ArgumentOutOfRangeException(nameof(sample.ReplicaIndex));
+            throw new ArgumentOutOfRangeException(nameof(sample), sample.ReplicaIndex, "Replica index is outside the configured replica count.");
 
         // Update this replica's latest lag atomically.
         Interlocked.Exchange(ref _latestReplicaLag[sample.ReplicaIndex], sample.LagVersions);
@@ -248,7 +251,7 @@ public sealed class AdaptiveCommitDelayController
     private long[] ReadHistorySnapshot(long count)
     {
         if (count <= 0)
-            return Array.Empty<long>();
+            return [];
 
         count = Math.Min(count, _historySize);
 

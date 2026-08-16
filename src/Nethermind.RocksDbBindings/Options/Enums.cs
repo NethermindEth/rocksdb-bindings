@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nethermind.RocksDbBindings;
 
 public enum BlockBasedTableIndexType
@@ -24,6 +26,8 @@ public enum BlockBasedK
     All = 3,
 }
 
+[SuppressMessage("Design", "CA1069:Enums values should not be duplicated",
+    Justification = "Mirrors the RocksDB StatsLevel enum, where kExceptTickers is an alias for kDisableAll.")]
 public enum StatisticsLevel
 {
     DisableAll = 0,

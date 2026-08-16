@@ -28,7 +28,7 @@ public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
         return a1.AsSpan().SequenceEqual(a2);
     }
 
-    public bool PrefixEquals(byte[] a1, byte[] a2, int prefix) =>
+    public static bool PrefixEquals(byte[] a1, byte[] a2, int prefix) =>
         ReferenceEquals(a1, a2) ||
         a1.AsSpan(0, Math.Min(prefix, a1.Length)).SequenceEqual(a2.AsSpan(0, Math.Min(prefix, a2.Length)));
 

@@ -60,15 +60,15 @@ public class BinaryComparerTests
 
     [Test]
     public async Task PrefixEquals_IgnoresBytesBeyondThePrefix()
-        => await Assert.That(Comparer.PrefixEquals([1, 2, 9], [1, 2, 8], prefix: 2)).IsTrue();
+        => await Assert.That(BinaryComparer.PrefixEquals([1, 2, 9], [1, 2, 8], prefix: 2)).IsTrue();
 
     [Test]
     public async Task PrefixEquals_ComparesBytesInsideThePrefix()
-        => await Assert.That(Comparer.PrefixEquals([1, 2, 9], [1, 2, 8], prefix: 3)).IsFalse();
+        => await Assert.That(BinaryComparer.PrefixEquals([1, 2, 9], [1, 2, 8], prefix: 3)).IsFalse();
 
     [Test]
     public async Task PrefixEquals_PrefixLongerThanBothArrays_ComparesWholeArrays()
-        => await Assert.That(Comparer.PrefixEquals([1, 2], [1, 2], prefix: 99)).IsTrue();
+        => await Assert.That(BinaryComparer.PrefixEquals([1, 2], [1, 2], prefix: 99)).IsTrue();
 
     /// <remarks>
     /// The prefix is clamped to each array separately, so an oversized prefix ends up comparing
@@ -76,13 +76,13 @@ public class BinaryComparerTests
     /// </remarks>
     [Test]
     public async Task PrefixEquals_PrefixLongerThanOneArray_IsFalse()
-        => await Assert.That(Comparer.PrefixEquals([1, 2], [1, 2, 3], prefix: 99)).IsFalse();
+        => await Assert.That(BinaryComparer.PrefixEquals([1, 2], [1, 2, 3], prefix: 99)).IsFalse();
 
     [Test]
     public async Task PrefixEquals_SameInstance_IsTrueRegardlessOfPrefix()
     {
         byte[] value = [1, 2, 3];
-        await Assert.That(Comparer.PrefixEquals(value, value, prefix: 99)).IsTrue();
+        await Assert.That(BinaryComparer.PrefixEquals(value, value, prefix: 99)).IsTrue();
     }
 
     [Test]

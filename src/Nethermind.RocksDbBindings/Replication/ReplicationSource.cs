@@ -19,30 +19,28 @@ public class ReplicationSource(RocksDb db)
 
     public IEnumerable<ReplicationBatch> GetWalUpdates(ulong sequenceNumber)
     {
-        using (var iterator = _db.GetUpdatesSince(sequenceNumber))
+        using var iterator = _db.GetUpdatesSince(sequenceNumber);
+        while (iterator.Valid())
         {
-            while (iterator.Valid())
+            iterator.Status(); // Check for errors
+
+            var batch = iterator.GetBatch(out ulong seq);
+
+            try
             {
-                iterator.Status(); // Check for errors
-
-                var batch = iterator.GetBatch(out ulong seq);
-
-                try
+                byte[] data = batch.ToBytes();
+                yield return new ReplicationBatch
                 {
-                    byte[] data = batch.ToBytes();
-                    yield return new ReplicationBatch
-                    {
-                        SequenceNumber = seq,
-                        Data = data,
-                    };
-                }
-                finally
-                {
-                    batch.Dispose();
-                }
-
-                iterator.Next();
+                    SequenceNumber = seq,
+                    Data = data,
+                };
             }
+            finally
+            {
+                batch.Dispose();
+            }
+
+            iterator.Next();
         }
     }
 
@@ -50,31 +48,29 @@ public class ReplicationSource(RocksDb db)
     public IEnumerable<PooledReplicationBatch> GetPooledWalUpdates(ulong sequenceNumber)
     {
 
-        using (var iterator = _db.GetUpdatesSince(sequenceNumber))
+        using var iterator = _db.GetUpdatesSince(sequenceNumber);
+        while (iterator.Valid())
         {
-            while (iterator.Valid())
+            iterator.Status(); // Check for errors
+
+            var batch = iterator.GetBatch(out ulong seq);
+
+            try
             {
-                iterator.Status(); // Check for errors
-
-                var batch = iterator.GetBatch(out ulong seq);
-
-                try
+                byte[] data = batch.ToBytesPooled(out var size);
+                yield return new PooledReplicationBatch
                 {
-                    byte[] data = batch.ToBytesPooled(out var size);
-                    yield return new PooledReplicationBatch
-                    {
-                        SequenceNumber = seq,
-                        PooledData = data,
-                        Length = size,
-                    };
-                }
-                finally
-                {
-                    batch.Dispose();
-                }
-
-                iterator.Next();
+                    SequenceNumber = seq,
+                    PooledData = data,
+                    Length = size,
+                };
             }
+            finally
+            {
+                batch.Dispose();
+            }
+
+            iterator.Next();
         }
     }
 }

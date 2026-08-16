@@ -38,7 +38,7 @@ public static class RocksDbWalInspector
 
     public static Dictionary<string, ulong> GetFirstSequenceNumbers(string archiveWalFolder)
     {
-        if (archiveWalFolder == null) throw new ArgumentNullException(nameof(archiveWalFolder));
+        ArgumentNullException.ThrowIfNull(archiveWalFolder);
         if (!Directory.Exists(archiveWalFolder))
             throw new DirectoryNotFoundException($"Directory not found: {archiveWalFolder}");
 
@@ -113,7 +113,7 @@ public static class RocksDbWalInspector
                                 if (length < 4)
                                     throw new InvalidDataException($"Invalid SetCompressionType record in '{walPath}'.");
 
-                                uint compressionType = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
+                                uint compressionType = BinaryPrimitives.ReadUInt32LittleEndian(payload[..4]);
                                 if (compressionType == ZstdCompressionType)
                                 {
                                     zstd = new WalZstdState();
@@ -218,16 +218,16 @@ public static class RocksDbWalInspector
         if (logicalRecord.Length < WriteBatchHeaderSize)
             return 0;
 
-        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(logicalRecord.Slice(0, 8));
+        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(logicalRecord[..8]);
         return seq;
     }
 
-    private static bool IsRecyclableType(byte typeByte) => typeByte == (byte)RecordType.RecyclableFullType
-            || typeByte == (byte)RecordType.RecyclableFirstType
-            || typeByte == (byte)RecordType.RecyclableMiddleType
-            || typeByte == (byte)RecordType.RecyclableLastType
-            || typeByte == (byte)RecordType.RecyclableUserDefinedTimestampSizeType
-            || typeByte == (byte)RecordType.RecyclePredecessorWalInfoType;
+    private static bool IsRecyclableType(byte typeByte) => typeByte is ((byte)RecordType.RecyclableFullType)
+            or ((byte)RecordType.RecyclableFirstType)
+            or ((byte)RecordType.RecyclableMiddleType)
+            or ((byte)RecordType.RecyclableLastType)
+            or ((byte)RecordType.RecyclableUserDefinedTimestampSizeType)
+            or ((byte)RecordType.RecyclePredecessorWalInfoType);
 
     private static int ReadBlock(Stream stream, byte[] buffer, int offset, int count)
     {
@@ -249,10 +249,10 @@ public static class RocksDbWalInspector
 
         public byte[] DecompressRecord(ReadOnlySpan<byte> compressed)
         {
-            EnsureNotDisposed();
+            ObjectDisposedException.ThrowIf(_disposed, nameof(WalZstdState));
 
             if (compressed.Length == 0)
-                return Array.Empty<byte>();
+                return [];
 
             byte[] input = compressed.ToArray();
             using var inputStream = new MemoryStream(input, writable: false);
@@ -277,12 +277,6 @@ public static class RocksDbWalInspector
             if (_disposed) return;
             _decompressor.Dispose();
             _disposed = true;
-        }
-
-        private void EnsureNotDisposed()
-        {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(WalZstdState));
         }
     }
 }

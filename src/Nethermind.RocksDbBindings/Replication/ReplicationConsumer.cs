@@ -13,30 +13,24 @@ public class ReplicationConsumer(RocksDb db)
 
         string destPath = Path.Combine(destinationDbPath, file.FileName);
 
-        using (var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write))
-        {
-            file.FileStream.CopyTo(fileStream);
-        }
+        using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write);
+        file.FileStream.CopyTo(fileStream);
     }
 
     public void IngestBatch(ReplicationBatch batch)
     {
         if (_db == null) throw new InvalidOperationException("DB is not initialized.");
 
-        using (var writeBatch = new WriteBatch(batch.Data))
-        {
-            _db.Write(writeBatch);
-        }
+        using var writeBatch = new WriteBatch(batch.Data);
+        _db.Write(writeBatch);
     }
 
     public void IngestBatch(ulong sequenceNo, ReadOnlySpan<byte> batchData)
     {
         if (_db == null) throw new InvalidOperationException("DB is not initialized.");
 
-        using (var writeBatch = WriteBatch.FromSpan(batchData))
-        {
-            _db.Write(writeBatch);
-        }
+        using var writeBatch = WriteBatch.FromSpan(batchData);
+        _db.Write(writeBatch);
     }
 
 }

@@ -94,7 +94,7 @@ public static class MergeOperators
             var operandsListLengthSpan = new ReadOnlySpan<long>((void*)operandsListLength, numOperands);
             var operands = new OperandsEnumerator(operandsListSpan, operandsListLengthSpan);
             bool hasExistingValue = existingValue != nint.Zero;
-            var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>((void*)existingValue, (int)existingValueLength) : ReadOnlySpan<byte>.Empty;
+            var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>((void*)existingValue, (int)existingValueLength) : [];
 
             var value = FullMerge(keySpan, hasExistingValue, existingValueSpan, operands, out var _success);
 

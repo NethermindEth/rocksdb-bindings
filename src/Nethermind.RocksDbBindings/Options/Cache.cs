@@ -7,34 +7,21 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class Cache : IDisposable
 {
-    public nint Handle { get; protected set; }
+    private readonly CacheHandle _handle;
+
+    public nint Handle => _handle.IsClosed ? nint.Zero : _handle.DangerousGetHandle();
 
     private Cache(nint handle)
     {
-        Handle = handle;
+        _handle = new CacheHandle(handle);
     }
 
-    ~Cache() => ReleaseHandle();
-
-    /// <summary>Destroys the native cache wrapper deterministically; the finalizer is only a backstop.</summary>
+    /// <summary>Destroys the native cache wrapper; the SafeHandle's critical finalizer is the backstop.</summary>
     /// <remarks>
     /// rocksdb holds its own reference on the cache once it is attached to options, so disposing
     /// this wrapper does not free memory still in use by an open database.
     /// </remarks>
-    public void Dispose()
-    {
-        ReleaseHandle();
-        GC.SuppressFinalize(this);
-    }
-
-    private void ReleaseHandle()
-    {
-        if (Handle != nint.Zero)
-        {
-            rocksdb_cache_destroy(RocksDbInterop.Cache(Handle));
-            Handle = nint.Zero;
-        }
-    }
+    public void Dispose() => _handle.Dispose();
 
     public static Cache CreateLru(ulong capacity)
     {
@@ -59,11 +46,20 @@ public unsafe class Cache : IDisposable
 
     public Cache SetCapacity(ulong capacity)
     {
-        rocksdb_cache_set_capacity(RocksDbInterop.Cache(Handle), (nuint)capacity);
+        using var lease = new HandleLease(_handle);
+        rocksdb_cache_set_capacity(RocksDbInterop.Cache(_handle.DangerousGetHandle()), (nuint)capacity);
         return this;
     }
 
-    public ulong GetUsage() => rocksdb_cache_get_usage(RocksDbInterop.Cache(Handle));
+    public ulong GetUsage()
+    {
+        using var lease = new HandleLease(_handle);
+        return rocksdb_cache_get_usage(RocksDbInterop.Cache(_handle.DangerousGetHandle()));
+    }
 
-    public ulong GetPinnedUsage() => rocksdb_cache_get_pinned_usage(RocksDbInterop.Cache(Handle));
+    public ulong GetPinnedUsage()
+    {
+        using var lease = new HandleLease(_handle);
+        return rocksdb_cache_get_pinned_usage(RocksDbInterop.Cache(_handle.DangerousGetHandle()));
+    }
 }

@@ -3,29 +3,22 @@
 
 namespace Nethermind.RocksDbBindings;
 
-using static Nethermind.RocksDbBindings.Native.RocksDbNative;
-
 /// <summary>
 /// A Snapshot is an immutable object and can therefore be safely
 /// accessed from multiple threads without any external synchronization.
 /// </summary>
-public unsafe class Snapshot : IDisposable
+public class Snapshot : IDisposable
 {
-    private nint dbHandle;
-    public nint Handle { get; private set; }
+    // Owns the native snapshot and a lease on the database: while the snapshot lives, the
+    // native close is deferred, and abandoning it is recovered by the critical finalizer.
+    private readonly SnapshotHandle _handle;
 
-    internal Snapshot(nint dbHandle, nint snapshotHandle)
+    public nint Handle => _handle.IsClosed ? nint.Zero : _handle.DangerousGetHandle();
+
+    internal Snapshot(RocksDbHandle dbLease, nint snapshotHandle)
     {
-        this.dbHandle = dbHandle;
-        Handle = snapshotHandle;
+        _handle = new SnapshotHandle(snapshotHandle, dbLease);
     }
 
-    public void Dispose()
-    {
-        if (Handle != nint.Zero)
-        {
-            rocksdb_release_snapshot(RocksDbInterop.Db(dbHandle), RocksDbInterop.Snapshot(Handle));
-            Handle = nint.Zero;
-        }
-    }
+    public void Dispose() => _handle.Dispose();
 }

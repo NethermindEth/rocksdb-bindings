@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nethermind.RocksDbBindings.Tests;
@@ -564,6 +565,102 @@ public class RocksDbTests
         db.Dispose();
 
         await Assert.That(db.Dispose).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task Dispose_MakesLaterCallsThrowInsteadOfReachingNativeCode()
+    {
+        using var directory = new TempDirectory();
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        var db = RocksDb.Open(creatingOptions, directory.Reserve("db"));
+        db.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => db.Get(Key)).Throws<ObjectDisposedException>();
+            await Assert.That(() => db.Put(Key, Value)).Throws<ObjectDisposedException>();
+            await Assert.That(() => db.FlushWal(sync: false)).Throws<ObjectDisposedException>();
+        }
+    }
+
+    /// <remarks>
+    /// The LOCK file is the observable: rocksdb releases it only on the real native close, so a
+    /// reopen of the same path fails while any child still holds a lease.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_DefersTheNativeCloseUntilTheLastIteratorIsDisposed()
+    {
+        using var directory = new TempDirectory();
+        var path = directory.Reserve("db");
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        var db = RocksDb.Open(creatingOptions, path);
+        db.Put(Key, Value);
+        using var iterator = db.NewIterator();
+
+        db.Dispose();
+
+        using var reopenOptions = new DbOptions();
+        using (Assert.Multiple())
+        {
+            // The database is still open natively: the iterator reads and the LOCK is held.
+            await Assert.That(iterator.SeekToFirst().Valid()).IsTrue();
+            await Assert.That(iterator.GetKeySpan().ToArray()).IsEquivalentTo(Key, CollectionOrdering.Matching);
+            await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).Throws<RocksDbException>();
+            // Logical disposal is immediate even while the child defers the physical close.
+            await Assert.That(() => db.Get(Key)).Throws<ObjectDisposedException>();
+            await Assert.That(db.Handle).IsEqualTo(nint.Zero);
+        }
+
+        iterator.Dispose();
+
+        await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task Dispose_DefersTheNativeCloseUntilTheLastSnapshotIsDisposed()
+    {
+        using var directory = new TempDirectory();
+        var path = directory.Reserve("db");
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        var db = RocksDb.Open(creatingOptions, path);
+        using var snapshot = db.CreateSnapshot();
+
+        db.Dispose();
+
+        using var reopenOptions = new DbOptions();
+        await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).Throws<RocksDbException>();
+
+        snapshot.Dispose();
+
+        await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).ThrowsNothing();
+    }
+
+    /// <remarks>
+    /// An abandoned child must not pin the database forever: its critical finalizer destroys the
+    /// native object and releases the database lease, letting the deferred close finally run.
+    /// </remarks>
+    [Test]
+    public async Task AbandonedIterator_IsReclaimedByFinalizationAndReleasesTheDatabase()
+    {
+        using var directory = new TempDirectory();
+        var path = directory.Reserve("db");
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        var db = RocksDb.Open(creatingOptions, path);
+        db.Put(Key, Value);
+
+        CreateAbandonedIterator(db);
+        db.Dispose();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        using var reopenOptions = new DbOptions();
+        await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).ThrowsNothing();
+
+        // Not inlined so the caller never roots the abandoned iterator.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void CreateAbandonedIterator(RocksDb db) => db.NewIterator();
     }
 
     [Test]

@@ -60,15 +60,17 @@ public unsafe sealed class WriteBatchWithIndex : IDisposable
     }
 
     /// <summary>Reads a key as the database would look with the batch applied on top.</summary>
+    /// <exception cref="ObjectDisposedException"><paramref name="db"/> has been disposed.</exception>
     public byte[]? Get(RocksDb db, ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
+        using var dbLease = db.LeaseHandle(out nint dbHandle);
         fixed (byte* keyPtr = key)
         {
             nuint valueLength;
             sbyte* errptr = null;
             var valuePtr = cf is null
-                ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+                ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
         }
@@ -88,10 +90,13 @@ public unsafe sealed class WriteBatchWithIndex : IDisposable
             ? (nint)rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
             : (nint)rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
         // The returned iterator owns the base one, so detach it to avoid a double destroy. The
-        // base's read options move over too: the native base iterator keeps reading them (and any
-        // iterate bounds) in place, so the overlay must keep them alive.
+        // base's read options and database lease move over too: the native base iterator keeps
+        // reading the options (and any iterate bounds) in place, and the database must not close
+        // while the overlay is alive. The lease is taken before detaching, as detaching disarms
+        // the base handle's release path.
+        var dbLease = baseIterator.TakeDbLease();
         baseIterator.Detach();
-        return new Iterator(iteratorHandle, baseIterator.ReadOptions);
+        return new Iterator(iteratorHandle, baseIterator.ReadOptions, dbLease);
     }
 
     public WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)

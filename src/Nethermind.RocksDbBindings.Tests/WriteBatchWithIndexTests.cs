@@ -180,6 +180,19 @@ public class WriteBatchWithIndexTests
         await Assert.That(baseIterator.Handle).IsEqualTo(nint.Zero);
     }
 
+    [Test]
+    public async Task Get_AgainstADisposedDatabase_ThrowsInsteadOfReachingNativeCode()
+    {
+        using var directory = new TempDirectory();
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        var db = RocksDb.Open(creatingOptions, directory.Reserve("db"));
+        using var batch = new WriteBatchWithIndex();
+        batch.Put(Key, Pending);
+        db.Dispose();
+
+        await Assert.That(() => batch.Get(db, Key)).Throws<ObjectDisposedException>();
+    }
+
     /// <remarks>
     /// The overlay must root the base iterator's read options: the native base iterator keeps
     /// reading the iterate-bound buffers those options own, so if only the discarded base

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Collections.Concurrent;
+using System.Text;
+
 namespace Nethermind.RocksDbBindings.Tests;
 
 public class ColumnFamilyTests
@@ -123,6 +126,60 @@ public class ColumnFamilyTests
         database.Db.DropColumnFamily("blocks");
 
         await Assert.That(database.Db.TryGetColumnFamily("blocks", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task DropColumnFamily_ThenRecreatingTheSameName_YieldsAFreshFamily()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        var original = database.Db.GetColumnFamily("blocks");
+        database.Db.Put(Key, Value, original);
+
+        database.Db.DropColumnFamily("blocks");
+        using var cfOptions = new ColumnFamilyOptions();
+        var recreated = database.Db.CreateColumnFamily(cfOptions, "blocks");
+        database.Db.Put("other"u8, Value, recreated);
+
+        using (Assert.Multiple())
+        {
+            // The lookup must point at the new family, and the dropped one's data must be gone.
+            await Assert.That(recreated).IsNotSameReferenceAs(original);
+            await Assert.That(database.Db.GetColumnFamily("blocks")).IsSameReferenceAs(recreated);
+            await Assert.That(database.Db.Get(Key, recreated)).IsNull();
+            await Assert.That(database.Db.Get("other"u8.ToArray(), recreated)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    public async Task CreateColumnFamily_FromManyThreads_RegistersAndOwnsEveryFamily()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families());
+        var names = Enumerable.Range(0, 16).Select(i => $"family-{i}").ToArray();
+        var created = new ConcurrentBag<IColumnFamilyHandle>();
+
+        Parallel.ForEach(names, name =>
+        {
+            using var cfOptions = new ColumnFamilyOptions();
+            var cf = database.Db.CreateColumnFamily(cfOptions, name);
+            created.Add(cf);
+            database.Db.Put(Key, Encoding.UTF8.GetBytes(name), cf);
+        });
+
+        using (Assert.Multiple())
+        {
+            foreach (var name in names)
+            {
+                // A torn insert would lose the entry; a torn handle would read another family's value.
+                await Assert.That(database.Db.TryGetColumnFamily(name, out var cf)).IsTrue();
+                await Assert.That(database.Db.Get(Key, cf!)).IsEquivalentTo(Encoding.UTF8.GetBytes(name), CollectionOrdering.Matching);
+            }
+        }
+
+        database.Db.Dispose();
+
+        // A lost ownership registration is invisible until close: only then is the handle destroyed
+        // and zeroed, so every created family must be zeroed here or it leaked.
+        await Assert.That(created.Select(cf => cf.Handle)).IsEquivalentTo(new nint[names.Length]);
     }
 
     [Test]
@@ -261,6 +318,21 @@ public class ColumnFamilyTests
         using var readOnly = RocksDb.OpenReadOnly(new DbOptions(), path, Families("blocks"), errIfLogFileExists: false);
 
         await Assert.That(readOnly.Get(Key, readOnly.GetColumnFamily("blocks"))).IsEquivalentTo(Value, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task ColumnFamilyLookups_ThrowAfterDisposal()
+    {
+        using var directory = new TempDirectory();
+        using var options = CreatingOptions();
+        var db = RocksDb.Open(options, directory.Reserve("db"), Families("blocks"));
+        db.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => db.GetColumnFamily("blocks")).Throws<ObjectDisposedException>();
+            await Assert.That(() => db.TryGetColumnFamily("blocks", out _)).Throws<ObjectDisposedException>();
+        }
     }
 
     [Test]

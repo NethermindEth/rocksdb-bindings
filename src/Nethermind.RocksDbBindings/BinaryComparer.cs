@@ -3,7 +3,6 @@
 
 namespace Nethermind.RocksDbBindings;
 
-// TODO: consider somehow reusing the actual unmanaged comparer
 public class BinaryComparer : IEqualityComparer<byte[]>, IComparer<byte[]>
 {
     public static BinaryComparer Default { get; } = new BinaryComparer();

@@ -18,6 +18,33 @@ public class OptionsTests
     private static unsafe byte CreateIfMissing(DbOptions options)
         => RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)options.Handle);
 
+    private static unsafe byte ReportBgIoStats(ColumnFamilyOptions options)
+        => RocksDbNative.rocksdb_options_get_report_bg_io_stats((rocksdb_options_t*)options.Handle);
+
+    private static unsafe byte SkipStatsUpdateOnOpen(DbOptions options)
+        => RocksDbNative.rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)options.Handle);
+
+    [Test]
+    public async Task SetReportBgIoStats_TurnsTheStatsOnRatherThanOff()
+    {
+        using var options = new ColumnFamilyOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(ReportBgIoStats(options.SetReportBgIoStats(true))).IsEqualTo((byte)1);
+            await Assert.That(ReportBgIoStats(options.SetReportBgIoStats(false))).IsEqualTo((byte)0);
+        }
+    }
+
+    /// <remarks>Every other flag on the options defaults to turning itself on.</remarks>
+    [Test]
+    public async Task SkipStatsUpdateOnOpen_DefaultsToSkipping()
+    {
+        using var options = new DbOptions();
+
+        await Assert.That(SkipStatsUpdateOnOpen(options.SkipStatsUpdateOnOpen())).IsEqualTo((byte)1);
+    }
+
     /// <remarks>
     /// <see cref="FlushOptions" /> owns a <c>rocksdb_flushoptions_t</c>, not the
     /// <c>rocksdb_options_t</c> that <see cref="OptionsHandle" /> creates. If it were the latter,
@@ -233,7 +260,7 @@ public class OptionsTests
     [Test]
     public async Task BloomFilterPolicy_AttachedToATable_LeavesReadsCorrect()
     {
-        var tableOptions = new BlockBasedTableOptions().SetFilterPolicy(BloomFilterPolicy.Create(10, use_block_based_builder: false));
+        var tableOptions = new BlockBasedTableOptions().SetFilterPolicy(BloomFilterPolicy.Create(10, useBlockBasedBuilder: false));
         var options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(tableOptions);
 
         using var database = TestDatabase.Create(options);
@@ -305,8 +332,8 @@ public class OptionsTests
     {
         using (Assert.Multiple())
         {
-            await Assert.That(BloomFilterPolicy.Create(10, use_block_based_builder: true).Handle).IsNotEqualTo(nint.Zero);
-            await Assert.That(BloomFilterPolicy.Create(10, use_block_based_builder: false).Handle).IsNotEqualTo(nint.Zero);
+            await Assert.That(BloomFilterPolicy.Create(10, useBlockBasedBuilder: true).Handle).IsNotEqualTo(nint.Zero);
+            await Assert.That(BloomFilterPolicy.Create(10, useBlockBasedBuilder: false).Handle).IsNotEqualTo(nint.Zero);
         }
     }
 

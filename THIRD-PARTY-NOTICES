@@ -77,7 +77,8 @@ Copyright (c) Meta Platforms, Inc. and affiliates.
 
 The native libraries listed above are builds of RocksDB. The generated
 interop declarations in Nethermind.RocksDbBindings.dll are derived from
-RocksDB's C API headers.
+RocksDB's C API headers, as is the documentation of the managed options API,
+which describes RocksDB's own options.
 
 RocksDB is dual-licensed under the Apache License 2.0 and the GNU General
 Public License version 2. This distribution elects the Apache License 2.0,

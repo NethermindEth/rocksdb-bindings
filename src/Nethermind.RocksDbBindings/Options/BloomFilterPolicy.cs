@@ -5,51 +5,33 @@ namespace Nethermind.RocksDbBindings;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
-public unsafe class BloomFilterPolicy
+/// <remarks>
+/// Attaching the policy to options hands ownership to rocksdb, which destroys it with them, so
+/// there is nothing to release here. A policy that is never attached leaks; see
+/// <see href="https://github.com/facebook/rocksdb/issues/1095">rocksdb issue #1095</see>.
+/// </remarks>
+public sealed unsafe class BloomFilterPolicy
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; }
 
     private BloomFilterPolicy(nint handle)
     {
         Handle = handle;
     }
 
-    ~BloomFilterPolicy()
+    /// <param name="bitsPerKey">
+    /// Bits of filter per key. 10 gives roughly a 1% false positive rate.
+    /// </param>
+    /// <param name="useBlockBasedBuilder">Selects the legacy block-based filter over a full one.</param>
+    /// <remarks>
+    /// A filter that ignores part of a key must be paired with a comparator that ignores the same
+    /// part, or lookups will miss keys the filter rules out.
+    /// </remarks>
+    public static BloomFilterPolicy Create(int bitsPerKey = 10, bool useBlockBasedBuilder = true)
     {
-        if (Handle != nint.Zero)
-        {
-            // Commented out until a solution is found to rocksdb issue #1095 (https://github.com/facebook/rocksdb/issues/1095)
-            // If you create one of these, use it in an Option which will destroy it when finished
-            // Otherwise don't create one or it will leak
-            // RocksDB owns this while attached to options; see rocksdb issue #1095.
-            Handle = nint.Zero;
-        }
-    }
-
-    /// <summary>
-    /// Return a new filter policy that uses a bloom filter with approximately
-    /// the specified number of bits per key.
-    /// bits_per_key: bits per key in bloom filter. A good value for bits_per_key
-    /// is 10, which yields a filter with ~ 1% false positive rate.
-    /// use_block_based_builder: use block based filter rather than full fiter.
-    /// If you want to builder full filter, it needs to be set to false.
-    /// Callers must delete the result after any database that is using the
-    /// result has been closed.
-    /// Note: if you are using a custom comparator that ignores some parts
-    /// of the keys being compared, you must not use NewBloomFilterPolicy()
-    /// and must provide your own FilterPolicy that also ignores the
-    /// corresponding parts of the keys.  For example, if the comparator
-    /// ignores trailing spaces, it would be incorrect to use a
-    /// FilterPolicy (like NewBloomFilterPolicy) that does not ignore
-    /// trailing spaces in keys.
-    /// </summary>
-    /// <param name="bits_per_key">Bits per key.</param>
-    /// <param name="use_block_based_builder">Whether to use the legacy block-based bloom filter.</param>
-    public static BloomFilterPolicy Create(int bits_per_key = 10, bool use_block_based_builder = true)
-    {
-        nint handle = use_block_based_builder
-            ? (nint)rocksdb_filterpolicy_create_bloom(bits_per_key)
-            : (nint)rocksdb_filterpolicy_create_bloom_full(bits_per_key);
+        nint handle = useBlockBasedBuilder
+            ? (nint)rocksdb_filterpolicy_create_bloom(bitsPerKey)
+            : (nint)rocksdb_filterpolicy_create_bloom_full(bitsPerKey);
         return new BloomFilterPolicy(handle);
     }
 }

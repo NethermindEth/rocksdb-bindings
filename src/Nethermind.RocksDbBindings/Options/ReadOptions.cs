@@ -93,15 +93,9 @@ public unsafe class ReadOptions : IDisposable
     }
 
     /// <summary>
-    /// Enforce that the iterator only iterates over the same prefix as the seek.
-    /// This option is effective only for prefix seeks, i.e. prefix_extractor is
-    /// non-null for the column family and total_order_seek is false.  Unlike
-    /// iterate_upper_bound, prefix_same_as_start only works within a prefix
-    /// but in both directions.
-    /// Default: false
+    /// Confines iteration, in both directions, to the prefix the seek started in. Requires a
+    /// prefix extractor on the column family and has no effect under a total-order seek.
     /// </summary>
-    /// <param name="prefixSameAsStart"></param>
-    /// <returns></returns>
     public ReadOptions SetPrefixSameAsStart(bool prefixSameAsStart)
     {
         rocksdb_readoptions_set_prefix_same_as_start(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(prefixSameAsStart));

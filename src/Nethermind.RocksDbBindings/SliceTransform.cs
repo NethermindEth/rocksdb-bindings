@@ -5,36 +5,24 @@ namespace Nethermind.RocksDbBindings;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
-public unsafe class SliceTransform
+/// <remarks>
+/// Attaching the transform to options hands ownership to rocksdb, which destroys it with them, so
+/// there is nothing to release here. A transform that is never attached leaks; see
+/// <see href="https://github.com/facebook/rocksdb/issues/1095">rocksdb issue #1095</see>.
+/// </remarks>
+public sealed unsafe class SliceTransform
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; }
 
     private SliceTransform(nint handle)
     {
         Handle = handle;
     }
 
-    public static SliceTransform CreateFixedPrefix(/*(size_t)*/ ulong fixed_prefix_length)
-    {
-        nint handle = (nint)rocksdb_slicetransform_create_fixed_prefix((nuint)fixed_prefix_length);
-        return new SliceTransform(handle);
-    }
+    /// <summary>Extracts the first <paramref name="prefixLength"/> bytes of a key.</summary>
+    public static SliceTransform CreateFixedPrefix(ulong prefixLength) =>
+        new((nint)rocksdb_slicetransform_create_fixed_prefix((nuint)prefixLength));
 
-    public static SliceTransform CreateNoOp()
-    {
-        nint handle = (nint)rocksdb_slicetransform_create_noop();
-        return new SliceTransform(handle);
-    }
-
-    ~SliceTransform()
-    {
-        if (Handle != nint.Zero)
-        {
-            // Commented out until a solution is found to rocksdb issue #1095 (https://github.com/facebook/rocksdb/issues/1095)
-            // If you create one of these, use it in an Option which will destroy it when finished
-            // Otherwise don't create one or it will leak
-            // RocksDB owns this while attached to options; see rocksdb issue #1095.
-            Handle = nint.Zero;
-        }
-    }
+    /// <summary>Extracts the whole key.</summary>
+    public static SliceTransform CreateNoOp() => new((nint)rocksdb_slicetransform_create_noop());
 }

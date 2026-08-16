@@ -357,4 +357,24 @@ public class IteratorTests
         await Assert.That(iterator.Dispose).ThrowsNothing();
     }
 
+    /// <remarks>
+    /// Running off the end of the range is not a failure, so the check must stay silent there —
+    /// that is the case every caller hits.
+    /// </remarks>
+    [Test]
+    public async Task ThrowIfError_AfterACompleteIteration_ThrowsNothing()
+    {
+        using var database = Alphabet();
+        using var iterator = database.Db.NewIterator();
+
+        for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
+        {
+        }
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(iterator.Valid()).IsFalse();
+            await Assert.That(iterator.ThrowIfError).ThrowsNothing();
+        }
+    }
 }

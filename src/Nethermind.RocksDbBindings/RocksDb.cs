@@ -278,15 +278,9 @@ public unsafe sealed class RocksDb : IDisposable
     }
 
     /// <summary>
-    /// Usage:
-    /// <code><![CDATA[
-    /// using (var cp = db.Checkpoint())
-    /// {
-    ///     cp.Save("path/to/checkpoint");
-    /// }
-    /// ]]></code>
+    /// Starts a checkpoint, which <see cref="RocksDbBindings.Checkpoint.Save"/> writes out. The
+    /// database stays open until the returned checkpoint is disposed.
     /// </summary>
-    /// <returns></returns>
     public Checkpoint Checkpoint()
     {
         using var lease = Lease();
@@ -1080,13 +1074,14 @@ public unsafe sealed class RocksDb : IDisposable
         RocksDbInterop.ThrowIfError(errptr);
     }
 
-
-    /// <summary>
-    /// Returns metadata about the file and data in the file. 
-    /// </summary>
-    /// <param name="populateFileMetadataOnly">setting it to true only populates FileName, 
-    /// Filesize and filelevel; By default it is false</param>
-    /// <returns><c>LiveFilesMetadata</c> or null in case of failure</returns>
+    /// <summary>Describes the files currently making up the database.</summary>
+    /// <param name="populateFileMetadataOnly">
+    /// Skips the per-file key range and entry counts, leaving only the name, level and size.
+    /// </param>
+    /// <returns>
+    /// The metadata, empty when the database has no live files, or null when rocksdb declines to
+    /// report them at all.
+    /// </returns>
     public List<LiveFileMetadata>? GetLiveFilesMetadata(bool populateFileMetadataOnly = false)
     {
         using var lease = Lease();
@@ -1155,10 +1150,9 @@ public unsafe sealed class RocksDb : IDisposable
     }
 
     /// <summary>
-    /// Lean API to just get Live file names. 
-    /// Refer to GetLiveFilesMetadata() for the complete metadata
+    /// Names the live files, without the rest of what
+    /// <see cref="GetLiveFilesMetadata"/> collects.
     /// </summary>
-    /// <returns></returns>
     public List<string> GetLiveFileNames()
     {
         using var lease = Lease();

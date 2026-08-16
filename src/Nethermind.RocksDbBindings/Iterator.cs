@@ -138,5 +138,15 @@ public sealed unsafe class Iterator : IDisposable
         return new ReadOnlySpan<byte>((byte*)valuePtr, (int)valueLength);
     }
 
-    // TODO: figure out how to best implement rocksdb_iter_get_error
+    /// <summary>
+    /// Throws the error that ended the iteration, if any. An iterator reports a read failure by
+    /// going invalid, which is otherwise indistinguishable from reaching the end of the range.
+    /// </summary>
+    /// <exception cref="RocksDbNativeException">The iteration failed.</exception>
+    public void ThrowIfError()
+    {
+        sbyte* errptr = null;
+        rocksdb_iter_get_error(RocksDbInterop.Iterator(NativeHandle), &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+    }
 }

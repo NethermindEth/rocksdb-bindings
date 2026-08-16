@@ -16,29 +16,20 @@ public interface IMergeOperator
 public static class MergeOperators
 {
     /// <summary>
-    /// This function performs merge(left_op, right_op)
-    /// when both the operands are themselves merge operation types.
-    /// Save the result in *new_value and return true. If it is impossible
-    /// or infeasible to combine the two operations, return false instead.
-    /// This is called to combine two-merge operands (if possible)
+    /// Combines operands into a single operand, without a base value. The operands come oldest
+    /// first. Report <c>success</c> as false when they cannot be combined; rocksdb then keeps
+    /// them separate and merges them later.
     /// </summary>
-    /// <param name="key">The key that's associated with this merge operation</param>
-    /// <param name="operands">the sequence of merge operations to apply, front() first</param>
-    /// <param name="success">Client is responsible for filling the merge result here</param>
-    /// <returns></returns>
     public delegate byte[] PartialMergeFunc(ReadOnlySpan<byte> key, OperandsEnumerator operands, out bool success);
 
     /// <summary>
-    /// Gives the client a way to express the read -> modify -> write semantics.
-    /// Called when a Put/Delete is the *existing_value (or nullptr)
+    /// Applies operands, oldest first, to the stored value, producing the value a read returns.
+    /// Report <c>success</c> as false to fail the merge, which surfaces as a corruption error.
     /// </summary>
-    /// <param name="key">The key that's associated with this merge operation.</param>
-    /// <param name="hasExistingValue">false indicates that the key does not exist before this op</param>
-    /// <param name="existingValue">empty when <paramref name="hasExistingValue"/> is false, which is
-    /// also how an existing zero-length value arrives, so test that parameter rather than the length</param>
-    /// <param name="operands">the sequence of merge operations to apply, front() first.</param>
-    /// <param name="success">Client is responsible for filling the merge result here</param>
-    /// <returns></returns>
+    /// <remarks>
+    /// <c>existingValue</c> is empty both when the key has no stored value and when the stored
+    /// value is itself empty, so branch on <c>hasExistingValue</c> instead of its length.
+    /// </remarks>
     public delegate byte[] FullMergeFunc(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, OperandsEnumerator operands, out bool success);
 
 

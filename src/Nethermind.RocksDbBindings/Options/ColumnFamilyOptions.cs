@@ -134,19 +134,18 @@ internal sealed unsafe class OptionsBase
 public unsafe abstract partial class Options<T> : OptionsHandle where T : Options<T>
 {
 
-    public T SetBlockBasedTableFactory(BlockBasedTableOptions table_options)
+    /// <summary>
+    /// Configures the block-based format that SST files are written in and read through.
+    /// </summary>
+    public T SetBlockBasedTableFactory(BlockBasedTableOptions tableOptions)
     {
-        BlockBasedTableFactory = table_options;
-        // Args: table_options
-        rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.BlockBasedTableOptions(table_options.Handle));
+        BlockBasedTableFactory = tableOptions;
+        rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.BlockBasedTableOptions(tableOptions.Handle));
         return (T)this;
     }
 
     /// <summary>
-    /// Use this if you don't need to keep the data sorted, i.e. you'll never use
-    /// an iterator, only Put() and Get() API calls
-    ///
-    /// Not supported in ROCKSDB_LITE
+    /// Tunes the family for point reads, at the expense of range scans, sizing the block cache in MiB.
     /// </summary>
     public T OptimizeForPointLookup(ulong blockCacheSizeMb)
     {
@@ -155,22 +154,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Default values for some parameters in ColumnFamilyOptions are not
-    /// optimized for heavy workloads and big datasets, which means you might
-    /// observe write stalls under some conditions. As a starting point for tuning
-    /// RocksDB options, use the following two functions:
-    /// * OptimizeLevelStyleCompaction -- optimizes level style compaction
-    /// * OptimizeUniversalStyleCompaction -- optimizes universal style compaction
-    /// Universal style compaction is focused on reducing Write Amplification
-    /// Factor for big data sets, but increases Space Amplification. You can learn
-    /// more about the different styles here:
-    /// https://github.com/facebook/rocksdb/wiki/Rocksdb-Architecture-Guide
-    /// Make sure to also call IncreaseParallelism(), which will provide the
-    /// biggest performance gains.
-    /// Note: we might use more memory than memtable_memory_budget during high
-    /// write rate period
-    ///
-    /// OptimizeUniversalStyleCompaction is not supported in ROCKSDB_LITE
+    /// Applies rocksdb's level-compaction preset, sized to a memtable budget in bytes.
     /// </summary>
     public T OptimizeLevelStyleCompaction(ulong memtableMemoryBudget)
     {
@@ -179,22 +163,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Default values for some parameters in ColumnFamilyOptions are not
-    /// optimized for heavy workloads and big datasets, which means you might
-    /// observe write stalls under some conditions. As a starting point for tuning
-    /// RocksDB options, use the following two functions:
-    /// * OptimizeLevelStyleCompaction -- optimizes level style compaction
-    /// * OptimizeUniversalStyleCompaction -- optimizes universal style compaction
-    /// Universal style compaction is focused on reducing Write Amplification
-    /// Factor for big data sets, but increases Space Amplification. You can learn
-    /// more about the different styles here:
-    /// https://github.com/facebook/rocksdb/wiki/Rocksdb-Architecture-Guide
-    /// Make sure to also call IncreaseParallelism(), which will provide the
-    /// biggest performance gains.
-    /// Note: we might use more memory than memtable_memory_budget during high
-    /// write rate period
-    ///
-    /// OptimizeUniversalStyleCompaction is not supported in ROCKSDB_LITE
+    /// Applies rocksdb's universal-compaction preset, sized to a memtable budget in bytes.
+    /// Universal compaction writes less than level compaction but uses more space.
     /// </summary>
     public T OptimizeUniversalStyleCompaction(ulong memtableMemoryBudget)
     {
@@ -203,21 +173,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// A single CompactionFilter instance to call into during compaction.
-    /// Allows an application to modify/delete a key-value during background
-    /// compaction.
-    ///
-    /// If the client requires a new compaction filter to be used for different
-    /// compaction runs, it can specify compaction_filter_factory instead of this
-    /// option.  The client should specify only one of the two.
-    /// compaction_filter takes precedence over compaction_filter_factory if
-    /// client specifies both.
-    ///
-    /// If multithreaded compaction is being used, the supplied CompactionFilter
-    /// instance may be used from different threads concurrently and so should be
-    /// thread-safe.
-    ///
-    /// Default: nullptr
+    /// Installs a filter that drops or rewrites entries as compaction passes over them.
+    /// RocksDB never destroys the filter, so it must outlive every database opened with these options.
     /// </summary>
     public T SetCompactionFilter(nint compactionFilter)
     {
@@ -226,14 +183,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// This is a factory that provides compaction filter objects which allow
-    /// an application to modify/delete a key-value during background compaction.
-    ///
-    /// A new filter will be created on each compaction run.  If multithreaded
-    /// compaction is being used, each created CompactionFilter will only be used
-    /// from a single thread and so does not need to be thread-safe.
-    ///
-    /// Default: nullptr
+    /// Installs a factory that supplies a fresh compaction filter per compaction run.
+    /// RocksDB never destroys the factory, so it must outlive every database opened with these options.
     /// </summary>
     public T SetCompactionFilterFactory(nint compactionFilterFactory)
     {
@@ -242,14 +193,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// If non-zero, we perform bigger reads when doing compaction. If you're
-    /// running RocksDB on spinning disks, you should set this to at least 2MB.
-    /// That way RocksDB's compaction is doing sequential instead of random reads.
-    ///
-    /// When non-zero, we also force new_table_reader_for_compaction_inputs to
-    /// true.
-    ///
-    /// Default: 0
+    /// Reads this many bytes ahead during compaction, turning its reads sequential.
     /// </summary>
     public T SetCompactionReadaheadSize(ulong size)
     {
@@ -258,12 +202,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Comparator used to define the order of keys in the table.
-    /// Default: a comparator that uses lexicographic byte-wise ordering
-    ///
-    /// REQUIRES: The client must ensure that the comparator supplied
-    /// here has the same name and orders keys *exactly* the same as the
-    /// comparator provided to previous open calls on the same DB.
+    /// Orders the keys of the family. A database records its comparator's name and refuses to
+    /// open under one reporting a different name.
     /// </summary>
     public T SetComparator(nint comparator)
     {
@@ -271,14 +211,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return (T)this;
     }
 
-    /// <summary>
-    /// Comparator used to define the order of keys in the table.
-    /// Default: a comparator that uses lexicographic byte-wise ordering
-    ///
-    /// REQUIRES: The client must ensure that the comparator supplied
-    /// here has the same name and orders keys *exactly* the same as the
-    /// comparator provided to previous open calls on the same DB.
-    /// </summary>
+    /// <inheritdoc cref="SetComparator(nint)"/>
     /// <remarks>
     /// RocksDB stores a comparator as a non-owning pointer and never destroys it, and neither does
     /// this method, so the created comparator, its name and the managed instance behind it are held
@@ -309,19 +242,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return SetComparator(handle);
     }
 
-
-
     /// <summary>
-    /// REQUIRES: The client must provide a merge operator if Merge operation
-    /// needs to be accessed. Calling Merge on a DB without a merge operator
-    /// would result in Status::NotSupported. The client must ensure that the
-    /// merge operator supplied here has the same name and *exactly* the same
-    /// semantics as the merge operator provided to previous open calls on
-    /// the same DB. The only exception is reserved for upgrade, where a DB
-    /// previously without a merge operator is introduced to Merge operation
-    /// for the first time. It's necessary to specify a merge operator when
-    /// openning the DB in this case.
-    /// Default: nullptr
+    /// Resolves the operands of Merge writes into a value. Merging without one fails, and a
+    /// database records the operator's name and refuses to open under one reporting a different name.
     /// </summary>
     public T SetMergeOperator(IMergeOperator mergeOperator)
     {
@@ -350,18 +273,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return SetMergeOperator(handle);
     }
 
-
     /// <summary>
-    /// REQUIRES: The client must provide a merge operator if Merge operation
-    /// needs to be accessed. Calling Merge on a DB without a merge operator
-    /// would result in Status::NotSupported. The client must ensure that the
-    /// merge operator supplied here has the same name and *exactly* the same
-    /// semantics as the merge operator provided to previous open calls on
-    /// the same DB. The only exception is reserved for upgrade, where a DB
-    /// previously without a merge operator is introduced to Merge operation
-    /// for the first time. It's necessary to specify a merge operator when
-    /// openning the DB in this case.
-    /// Default: nullptr
+    /// Resolves the operands of Merge writes into a value. Merging without one fails, and a
+    /// database records the operator's name and refuses to open under one reporting a different name.
     /// </summary>
     public T SetMergeOperator(nint mergeOperator)
     {
@@ -369,6 +283,10 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return (T)this;
     }
 
+    /// <summary>
+    /// Installs rocksdb's built-in operator that reads values as little-endian 64-bit counters
+    /// and adds them.
+    /// </summary>
     public T SetUint64addMergeOperator()
     {
         rocksdb_options_set_uint64add_merge_operator(RocksDbInterop.Options(Handle));
@@ -376,41 +294,21 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Different levels can have different compression policies. There
-    /// are cases where most lower levels would like to use quick compression
-    /// algorithms while the higher levels (which have more data) use
-    /// compression algorithms that have better compression but could
-    /// be slower. This array, if non-empty, should have an entry for
-    /// each level of the database; these override the value specified in
-    /// the previous field 'compression'.
-    ///
-    /// NOTICE if level_compaction_dynamic_level_bytes=true,
-    /// compression_per_level[0] still determines L0, but other elements
-    /// of the array are based on base level (the level L0 files are merged
-    /// to), and may not match the level users see from info log for metadata.
-    /// If L0 files are merged to level-n, then, for i>0, compression_per_level[i]
-    /// determines compaction type for level n+i-1.
-    /// For example, if we have three 5 levels, and we determine to merge L0
-    /// data to L4 (which means L1..L3 will be empty), then the new files go to
-    /// L4 uses compression type compression_per_level[1].
-    /// If now L0 is merged to L2. Data goes to L2 will be compressed
-    /// according to compression_per_level[1], L3 using compression_per_level[2]
-    /// and L4 using compression_per_level[3]. Compaction for each level can
-    /// change when data grows.
+    /// Overrides <see cref="SetCompression"/> per level, taking one entry per level starting at
+    /// level 0. Passing nothing drops the overrides, leaving every level on
+    /// <see cref="SetCompression"/>.
     /// </summary>
-    public T SetCompressionPerLevel(Compression[] levelValues, ulong numLevels)
+    public T SetCompressionPerLevel(params ReadOnlySpan<Compression> levelValues)
     {
-        var values = levelValues.Select(x => (int)x).ToArray();
-        fixed (int* valuesPtr = values)
+        fixed (int* valuesPtr = MemoryMarshal.Cast<Compression, int>(levelValues))
         {
-            rocksdb_options_set_compression_per_level(RocksDbInterop.Options(Handle), valuesPtr, (nuint)numLevels);
+            rocksdb_options_set_compression_per_level(RocksDbInterop.Options(Handle), valuesPtr, (nuint)levelValues.Length);
         }
         return (T)this;
     }
 
     /// <summary>
-    /// Specify the info log level.
-    /// Default: Info (for release builds)
+    /// Sets how much the database writes to its LOG file.
     /// </summary>
     public T SetInfoLogLevel(InfoLogLevel value)
     {
@@ -419,22 +317,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Amount of data to build up in memory (backed by an unsorted log
-    /// on disk) before converting to a sorted on-disk file.
-    ///
-    /// Larger values increase performance, especially during bulk loads.
-    /// Up to max_write_buffer_number write buffers may be held in memory
-    /// at the same time,
-    /// so you may wish to adjust this parameter to control memory usage.
-    /// Also, a larger write buffer will result in a longer recovery time
-    /// the next time the database is opened.
-    ///
-    /// Note that write_buffer_size is enforced per column family.
-    /// See db_write_buffer_size for sharing memory across column families.
-    ///
-    /// Default: 4MB
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Bytes a memtable holds before it is flushed to an SST file. Larger buffers make bulk
+    /// writes faster and recovery slower.
     /// </summary>
     public T SetWriteBufferSize(ulong value)
     {
@@ -443,7 +327,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// different options for compression algorithms
+    /// Tunes the compression algorithm.
     /// </summary>
     public T SetCompressionOptions(int p1, int p2, int p3, int p4)
     {
@@ -452,20 +336,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// If non-nullptr, use the specified function to determine the
-    /// prefixes for keys.  These prefixes will be placed in the filter.
-    /// Depending on the workload, this can reduce the number of read-IOP
-    /// cost for scans when a prefix is passed via ReadOptions to
-    /// db.NewIterator().  For prefix filtering to work properly,
-    /// "prefix_extractor" and "comparator" must be such that the following
-    /// properties hold:
-    ///
-    /// 1) key.starts_with(prefix(key))
-    /// 2) Compare(prefix(key), key) &lt;= 0.
-    /// 3) If Compare(k1, k2) &lt;= 0, then Compare(prefix(k1), prefix(k2)) &lt;= 0
-    /// 4) prefix(prefix(key)) == prefix(key)
-    ///
-    /// Default: nullptr
+    /// Sets the prefix that bloom filters and hash indexes are built over, which is what makes
+    /// prefix seeks fast. It must agree with the comparator: a key must order after its own prefix.
     /// </summary>
     public T SetPrefixExtractor(nint sliceTransform)
     {
@@ -474,20 +346,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// If non-nullptr, use the specified function to determine the
-    /// prefixes for keys.  These prefixes will be placed in the filter.
-    /// Depending on the workload, this can reduce the number of read-IOP
-    /// cost for scans when a prefix is passed via ReadOptions to
-    /// db.NewIterator().  For prefix filtering to work properly,
-    /// "prefix_extractor" and "comparator" must be such that the following
-    /// properties hold:
-    ///
-    /// 1) key.starts_with(prefix(key))
-    /// 2) Compare(prefix(key), key) &lt;= 0.
-    /// 3) If Compare(k1, k2) &lt;= 0, then Compare(prefix(k1), prefix(k2)) &lt;= 0
-    /// 4) prefix(prefix(key)) == prefix(key)
-    ///
-    /// Default: nullptr
+    /// Sets the prefix that bloom filters and hash indexes are built over, which is what makes
+    /// prefix seeks fast. It must agree with the comparator: a key must order after its own prefix.
     /// </summary>
     public T SetPrefixExtractor(SliceTransform sliceTransform)
     {
@@ -497,7 +357,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Number of levels for this database
+    /// Number of levels in the LSM tree.
     /// </summary>
     public T SetNumLevels(int value)
     {
@@ -506,12 +366,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Number of files to trigger level-0 compaction. A value &lt;0 means that
-    /// level-0 compaction will not be triggered by number of files at all.
-    ///
-    /// Default: 4
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Number of level-0 files that starts a compaction.
     /// </summary>
     public T SetLevel0FileNumCompactionTrigger(int value)
     {
@@ -520,11 +375,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Soft limit on number of level-0 files. We start slowing down writes at this
-    /// point. A value &lt;0 means that no writing slow down will be triggered by
-    /// number of files in level-0.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Number of level-0 files at which writes are throttled.
     /// </summary>
     public T SetLevel0SlowdownWritesTrigger(int value)
     {
@@ -533,9 +384,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Maximum number of level-0 files.  We stop writes at this point.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Number of level-0 files at which writes stop until compaction catches up.
     /// </summary>
     public T SetLevel0StopWritesTrigger(int value)
     {
@@ -544,18 +393,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Target file size for compaction.
-    /// target_file_size_base is per-file size for level-1.
-    /// Target file size for level L can be calculated by
-    /// target_file_size_base * (target_file_size_multiplier ^ (L-1))
-    /// For example, if target_file_size_base is 2MB and
-    /// target_file_size_multiplier is 10, then each file on level-1 will
-    /// be 2MB, and each file on level 2 will be 20MB,
-    /// and each file on level-3 will be 200MB.
-    ///
-    /// Default: 2MB.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Target size of an SST file at level 1; deeper levels scale it by
+    /// <see cref="SetTargetFileSizeMultiplier"/>.
     /// </summary>
     public T SetTargetFileSizeBase(ulong value)
     {
@@ -564,10 +403,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// By default target_file_size_multiplier is 1, which means
-    /// by default files in different levels will have similar size.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Scales the target file size from each level to the next.
     /// </summary>
     public T SetTargetFileSizeMultiplier(int value)
     {
@@ -576,18 +412,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Control maximum total data size for a level.
-    /// max_bytes_for_level_base is the max total for level-1.
-    /// Maximum number of bytes for level L can be calculated as
-    /// (max_bytes_for_level_base) * (max_bytes_for_level_multiplier ^ (L-1))
-    /// For example, if max_bytes_for_level_base is 20MB, and if
-    /// max_bytes_for_level_multiplier is 10, total data size for level-1
-    /// will be 20MB, total file size for level-2 will be 200MB,
-    /// and total file size for level-3 will be 2GB.
-    ///
-    /// Default: 10MB.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Target total size of level 1; deeper levels scale it by
+    /// <see cref="SetMaxBytesForLevelMultiplier"/>.
     /// </summary>
     public T SetMaxBytesForLevelBase(ulong value)
     {
@@ -596,65 +422,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// If true, RocksDB will pick target size of each level dynamically.
-    /// We will pick a base level b >= 1. L0 will be directly merged into level b,
-    /// instead of always into level 1. Level 1 to b-1 need to be empty.
-    /// We try to pick b and its target size so that
-    /// 1. target size is in the range of
-    ///   (max_bytes_for_level_base / max_bytes_for_level_multiplier,
-    ///    max_bytes_for_level_base]
-    /// 2. target size of the last level (level num_levels-1) equals to extra size
-    ///    of the level.
-    /// At the same time max_bytes_for_level_multiplier and
-    /// max_bytes_for_level_multiplier_additional are still satisfied.
-    ///
-    /// With this option on, from an empty DB, we make last level the base level,
-    /// which means merging L0 data into the last level, until it exceeds
-    /// max_bytes_for_level_base. And then we make the second last level to be
-    /// base level, to start to merge L0 data to second last level, with its
-    /// target size to be 1/max_bytes_for_level_multiplier of the last level's
-    /// extra size. After the data accumulates more so that we need to move the
-    /// base level to the third last one, and so on.
-    ///
-    /// For example, assume max_bytes_for_level_multiplier=10, num_levels=6,
-    /// and max_bytes_for_level_base=10MB.
-    /// Target sizes of level 1 to 5 starts with:
-    /// [- - - - 10MB]
-    /// with base level is level. Target sizes of level 1 to 4 are not applicable
-    /// because they will not be used.
-    /// Until the size of Level 5 grows to more than 10MB, say 11MB, we make
-    /// base target to level 4 and now the targets looks like:
-    /// [- - - 1.1MB 11MB]
-    /// While data are accumulated, size targets are tuned based on actual data
-    /// of level 5. When level 5 has 50MB of data, the target is like:
-    /// [- - - 5MB 50MB]
-    /// Until level 5's actual size is more than 100MB, say 101MB. Now if we keep
-    /// level 4 to be the base level, its target size needs to be 10.1MB, which
-    /// doesn't satisfy the target size range. So now we make level 3 the target
-    /// size and the target sizes of the levels look like:
-    /// [- - 1.01MB 10.1MB 101MB]
-    /// In the same way, while level 5 further grows, all levels' targets grow,
-    /// like
-    /// [- - 5MB 50MB 500MB]
-    /// Until level 5 exceeds 1000MB and becomes 1001MB, we make level 2 the
-    /// base level and make levels' target sizes like this:
-    /// [- 1.001MB 10.01MB 100.1MB 1001MB]
-    /// and go on...
-    ///
-    /// By doing it, we give max_bytes_for_level_multiplier a priority against
-    /// max_bytes_for_level_base, for a more predictable LSM tree shape. It is
-    /// useful to limit worse case space amplification.
-    ///
-    /// max_bytes_for_level_multiplier_additional is ignored with this flag on.
-    ///
-    /// Turning this feature on or off for an existing DB can cause unexpected
-    /// LSM tree structure so it's not recommended.
-    ///
-    /// NOTE: this option is experimental
-    ///
-    /// Default: false
+    /// Sizes the levels from the bottom up as the data grows, which keeps space amplification low.
     /// </summary>
-    /// <returns></returns>
     public T SetLevelCompactionDynamicLevelBytes(bool value)
     {
         rocksdb_options_set_level_compaction_dynamic_level_bytes(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
@@ -662,9 +431,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Default: 10.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Scales the target total size from each level to the next.
     /// </summary>
     public T SetMaxBytesForLevelMultiplier(double value)
     {
@@ -673,35 +440,20 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Different max-size multipliers for different levels.
-    /// These are multiplied by max_bytes_for_level_multiplier to arrive
-    /// at the max-size of each level.
-    ///
-    /// Default: 1
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Applies a further multiplier per level, taking one entry per level starting at level 0.
+    /// Passing nothing drops the multipliers.
     /// </summary>
-    public T SetMaxBytesForLevelMultiplierAdditional(int[] levelValues, ulong numLevels)
+    public T SetMaxBytesForLevelMultiplierAdditional(params ReadOnlySpan<int> levelValues)
     {
         fixed (int* valuesPtr = levelValues)
         {
-            rocksdb_options_set_max_bytes_for_level_multiplier_additional(RocksDbInterop.Options(Handle), valuesPtr, (nuint)numLevels);
+            rocksdb_options_set_max_bytes_for_level_multiplier_additional(RocksDbInterop.Options(Handle), valuesPtr, (nuint)levelValues.Length);
         }
         return (T)this;
     }
 
     /// <summary>
-    /// The maximum number of write buffers that are built up in memory.
-    /// The default and the minimum number is 2, so that when 1 write buffer
-    /// is being flushed to storage, new writes can continue to the other
-    /// write buffer.
-    /// If max_write_buffer_number > 3, writing will be slowed down to
-    /// options.delayed_write_rate if we are writing to the last write buffer
-    /// allowed.
-    ///
-    /// Default: 2
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// How many memtables may exist at once before writes stall.
     /// </summary>
     public T SetMaxWriteBufferNumber(int value)
     {
@@ -710,13 +462,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// The minimum number of write buffers that will be merged together
-    /// before writing to storage.  If set to 1, then
-    /// all write buffers are fushed to L0 as individual files and this increases
-    /// read amplification because a get request has to check in all of these
-    /// files. Also, an in-memory merge may result in writing lesser
-    /// data to storage if there are duplicate records in each of these
-    /// individual write buffers.  Default: 1
+    /// How many memtables must fill up before they are merged into one SST file.
     /// </summary>
     public T SetMinWriteBufferNumberToMerge(int value)
     {
@@ -725,10 +471,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    ///  The amount of write history to maintain in memory, in bytes. This includes the current memtable size, 
-    ///  sealed but unflushed memtables, and flushed memtables that are kept around. RocksDB will try to keep 
-    ///  at least this much history in memory - if dropping a flushed memtable would result in history falling 
-    ///  below this threshold, it would not be dropped. (Default: 0)
+    /// Bytes of already-flushed memtables to keep in memory, so recent writes can be read there.
     /// </summary>
     public T SetMaxWriteBufferSizeToMaintain(int value)
     {
@@ -737,10 +480,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// All writes will be slowed down to at least delayed_write_rate if estimated
-    /// bytes needed to be compaction exceed this threshold.
-    ///
-    /// Default: 64GB
+    /// Backlog of pending compaction bytes at which writes are throttled.
     /// </summary>
     public T SetSoftPendingCompactionBytesLimit(ulong value)
     {
@@ -749,10 +489,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// All writes are stopped if estimated bytes needed to be compaction exceed
-    /// this threshold.
-    ///
-    /// Default: 256GB
+    /// Backlog of pending compaction bytes at which writes stop until compaction catches up.
     /// </summary>
     public T SetHardPendingCompactionBytesLimit(ulong value)
     {
@@ -761,21 +498,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// size of one block in arena memory allocation.
-    /// If &lt;= 0, a proper value is automatically calculated (usually 1/8 of
-    /// writer_buffer_size, rounded up to a multiple of 4KB).
-    ///
-    /// There are two additional restriction of the The specified size:
-    /// (1) size should be in the range of [4096, 2 &lt;&lt; 30] and
-    /// (2) be the multiple of the CPU word (which helps with the memory
-    /// alignment).
-    ///
-    /// We'll automatically check and adjust the size number to make sure it
-    /// conforms to the restrictions.
-    ///
-    /// Default: 0
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Block size of the arena a memtable allocates from.
     /// </summary>
     public T SetArenaBlockSize(ulong value)
     {
@@ -784,14 +507,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// An iteration->Next() sequentially skips over keys with the same
-    /// user-key unless this option is set. This number specifies the number
-    /// of keys (with the same userkey) that will be sequentially
-    /// skipped before a reseek is issued.
-    ///
-    /// Default: 8
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// How many versions of a key an iterator step walks past before it seeks instead.
     /// </summary>
     public T SetMaxSequentialSkipInIterations(ulong value)
     {
@@ -800,10 +516,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Disable automatic compactions. Manual compactions can still
-    /// be issued on this column family
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Stops background compaction when non-zero; explicit compactions still run.
     /// </summary>
     public T SetDisableAutoCompactions(int value)
     {
@@ -812,20 +525,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// This flag specifies that the implementation should optimize the filters
-    /// mainly for cases where keys are found rather than also optimize for keys
-    /// missed. This would be used in cases where the application knows that
-    /// there are very few misses or the performance in the case of misses is not
-    /// important.
-    ///
-    /// For now, this flag allows us to not store filters for the last level i.e
-    /// the largest level which contains data of the LSM store. For keys which
-    /// are hits, the filters in this level are not useful because we will search
-    /// for the data anyway. NOTE: the filters in other levels are still useful
-    /// even for key hit because they tell us whether to look in that level or go
-    /// to the higher level.
-    ///
-    /// Default: false
+    /// Drops the bloom filter on the bottom level, where lookups usually hit anyway, to save memory.
     /// </summary>
     public T SetOptimizeFiltersForHits(int value)
     {
@@ -833,59 +533,76 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         return (T)this;
     }
 
+    /// <summary>
+    /// Switches the memtable to a vector, which suits bulk loading and not much else.
+    /// </summary>
     public T SetMemtableVectorRep()
     {
         rocksdb_options_set_memtable_vector_rep(RocksDbInterop.Options(Handle));
         return (T)this;
     }
 
+    /// <summary>
+    /// Sizes the memtable's prefix bloom filter as a fraction of the memtable.
+    /// </summary>
     public T SetMemtablePrefixBloomSizeRatio(double ratio)
     {
         rocksdb_options_set_memtable_prefix_bloom_size_ratio(RocksDbInterop.Options(Handle), ratio);
         return (T)this;
     }
 
+    /// <summary>
+    /// Caps how many bytes a single compaction may take as input.
+    /// </summary>
     public T SetMaxCompactionBytes(ulong bytes)
     {
         rocksdb_options_set_max_compaction_bytes(RocksDbInterop.Options(Handle), (nuint)bytes);
         return (T)this;
     }
 
-    public T SetHashSkipListRep(ulong bucket_count, int skiplist_height, int skiplist_branching_factor)
+    /// <summary>
+    /// Switches the memtable to a hash of skip lists, which needs a prefix extractor.
+    /// </summary>
+    public T SetHashSkipListRep(ulong bucketCount, int skipListHeight, int skipListBranchingFactor)
     {
-        rocksdb_options_set_hash_skip_list_rep(RocksDbInterop.Options(Handle), (nuint)bucket_count, skiplist_height, skiplist_branching_factor);
+        rocksdb_options_set_hash_skip_list_rep(RocksDbInterop.Options(Handle), (nuint)bucketCount, skipListHeight, skipListBranchingFactor);
         return (T)this;
     }
 
+    /// <summary>
+    /// Switches the memtable to a hash of linked lists, which needs a prefix extractor.
+    /// </summary>
     public T SetHashLinkListRep(ulong value)
     {
         rocksdb_options_set_hash_link_list_rep(RocksDbInterop.Options(Handle), (nuint)value);
         return (T)this;
     }
 
-    public T SetPlainTableFactory(uint user_key_len,
-        int bloom_bits_per_key,
-        double hash_table_ratio,
-        int index_sparseness,
-        int huge_page_tlb_size,
-        char encoding_type,
-        bool full_scan_mode,
-        bool store_index_in_file)
+    /// <summary>
+    /// Switches SST files to the plain table format, which suits in-memory databases with
+    /// fixed-length keys.
+    /// </summary>
+    public T SetPlainTableFactory(uint userKeyLength,
+        int bloomBitsPerKey,
+        double hashTableRatio,
+        int indexSparseness,
+        int hugePageTlbSize,
+        char encodingType,
+        bool fullScanMode,
+        bool storeIndexInFile)
     {
-        rocksdb_options_set_plain_table_factory(RocksDbInterop.Options(Handle), user_key_len, bloom_bits_per_key, hash_table_ratio, (nuint)index_sparseness, (nuint)huge_page_tlb_size, (sbyte)encoding_type, RocksDbInterop.Bool(full_scan_mode), RocksDbInterop.Bool(store_index_in_file));
+        rocksdb_options_set_plain_table_factory(RocksDbInterop.Options(Handle), userKeyLength, bloomBitsPerKey, hashTableRatio, (nuint)indexSparseness, (nuint)hugePageTlbSize, (sbyte)encodingType, RocksDbInterop.Bool(fullScanMode), RocksDbInterop.Bool(storeIndexInFile));
         return (T)this;
     }
 
     /// <summary>
-    /// Compress only from the given level upwards. Levels below it are set to
-    /// no compression, and levels from it up are set to the type configured by
-    /// SetCompression.
-    ///
-    /// This overwrites compression_per_level, so it and SetCompressionPerLevel
-    /// are alternatives rather than complements: whichever is called last wins.
-    ///
-    /// A negative level is ignored.
+    /// Compresses only from the given level upwards, leaving the levels below it uncompressed and
+    /// the rest on the type <see cref="SetCompression"/> configures. A negative level is ignored.
     /// </summary>
+    /// <remarks>
+    /// This writes the per-level values, so it and <see cref="SetCompressionPerLevel"/> are
+    /// alternatives rather than complements: whichever is called last wins.
+    /// </remarks>
     public T SetMinLevelToCompress(int level)
     {
         rocksdb_options_set_min_level_to_compress(RocksDbInterop.Options(Handle), level);
@@ -893,17 +610,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Maximum number of successive merge operations on a key in the memtable.
-    ///
-    /// When a merge operation is added to the memtable and the maximum number of
-    /// successive merges is reached, the value of the key will be calculated and
-    /// inserted into the memtable instead of the merge operation. This will
-    /// ensure that there are never more than max_successive_merges merge
-    /// operations in the memtable.
-    ///
-    /// Default: 0 (disabled)
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// How many merge operands may pile up on one key in the memtable before they are
+    /// resolved eagerly.
     /// </summary>
     public T SetMaxSuccessiveMerges(ulong value)
     {
@@ -912,12 +620,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Control locality of bloom filter probes to improve cache miss rate.
-    /// This option only applies to memtable prefix bloom and plaintable
-    /// prefix bloom. It essentially limits every bloom checking to one cache line.
-    /// This optimization is turned off when set to 0, and positive number to turn
-    /// it on.
-    /// Default: 0
+    /// Packs a key's bloom bits into fewer cache lines, trading a higher false-positive rate for
+    /// fewer cache misses.
     /// </summary>
     public T SetBloomLocality(uint value)
     {
@@ -926,18 +630,14 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Allows thread-safe inplace updates. If this is true, there is no way to
-    /// achieve point-in-time consistency using snapshot or iterator (assuming
-    /// concurrent updates). Hence iterator and multi-get will return results
-    /// which are not consistent as of any point-in-time.
-    /// If inplace_callback function is not set,
-    ///   Put(key, new_value) will update inplace the existing_value iff
-    ///   * key exists in current memtable
-    ///   * new sizeof(new_value) &lt;= sizeof(existing_value)
-    ///   * existing_value for that key is a put i.e. kTypeValue
-    /// If inplace_callback function is set, check doc for inplace_callback.
-    /// Default: false.
+    /// Overwrites values in the memtable rather than appending a new version of the key.
     /// </summary>
+    /// <remarks>
+    /// A family with in-place updates enabled cannot be read at a point in time: the overwritten
+    /// versions no longer exist, so <see cref="RocksDb.CreateSnapshot"/> and
+    /// <see cref="RocksDb.NewIterator"/> may observe writes made after them. Incompatible with
+    /// <see cref="SetAllowConcurrentMemtableWrite"/>.
+    /// </remarks>
     public T SetInplaceUpdateSupport(bool value)
     {
         rocksdb_options_set_inplace_update_support(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
@@ -945,10 +645,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Number of locks used for inplace update
-    /// Default: 10000, if inplace_update_support = true, else 0.
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Number of locks shared by in-place memtable updates.
     /// </summary>
     public T SetInplaceUpdateNumLocks(ulong value)
     {
@@ -957,32 +654,16 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Measure IO stats in compactions and flushes, if true.
-    /// Default: false 
+    /// Collects I/O statistics for flushes and compactions.
     /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
     public T SetReportBgIoStats(bool value)
     {
-        rocksdb_options_set_report_bg_io_stats(RocksDbInterop.Options(Handle), value ? 0 : 1);
+        rocksdb_options_set_report_bg_io_stats(RocksDbInterop.Options(Handle), value ? 1 : 0);
         return (T)this;
     }
 
     /// <summary>
-    /// Compress blocks using the specified compression algorithm.  This
-    /// parameter can be changed dynamically.
-    ///
-    /// Default: kSnappyCompression, if it's supported. If snappy is not linked
-    /// with the library, the default is kNoCompression.
-    ///
-    /// Typical speeds of kSnappyCompression on an Intel(R) Core(TM)2 2.4GHz:
-    ///    ~200-500MB/s compression
-    ///    ~400-800MB/s decompression
-    /// Note that these speeds are significantly faster than most
-    /// persistent storage speeds, and therefore it is typically never
-    /// worth switching to kNoCompression.  Even if the input data is
-    /// incompressible, the kSnappyCompression implementation will
-    /// efficiently detect that and will switch to uncompressed mode.
+    /// Selects the algorithm SST blocks are compressed with.
     /// </summary>
     public T SetCompression(Compression value)
     {
@@ -991,7 +672,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// The compaction style. Default: kCompactionStyleLevel
+    /// Selects how compaction reorganizes the data: level, universal, or FIFO.
     /// </summary>
     public T SetCompactionStyle(Compaction value)
     {
@@ -1000,7 +681,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// The options needed to support Universal Style compactions
+    /// Settings used when <see cref="SetCompactionStyle"/> selects universal compaction.
     /// </summary>
     public T SetUniversalCompactionOptions(nint universalCompactionOptions)
     {
@@ -1009,7 +690,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// The options for FIFO compaction style
+    /// Settings used when <see cref="SetCompactionStyle"/> selects FIFO compaction.
     /// </summary>
     public T SetFifoCompactionOptions(nint fifoCompactionOptions)
     {
@@ -1018,13 +699,8 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Page size for huge page TLB for bloom in memtable. If &lt;=0, not allocate
-    /// from huge page TLB but from malloc.
-    /// Need to reserve huge pages for it to be allocated. For example:
-    ///      sysctl -w vm.nr_hugepages=20
-    /// See linux doc Documentation/vm/hugetlbpage.txt
-    ///
-    /// Dynamically changeable through SetOptions() API
+    /// Allocates the memtable bloom filter from huge pages of this size, which the system must
+    /// have reserved; otherwise it falls back to ordinary allocation.
     /// </summary>
     public T SetMemtableHugePageSize(ulong size)
     {

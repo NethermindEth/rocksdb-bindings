@@ -15,11 +15,15 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+template=$(sed -n 's/^file_header_template = //p' "$root/.editorconfig")
+header_file="$work/header.txt"
+printf '// %s\n' "${template//\\n/$'\n// '}" > "$header_file"
+
 curl -fsSL -o "$work/c.h" \
   "https://raw.githubusercontent.com/facebook/rocksdb/$ref/include/rocksdb/c.h"
 
 ClangSharpPInvokeGenerator @"$root/generation/rocksdb.rsp" \
-  --header-file "$root/generation/header.txt" \
+  --header-file "$header_file" \
   --file "$work/c.h" \
   --output "$work/RocksDbNative.g.cs"
 

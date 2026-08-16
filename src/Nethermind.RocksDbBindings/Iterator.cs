@@ -5,7 +5,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class Iterator : IDisposable
+public sealed unsafe class Iterator : IDisposable
 {
     private readonly IteratorHandle _handle;
 

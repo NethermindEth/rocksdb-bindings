@@ -5,7 +5,7 @@ namespace Nethermind.RocksDbBindings;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
-public unsafe class Checkpoint : IDisposable
+public sealed unsafe class Checkpoint : IDisposable
 {
     // Owns the native checkpoint and a lease on the database: while the checkpoint lives, the
     // native close is deferred, and abandoning it is recovered by the critical finalizer.

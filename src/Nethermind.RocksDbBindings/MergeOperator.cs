@@ -63,7 +63,7 @@ public static class MergeOperators
     }
 
 
-    private class MergeOperatorImpl(string name, MergeOperators.PartialMergeFunc partialMerge, MergeOperators.FullMergeFunc fullMerge) : IMergeOperator
+    private sealed class MergeOperatorImpl(string name, MergeOperators.PartialMergeFunc partialMerge, MergeOperators.FullMergeFunc fullMerge) : IMergeOperator
     {
         public string Name { get; } = name;
         private PartialMergeFunc PartialMerge { get; } = partialMerge;

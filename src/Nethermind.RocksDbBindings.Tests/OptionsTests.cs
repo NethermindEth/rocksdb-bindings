@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Reflection;
+
 using Nethermind.RocksDbBindings.Native;
 
 namespace Nethermind.RocksDbBindings.Tests;
@@ -17,14 +19,69 @@ public class OptionsTests
         => RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)options.Handle);
 
     /// <remarks>
-    /// <see cref="FlushOptions" /> derives from <see cref="OptionsHandle" /> but must not use the
-    /// <c>rocksdb_options_t</c> that base class would otherwise create. If it did, this read of
-    /// <c>wait</c> would land on <c>DBOptions::create_if_missing</c> instead, whose default is
-    /// false, and every setter would write into an unrelated struct.
+    /// <see cref="FlushOptions" /> owns a <c>rocksdb_flushoptions_t</c>, not the
+    /// <c>rocksdb_options_t</c> that <see cref="OptionsHandle" /> creates. If it were the latter,
+    /// this read of <c>wait</c> would land on <c>DBOptions::create_if_missing</c> instead, whose
+    /// default is false, and every setter would write into an unrelated struct.
     /// </remarks>
     [Test]
     public async Task FlushOptions_StartsOutWaitingLikeRocksDbDoes()
         => await Assert.That(WaitForFlush(new FlushOptions())).IsEqualTo((byte)1);
+
+    /// <remarks>
+    /// Half of what stops <c>Open(new FlushOptions(), path)</c> from compiling: the two own
+    /// different native structs, so neither may be assignable to the other. The other half is the
+    /// parameter types, which the tests below pin.
+    /// </remarks>
+    [Test]
+    public async Task FlushOptions_IsNotAnOptionsHandle()
+    {
+        using (Assert.Multiple())
+        {
+            await Assert.That(typeof(FlushOptions).IsAssignableTo(typeof(OptionsHandle))).IsFalse();
+            await Assert.That(typeof(OptionsHandle).IsAssignableTo(typeof(FlushOptions))).IsFalse();
+        }
+    }
+
+    /// <remarks>
+    /// Every overload must name the concrete <c>rocksdb_options_t</c> wrapper. Widening one back
+    /// to a shared base would let an unrelated options struct through again, which the assignability
+    /// test above cannot catch.
+    /// </remarks>
+    [Test]
+    public async Task EveryDatabaseOpen_TakesDbOptions()
+    {
+        MethodInfo[] opens = [.. typeof(RocksDb)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Where(method => method.Name.StartsWith("Open", StringComparison.Ordinal))];
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(opens).IsNotEmpty();
+
+            foreach (MethodInfo open in opens)
+                await Assert.That(open.GetParameters()[0].ParameterType).IsEqualTo(typeof(DbOptions));
+        }
+    }
+
+    /// <remarks>
+    /// The abstract bases exist to share plumbing, not to name a parameter: one accepts any
+    /// options struct at all, the other any <c>rocksdb_options_t</c>-shaped one.
+    /// </remarks>
+    [Test]
+    public async Task NoPublicMember_TakesAnAbstractOptionsBase()
+    {
+        var offenders = typeof(RocksDb).Assembly
+            .GetExportedTypes()
+            .SelectMany(type => type.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                .OfType<MethodBase>())
+            .SelectMany(member => member.GetParameters().Select(parameter => (member, parameter)))
+            .Where(entry => entry.parameter.ParameterType == typeof(NativeOptions)
+                || entry.parameter.ParameterType == typeof(OptionsHandle))
+            .Select(entry => $"{entry.member.DeclaringType!.Name}.{entry.member.Name}({entry.parameter.Name})");
+
+        await Assert.That(offenders).IsEmpty();
+    }
 
     [Test]
     public async Task FlushOptions_SetWaitForFlush_ReachesTheNativeFlushOptions()

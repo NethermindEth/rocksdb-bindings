@@ -10,15 +10,13 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe sealed class WriteBatch : IDisposable
 {
-    private nint handle;
-
     public WriteBatch() : this((nint)rocksdb_writebatch_create())
     {
     }
 
     internal WriteBatch(nint handle)
     {
-        this.handle = handle;
+        Handle = handle;
     }
 
     public static WriteBatch FromSpan(ReadOnlySpan<byte> data)
@@ -30,24 +28,24 @@ public unsafe sealed class WriteBatch : IDisposable
         }
     }
 
-    public nint Handle { get { return handle; } }
+    public nint Handle { get; private set; }
 
     public void Dispose()
     {
-        if (handle != nint.Zero)
+        if (Handle != nint.Zero)
         {
-            rocksdb_writebatch_destroy(RocksDbInterop.WriteBatch(handle));
-            handle = nint.Zero;
+            rocksdb_writebatch_destroy(RocksDbInterop.WriteBatch(Handle));
+            Handle = nint.Zero;
         }
     }
 
     public WriteBatch Clear()
     {
-        rocksdb_writebatch_clear(RocksDbInterop.WriteBatch(handle));
+        rocksdb_writebatch_clear(RocksDbInterop.WriteBatch(Handle));
         return this;
     }
 
-    public int Count() => rocksdb_writebatch_count(RocksDbInterop.WriteBatch(handle));
+    public int Count() => rocksdb_writebatch_count(RocksDbInterop.WriteBatch(Handle));
 
     /// <summary>The size in bytes of the batch's serialized representation.</summary>
     public nuint DataSize
@@ -55,7 +53,7 @@ public unsafe sealed class WriteBatch : IDisposable
         get
         {
             nuint size;
-            rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &size);
+            rocksdb_writebatch_data(RocksDbInterop.WriteBatch(Handle), &size);
             return size;
         }
     }
@@ -67,11 +65,11 @@ public unsafe sealed class WriteBatch : IDisposable
         {
             if (cf is null)
             {
-                rocksdb_writebatch_put(RocksDbInterop.WriteBatch(handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
+                rocksdb_writebatch_put(RocksDbInterop.WriteBatch(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
             }
             else
             {
-                rocksdb_writebatch_put_cf(RocksDbInterop.WriteBatch(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
+                rocksdb_writebatch_put_cf(RocksDbInterop.WriteBatch(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
             }
         }
         return this;
@@ -84,11 +82,11 @@ public unsafe sealed class WriteBatch : IDisposable
         {
             if (cf is null)
             {
-                rocksdb_writebatch_merge(RocksDbInterop.WriteBatch(handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
+                rocksdb_writebatch_merge(RocksDbInterop.WriteBatch(Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
             }
             else
             {
-                rocksdb_writebatch_merge_cf(RocksDbInterop.WriteBatch(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
+                rocksdb_writebatch_merge_cf(RocksDbInterop.WriteBatch(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, (sbyte*)valuePtr, (nuint)value.Length);
             }
         }
         return this;
@@ -100,11 +98,11 @@ public unsafe sealed class WriteBatch : IDisposable
         {
             if (cf is null)
             {
-                rocksdb_writebatch_delete(RocksDbInterop.WriteBatch(handle), (sbyte*)keyPtr, (nuint)key.Length);
+                rocksdb_writebatch_delete(RocksDbInterop.WriteBatch(Handle), (sbyte*)keyPtr, (nuint)key.Length);
             }
             else
             {
-                rocksdb_writebatch_delete_cf(RocksDbInterop.WriteBatch(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length);
+                rocksdb_writebatch_delete_cf(RocksDbInterop.WriteBatch(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length);
             }
         }
         return this;
@@ -120,11 +118,11 @@ public unsafe sealed class WriteBatch : IDisposable
         {
             if (cf is null)
             {
-                rocksdb_writebatch_delete_range(RocksDbInterop.WriteBatch(handle), (sbyte*)startKeyPtr, (nuint)startKey.Length, (sbyte*)endKeyPtr, (nuint)endKey.Length);
+                rocksdb_writebatch_delete_range(RocksDbInterop.WriteBatch(Handle), (sbyte*)startKeyPtr, (nuint)startKey.Length, (sbyte*)endKeyPtr, (nuint)endKey.Length);
             }
             else
             {
-                rocksdb_writebatch_delete_range_cf(RocksDbInterop.WriteBatch(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startKeyPtr, (nuint)startKey.Length, (sbyte*)endKeyPtr, (nuint)endKey.Length);
+                rocksdb_writebatch_delete_range_cf(RocksDbInterop.WriteBatch(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startKeyPtr, (nuint)startKey.Length, (sbyte*)endKeyPtr, (nuint)endKey.Length);
             }
         }
         return this;
@@ -140,7 +138,7 @@ public unsafe sealed class WriteBatch : IDisposable
     public WriteBatch Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
     {
         rocksdb_writebatch_iterate(
-            RocksDbInterop.WriteBatch(handle),
+            RocksDbInterop.WriteBatch(Handle),
             state,
             put,
             deleted);
@@ -148,20 +146,24 @@ public unsafe sealed class WriteBatch : IDisposable
     }
 
     /// <summary>
-    /// Get the write batch as bytes
+    /// Copies the batch's serialized representation, which <see cref="FromSpan"/> accepts.
     /// </summary>
-    /// <returns></returns>
     public byte[] ToBytes()
     {
         nuint size;
-        var resultPtr = rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &size);
+        var resultPtr = rocksdb_writebatch_data(RocksDbInterop.WriteBatch(Handle), &size);
         return RocksDbInterop.Bytes((nint)resultPtr, size)!;
     }
 
+    /// <summary>
+    /// <see cref="ToBytes"/> into a pooled array, which may be longer than
+    /// <paramref name="size"/> and must be handed back to <see cref="ReturnPooledBytes"/>.
+    /// </summary>
+    /// <param name="size">The length of the serialized representation.</param>
     public byte[] ToBytesPooled(out int size)
     {
         nuint sizePtr;
-        var resultPtr = rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &sizePtr);
+        var resultPtr = rocksdb_writebatch_data(RocksDbInterop.WriteBatch(Handle), &sizePtr);
         size = (int)sizePtr;
         var pooledBuffer = ArrayPool<byte>.Shared.Rent(size);
         new ReadOnlySpan<byte>(resultPtr, size).CopyTo(pooledBuffer);
@@ -170,19 +172,19 @@ public unsafe sealed class WriteBatch : IDisposable
 
     public static void ReturnPooledBytes(byte[] bytes) => ArrayPool<byte>.Shared.Return(bytes);
 
-    public void SetSavePoint() => rocksdb_writebatch_set_save_point(RocksDbInterop.WriteBatch(handle));
+    public void SetSavePoint() => rocksdb_writebatch_set_save_point(RocksDbInterop.WriteBatch(Handle));
 
     public void RollbackToSavePoint()
     {
         sbyte* errptr = null;
-        rocksdb_writebatch_rollback_to_save_point(RocksDbInterop.WriteBatch(handle), &errptr);
+        rocksdb_writebatch_rollback_to_save_point(RocksDbInterop.WriteBatch(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     public void PopSavePoint()
     {
         sbyte* errptr = null;
-        rocksdb_writebatch_pop_save_point(RocksDbInterop.WriteBatch(handle), &errptr);
+        rocksdb_writebatch_pop_save_point(RocksDbInterop.WriteBatch(Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 }

@@ -3,7 +3,7 @@
 
 namespace Nethermind.RocksDbBindings;
 
-public class ReplicationFile : IDisposable
+public sealed class ReplicationFile : IDisposable
 {
     public required string FileName { get; set; }
     public ulong FileSize { get; set; }

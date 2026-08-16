@@ -10,9 +10,9 @@ public interface IColumnFamilyHandle
     nint Handle { get; }
 }
 
-unsafe class ColumnFamilyHandleInternal(nint handle) : IColumnFamilyHandle, IDisposable
+sealed unsafe class ColumnFamilyHandleInternal(nint handle) : IColumnFamilyHandle, IDisposable
 {
-    public nint Handle { get; protected set; } = handle;
+    public nint Handle { get; private set; } = handle;
 
     public void Dispose()
     {

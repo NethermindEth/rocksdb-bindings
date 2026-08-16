@@ -5,7 +5,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class Cache : IDisposable
+public sealed unsafe class Cache : IDisposable
 {
     private readonly CacheHandle _handle;
 

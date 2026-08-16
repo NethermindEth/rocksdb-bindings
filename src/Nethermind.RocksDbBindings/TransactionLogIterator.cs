@@ -5,7 +5,7 @@ namespace Nethermind.RocksDbBindings;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
-public unsafe class TransactionLogIterator : IDisposable
+public sealed unsafe class TransactionLogIterator : IDisposable
 {
     // Owns the native WAL iterator and a lease on the database: while the iterator lives, the
     // native close is deferred, and abandoning it is recovered by the critical finalizer.

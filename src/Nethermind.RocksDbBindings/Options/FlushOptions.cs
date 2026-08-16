@@ -9,12 +9,9 @@ namespace Nethermind.RocksDbBindings;
 /// The native flush reads these options in place, so dispose only after every flush using them
 /// has returned.
 /// </remarks>
-public unsafe class FlushOptions : OptionsHandle
+public unsafe class FlushOptions : NativeOptions
 {
-    public FlushOptions() : base(createHandle: false)
-    {
-        Handle = (nint)rocksdb_flushoptions_create();
-    }
+    public FlushOptions() => Handle = (nint)rocksdb_flushoptions_create();
 
     public FlushOptions SetWaitForFlush(bool waitForFlush)
     {

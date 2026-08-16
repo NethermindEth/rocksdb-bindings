@@ -25,5 +25,5 @@ public unsafe class CompactionFilter(
     delegate* unmanaged[Cdecl]<void*, int, sbyte*, nuint, sbyte*, nuint, sbyte**, nuint*, byte*, byte> filter,
     delegate* unmanaged[Cdecl]<void*, sbyte*> name)
 {
-    public nint Handle = (nint)rocksdb_compactionfilter_create(state, destructor, filter, name);
+    public nint Handle { get; } = (nint)rocksdb_compactionfilter_create(state, destructor, filter, name);
 }

@@ -7,9 +7,9 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class SstFileWriter : IDisposable
+public sealed unsafe class SstFileWriter : IDisposable
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; private set; }
 
     // Held so the garbage collector cannot finalize them while rocksdb still points at them.
     private EnvOptions EnvOptions { get; }

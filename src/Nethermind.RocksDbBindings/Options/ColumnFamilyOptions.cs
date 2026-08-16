@@ -15,7 +15,7 @@ public class ColumnFamilyOptions : Options<ColumnFamilyOptions> { }
 
 // The callbacks live here rather than on Options<T> because UnmanagedCallersOnly methods
 // cannot be declared in a generic type.
-internal unsafe class OptionsBase
+internal sealed unsafe class OptionsBase
 {
     // The managed instance is reached through a GCHandle stored in the state that rocksdb
     // hands back to every callback, so nothing has to outlive it on the managed side.

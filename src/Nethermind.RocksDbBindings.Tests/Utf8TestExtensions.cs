@@ -48,7 +48,7 @@ internal static class Utf8TestExtensions
     public static WriteBatchWithIndex Put(this WriteBatchWithIndex batch, string key, string value, IColumnFamilyHandle? cf = null)
         => batch.Put(Utf8(key), Utf8(value), cf);
 
-    public static string? Get(this WriteBatchWithIndex batch, string key, IColumnFamilyHandle? cf = null, OptionsHandle? options = null)
+    public static string? Get(this WriteBatchWithIndex batch, string key, IColumnFamilyHandle? cf = null, DbOptions? options = null)
     {
         var value = batch.Get(Utf8(key), cf, options);
         return value is null ? null : Encoding.UTF8.GetString(value);

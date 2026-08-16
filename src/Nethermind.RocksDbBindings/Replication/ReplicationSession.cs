@@ -3,7 +3,7 @@
 
 namespace Nethermind.RocksDbBindings;
 
-public class ReplicationSession(string tempPath) : IDisposable
+public sealed class ReplicationSession(string tempPath) : IDisposable
 {
     private readonly string _tempPath = tempPath;
 

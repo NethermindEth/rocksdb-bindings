@@ -14,7 +14,7 @@ namespace Nethermind.RocksDbBindings;
 public unsafe sealed class RocksDb : IDisposable
 {
     internal static ReadOptions DefaultReadOptions { get; } = new ReadOptions();
-    internal static OptionsHandle DefaultOptions { get; } = new DbOptions();
+    internal static DbOptions DefaultOptions { get; } = new DbOptions();
     internal static WriteOptions DefaultWriteOptions { get; } = new WriteOptions();
     internal static Encoding DefaultEncoding => Encoding.UTF8;
     private Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies;
@@ -30,7 +30,7 @@ public unsafe sealed class RocksDb : IDisposable
     private volatile bool _disposed;
 
     // Held so the garbage collector cannot finalize them while the db is still open.
-    private OptionsHandle? Options { get; }
+    private DbOptions? Options { get; }
     private ColumnFamilyOptions[]? ColumnFamilyOptions { get; }
 
     public nint Handle => _disposed || _handle.IsClosed ? nint.Zero : _handle.DangerousGetHandle();
@@ -44,7 +44,7 @@ public unsafe sealed class RocksDb : IDisposable
     public string? WalPath { get; internal set; }
     public string? LogPath { get; internal set; }
 
-    private RocksDb(nint handle, OptionsHandle? options, ColumnFamilyOptions[]? columnFamilyOptions, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
+    private RocksDb(nint handle, DbOptions? options, ColumnFamilyOptions[]? columnFamilyOptions, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
     {
         _handle = new RocksDbHandle(handle);
         Options = options;
@@ -104,7 +104,7 @@ public unsafe sealed class RocksDb : IDisposable
         return lease;
     }
 
-    public static RocksDb Open(OptionsHandle options, string path)
+    public static RocksDb Open(DbOptions options, string path)
     {
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
@@ -118,7 +118,7 @@ public unsafe sealed class RocksDb : IDisposable
         };
     }
 
-    public static RocksDb OpenReadOnly(OptionsHandle options, string path, bool errorIfLogFileExists)
+    public static RocksDb OpenReadOnly(DbOptions options, string path, bool errorIfLogFileExists)
     {
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
@@ -132,7 +132,7 @@ public unsafe sealed class RocksDb : IDisposable
         };
     }
 
-    public static RocksDb OpenAsSecondary(OptionsHandle options, string path, string secondaryPath)
+    public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath)
     {
         using var pathSafe = new TransientUtf8String(path);
         using var secondaryPathSafe = new TransientUtf8String(secondaryPath);
@@ -147,7 +147,7 @@ public unsafe sealed class RocksDb : IDisposable
         };
     }
 
-    public static RocksDb OpenWithTtl(OptionsHandle options, string path, int ttlSeconds)
+    public static RocksDb OpenWithTtl(DbOptions options, string path, int ttlSeconds)
     {
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
@@ -454,6 +454,8 @@ public unsafe sealed class RocksDb : IDisposable
     /// Frees a native allocation returned by <see cref="GetSpan"/>. Call exactly once per
     /// non-empty span, and never touch the span afterwards.
     /// </summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Instance method to pair with the instance GetSpan and to fit the caller's own instance abstractions.")]
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsEmpty)
@@ -519,6 +521,7 @@ public unsafe sealed class RocksDb : IDisposable
         if (cf is not null && cf.Length != count)
             throw new ArgumentException("Column family handle count must match key count.", nameof(cf));
 
+        var options = readOptions ?? DefaultReadOptions;
         var result = new KeyValuePair<byte[], byte[]?>[count];
         var keyHandles = new PinnedGCHandle<byte[]>[count];
         var keyPtrs = new sbyte*[count];
@@ -553,7 +556,7 @@ public unsafe sealed class RocksDb : IDisposable
                 {
                     rocksdb_multi_get(
                         RocksDbInterop.Db(NativeHandle),
-                        RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle),
+                        RocksDbInterop.ReadOptions(options.Handle),
                         (nuint)count,
                         keyPtrsPtr,
                         keyLengthsPtr,
@@ -567,7 +570,7 @@ public unsafe sealed class RocksDb : IDisposable
                     {
                         rocksdb_multi_get_cf(
                             RocksDbInterop.Db(NativeHandle),
-                            RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle),
+                            RocksDbInterop.ReadOptions(options.Handle),
                             cfHandlesPtr,
                             (nuint)count,
                             keyPtrsPtr,
@@ -578,6 +581,9 @@ public unsafe sealed class RocksDb : IDisposable
                     }
                 }
             }
+
+            // Without this, the read options' finalizer could destroy them mid-call.
+            GC.KeepAlive(options);
 
             sbyte* firstError = null;
             for (var i = 0; i < count; i++)
@@ -653,45 +659,54 @@ public unsafe sealed class RocksDb : IDisposable
     private void Remove(byte* key, nuint keyLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         using var lease = Lease();
+        var options = writeOptions ?? DefaultWriteOptions;
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_delete(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, &errptr);
         }
         else
         {
-            rocksdb_delete_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         }
+        // Without this, the write options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     private void Put(byte* key, nuint keyLength, byte* value, nuint valueLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         using var lease = Lease();
+        var options = writeOptions ?? DefaultWriteOptions;
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_put(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            rocksdb_put_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
+        // Without this, the write options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     private void Merge(byte* key, nuint keyLength, byte* value, nuint valueLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)
     {
         using var lease = Lease();
+        var options = writeOptions ?? DefaultWriteOptions;
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_merge(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            rocksdb_merge_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
+        // Without this, the write options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -699,7 +714,10 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         sbyte* errptr = null;
-        rocksdb_write(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
+        var options = writeOptions ?? DefaultWriteOptions;
+        rocksdb_write(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
+        // Without this, the write options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -707,7 +725,10 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         sbyte* errptr = null;
-        rocksdb_write_writebatch_wi(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions((writeOptions ?? DefaultWriteOptions).Handle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
+        var options = writeOptions ?? DefaultWriteOptions;
+        rocksdb_write_writebatch_wi(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
+        // Without this, the write options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -802,6 +823,8 @@ public unsafe sealed class RocksDb : IDisposable
         nuint lencf;
         sbyte* errptr = null;
         var result = rocksdb_list_column_families(RocksDbInterop.Options(options.Handle), (sbyte*)path.Handle, &lencf, &errptr);
+        // Without this, the options' finalizer could destroy them mid-call.
+        GC.KeepAlive(options);
         if (errptr != null)
         {
             columnFamilies = [];
@@ -830,6 +853,8 @@ public unsafe sealed class RocksDb : IDisposable
             using var nativeName = new TransientUtf8String(name);
             sbyte* errptr = null;
             var cfh = (nint)rocksdb_create_column_family(RocksDbInterop.Db(NativeHandle), RocksDbInterop.Options(cfOptions.Handle), (sbyte*)nativeName.Handle, &errptr);
+            // Without this, the family options' finalizer could destroy them mid-call.
+            GC.KeepAlive(cfOptions);
             RocksDbInterop.ThrowIfError(errptr);
             var cfhw = new ColumnFamilyHandleInternal(cfh);
             // Ownership before lookup, so a failed dictionary insert cannot leak the handle.
@@ -926,6 +951,8 @@ public unsafe sealed class RocksDb : IDisposable
         {
             rocksdb_ingest_external_file_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
         }
+        // Without this, the ingest options' finalizer could destroy them mid-call.
+        GC.KeepAlive(ingestOptions);
         RocksDbInterop.ThrowIfError(errptr);
     }
 

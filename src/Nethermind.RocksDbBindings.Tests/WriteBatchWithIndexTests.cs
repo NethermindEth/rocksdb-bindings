@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nethermind.RocksDbBindings.Tests;
@@ -71,37 +72,13 @@ public class WriteBatchWithIndexTests
     }
 
     [Test]
-    public async Task Get_OfAString_RoundTripsThroughTheEncoding()
+    public async Task Get_OfAString_RoundTripsThroughUtf8()
     {
         using var batch = new WriteBatchWithIndex();
 
-        batch.Put("kü", "vé", Encoding.Unicode);
+        batch.Put("kü", "vé");
 
-        await Assert.That(batch.Get("kü", encoding: Encoding.Unicode)).IsEqualTo("vé");
-    }
-
-    [Test]
-    public async Task Get_IntoABuffer_ReturnsTheNumberOfBytesCopied()
-    {
-        using var batch = new WriteBatchWithIndex();
-        batch.Put(Key, Pending);
-        var buffer = new byte[16];
-
-        var copied = batch.Get(Key, buffer, offset: 0, length: 3);
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(copied).IsEqualTo(3ul);
-            await Assert.That(buffer.AsSpan(0, 3).ToArray()).IsEquivalentTo("pen"u8.ToArray(), CollectionOrdering.Matching);
-        }
-    }
-
-    [Test]
-    public async Task Get_IntoABuffer_ReturnsZeroForAKeyTheBatchDoesNotTouch()
-    {
-        using var batch = new WriteBatchWithIndex();
-
-        await Assert.That(batch.Get(Key, new byte[16], 0ul, 16ul)).IsEqualTo(0ul);
+        await Assert.That(batch.Get("kü")).IsEqualTo("vé");
     }
 
     [Test]
@@ -204,9 +181,49 @@ public class WriteBatchWithIndexTests
     }
 
     /// <remarks>
-    /// Unlike <c>NewIterator</c>, this overload leaves the base iterator wrapper holding a handle
-    /// rocksdb now owns, so the caller has to detach it to avoid destroying it twice.
+    /// The overlay must root the base iterator's read options: the native base iterator keeps
+    /// reading the iterate-bound buffers those options own, so if only the discarded base
+    /// wrapper held them, finalization would free memory still in use.
     /// </remarks>
+    [Test]
+    public async Task NewIterator_KeepsTheBaseReadOptionsAliveForTheOverlay()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put("a", "1");
+        database.Db.Put("b", "2");
+        database.Db.Put("d", "4");
+        using var batch = new WriteBatchWithIndex();
+        batch.Put("c"u8.ToArray(), "3"u8.ToArray());
+
+        var (overlay, weakOptions) = CreateBoundedOverlay(database.Db, batch);
+        using var overlayLifetime = overlay;
+
+        // The bounded ReadOptions wrapper is now unreachable except through the overlay.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        // The weak reference is the deterministic proof, and it must come before touching the
+        // iterator: on a regression the bounds are already freed, and a collected wrapper cannot
+        // resolve, whereas freed native memory could still happen to hold the old bound bytes.
+        await Assert.That(weakOptions.TryGetTarget(out _)).IsTrue();
+
+        var keys = new List<string>();
+        for (overlay.SeekToFirst(); overlay.Valid(); overlay.Next())
+            keys.Add(overlay.StringKey());
+
+        await Assert.That(keys).IsEquivalentTo(new[] { "b", "c" }, CollectionOrdering.Matching);
+
+        // Not inlined so the caller never roots the base wrapper or its read options; the options
+        // are deliberately not disposed because their finalization is what is being exercised.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (Iterator Overlay, WeakReference<ReadOptions> Options) CreateBoundedOverlay(RocksDb db, WriteBatchWithIndex batch)
+        {
+            var options = new ReadOptions().SetIterateBounds("b"u8, "d"u8);
+            return (batch.NewIterator(db.NewIterator(readOptions: options)), new WeakReference<ReadOptions>(options));
+        }
+    }
+
     [Test]
     public async Task CreateIteratorWithBase_ProducesAUsableOverlay()
     {
@@ -216,8 +233,8 @@ public class WriteBatchWithIndexTests
         batch.Put("b"u8.ToArray(), "B"u8.ToArray());
 
         var baseIterator = database.Db.NewIterator();
+        // CreateIteratorWithBase takes ownership of the base iterator.
         using var overlay = batch.CreateIteratorWithBase(baseIterator);
-        baseIterator.Detach();
 
         await Assert.That(overlay.SeekToFirst().StringKey()).IsEqualTo("a");
     }
@@ -228,7 +245,7 @@ public class WriteBatchWithIndexTests
         using var batch = new WriteBatchWithIndex();
         batch.Put(Key, Pending);
 
-        using var plain = new WriteBatch(batch.ToBytes());
+        using var plain = WriteBatch.FromSpan(batch.ToBytes());
 
         await Assert.That(plain.Count()).IsEqualTo(1);
     }

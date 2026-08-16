@@ -34,7 +34,7 @@ public unsafe class SstFileWriter : IDisposable
 
     public void Open(string filename)
     {
-        using var nativeName = new RocksSafePath(filename);
+        using var nativeName = new TransientUtf8String(filename);
         sbyte* errptr = null;
         rocksdb_sstfilewriter_open(RocksDbInterop.SstFileWriter(Handle), (sbyte*)nativeName.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);

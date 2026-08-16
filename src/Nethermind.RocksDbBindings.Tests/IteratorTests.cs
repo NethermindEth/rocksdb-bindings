@@ -135,17 +135,6 @@ public class IteratorTests
     }
 
     [Test]
-    public async Task Seek_HonoursAnExplicitKeyLength()
-    {
-        using var database = Alphabet();
-        using var iterator = database.Db.NewIterator();
-
-        iterator.Seek("cx"u8.ToArray(), klen: 1);
-
-        await Assert.That(iterator.StringKey()).IsEqualTo("c");
-    }
-
-    [Test]
     public async Task SeekForPrev_LandsOnTheLastKeyAtOrBeforeTheTarget()
     {
         using var database = Alphabet();
@@ -261,21 +250,6 @@ public class IteratorTests
     }
 
     [Test]
-    public async Task KeyAndValue_AcceptAStreamDeserializer()
-    {
-        using var database = Alphabet();
-        using var iterator = database.Db.NewIterator();
-
-        iterator.Seek("c");
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(iterator.Key(stream => new StreamReader(stream).ReadToEnd())).IsEqualTo("c");
-            await Assert.That(iterator.Value(stream => new StreamReader(stream).ReadToEnd())).IsEqualTo("C");
-        }
-    }
-
-    [Test]
     public async Task IterateUpperBound_StopsBeforeTheBound()
     {
         using var database = Alphabet();
@@ -291,15 +265,6 @@ public class IteratorTests
         var readOptions = new ReadOptions().SetIterateLowerBound("c"u8.ToArray());
 
         await Assert.That(KeysFromFirst(database.Db, readOptions)).IsEquivalentTo(new[] { "c", "d", "e" }, CollectionOrdering.Matching);
-    }
-
-    [Test]
-    public async Task IterateBounds_CanBeGivenAsStrings()
-    {
-        using var database = Alphabet();
-        var readOptions = new ReadOptions().SetIterateLowerBound("b").SetIterateUpperBound("d");
-
-        await Assert.That(KeysFromFirst(database.Db, readOptions)).IsEquivalentTo(new[] { "b", "c" }, CollectionOrdering.Matching);
     }
 
     /// <remarks>
@@ -392,25 +357,4 @@ public class IteratorTests
         await Assert.That(iterator.Dispose).ThrowsNothing();
     }
 
-    /// <remarks>
-    /// Detaching hands ownership of the native iterator to the caller, so disposing the wrapper
-    /// afterwards must not destroy it a second time.
-    /// </remarks>
-    [Test]
-    public async Task Detach_GivesUpTheHandleWithoutDestroyingIt()
-    {
-        using var database = Alphabet();
-        var iterator = database.Db.NewIterator();
-
-        var detached = iterator.Detach();
-        iterator.Dispose();
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(detached).IsNotEqualTo(nint.Zero);
-            await Assert.That(iterator.Handle).IsEqualTo(nint.Zero);
-        }
-
-        Destroy(detached);
-    }
 }

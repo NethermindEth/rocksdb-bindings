@@ -109,6 +109,50 @@ public class WriteBatchTests
     }
 
     [Test]
+    public async Task DeleteRange_RemovesEveryKeyInTheRangeWhenWritten()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put("a", "1");
+        database.Db.Put("b", "2");
+        database.Db.Put("c", "3");
+        database.Db.Put("d", "4");
+
+        using var batch = new WriteBatch();
+        batch.DeleteRange("b"u8, "d"u8);
+        database.Db.Write(batch);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.Get("a")).IsEqualTo("1");
+            await Assert.That(database.Db.Get("b")).IsNull();
+            await Assert.That(database.Db.Get("c")).IsNull();
+            await Assert.That(database.Db.Get("d")).IsEqualTo("4");
+        }
+    }
+
+    [Test]
+    public async Task DeleteRange_CanBeScopedToAFamily()
+    {
+        using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using var familyOptions = new ColumnFamilyOptions();
+        var families = new ColumnFamilies { { "blocks", familyOptions } };
+        using var database = TestDatabase.Create(options, families);
+        var blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put("b"u8, "family"u8, blocks);
+        database.Db.Put("b", "default");
+
+        using var batch = new WriteBatch();
+        batch.DeleteRange("a"u8, "c"u8, blocks);
+        database.Db.Write(batch);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.Get("b"u8.ToArray(), blocks)).IsNull();
+            await Assert.That(database.Db.Get("b")).IsEqualTo("default");
+        }
+    }
+
+    [Test]
     public async Task DataSize_GrowsAsOperationsAreRecorded()
     {
         using var batch = new WriteBatch();
@@ -153,24 +197,11 @@ public class WriteBatchTests
     }
 
     [Test]
-    public async Task Put_FromStrings_HonoursAnExplicitEncoding()
+    public async Task Put_WithSlicedSpans_RecordsOnlyThoseBytes()
     {
         using var batch = new WriteBatch();
 
-        batch.Put("kü", "vé", Encoding.Unicode);
-
-        await Assert.That(Replay(batch)).IsEquivalentTo(new[]
-        {
-            Entry.Written(Encoding.Unicode.GetBytes("kü"), Encoding.Unicode.GetBytes("vé")),
-        }, CollectionOrdering.Matching);
-    }
-
-    [Test]
-    public async Task Put_WithExplicitLengths_RecordsOnlyThatManyBytes()
-    {
-        using var batch = new WriteBatch();
-
-        batch.Put([1, 2, 3], klen: 2, [4, 5, 6], vlen: 1);
+        batch.Put(((byte[])[1, 2, 3]).AsSpan(0, 2), ((byte[])[4, 5, 6]).AsSpan(0, 1));
 
         await Assert.That(Replay(batch)).IsEquivalentTo(new[] { Entry.Written([1, 2], [4]) }, CollectionOrdering.Matching);
     }
@@ -200,31 +231,13 @@ public class WriteBatchTests
         }, CollectionOrdering.Matching);
     }
 
-    /// <remarks>
-    /// A vector put writes one entry whose value is the concatenation of the operands, which is
-    /// what makes it cheaper than putting the pieces separately.
-    /// </remarks>
     [Test]
-    public async Task PutVector_WritesOneEntryWithTheValuesConcatenated()
-    {
-        using var batch = new WriteBatch();
-
-        batch.PutVector(new ReadOnlyMemory<byte>(Key), new ReadOnlyMemory<byte>([1, 2]), new ReadOnlyMemory<byte>([3]));
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(batch.Count()).IsEqualTo(1);
-            await Assert.That(Replay(batch)).IsEquivalentTo(new[] { Entry.Written(Key, [1, 2, 3]) }, CollectionOrdering.Matching);
-        }
-    }
-
-    [Test]
-    public async Task ToBytes_RoundTripsThroughTheRepresentationConstructor()
+    public async Task ToBytes_RoundTripsThroughFromSpan()
     {
         using var source = new WriteBatch();
         source.Put([1], [10]).Delete([2]);
 
-        using var restored = new WriteBatch(source.ToBytes());
+        using var restored = WriteBatch.FromSpan(source.ToBytes());
 
         using (Assert.Multiple())
         {
@@ -260,32 +273,6 @@ public class WriteBatchTests
         {
             WriteBatch.ReturnPooledBytes(pooled);
         }
-    }
-
-    [Test]
-    public async Task ToBytes_IntoABuffer_FillsItFromTheOffset()
-    {
-        using var batch = new WriteBatch();
-        batch.Put(Key, Value);
-        var expected = batch.ToBytes();
-        var buffer = new byte[expected.Length + 4];
-
-        var result = batch.ToBytes(buffer, offset: 2);
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(result).IsSameReferenceAs(buffer);
-            await Assert.That(buffer.AsSpan(2, expected.Length).ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching);
-        }
-    }
-
-    [Test]
-    public async Task ToBytes_IntoATooSmallBuffer_ReturnsNull()
-    {
-        using var batch = new WriteBatch();
-        batch.Put(Key, Value);
-
-        await Assert.That(batch.ToBytes(new byte[1])).IsNull();
     }
 
     [Test]
@@ -334,16 +321,6 @@ public class WriteBatchTests
     }
 
     [Test]
-    public async Task PutLogData_IsNotCountedAsAnEntry()
-    {
-        using var batch = new WriteBatch();
-
-        batch.PutLogData([1, 2, 3], 3);
-
-        await Assert.That(batch.Count()).IsEqualTo(0);
-    }
-
-    [Test]
     public async Task Dispose_ClearsTheHandle()
     {
         var batch = new WriteBatch();
@@ -362,14 +339,4 @@ public class WriteBatchTests
         await Assert.That(batch.Dispose).ThrowsNothing();
     }
 
-    [Test]
-    public async Task InterfaceMethods_ForwardToTheImplementation()
-    {
-        using IWriteBatch batch = new WriteBatch();
-
-        batch.Put(Key, Value);
-        batch.Delete("other"u8.ToArray());
-
-        await Assert.That(batch.Count()).IsEqualTo(2);
-    }
 }

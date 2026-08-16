@@ -2,16 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 using System.Runtime.InteropServices;
-using System.Text;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class WriteBatchWithIndex : IWriteBatch
+public unsafe sealed class WriteBatchWithIndex : IDisposable
 {
     private nint handle;
-    private Encoding defaultEncoding = Encoding.UTF8;
 
     public WriteBatchWithIndex(ulong reservedBytes = 0, bool overwriteKeys = true)
         : this((nint)rocksdb_writebatch_wi_create((nuint)reservedBytes, RocksDbInterop.Bool(overwriteKeys)))
@@ -42,150 +40,61 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
 
     public int Count() => rocksdb_writebatch_wi_count(RocksDbInterop.WriteBatchWithIndex(handle));
 
-    public Iterator CreateIteratorWithBase(Iterator baseIterator, IColumnFamilyHandle? cf = null)
-    {
-        var handle = cf is null
-            ? (nint)rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
-            : (nint)rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
-        return new Iterator(handle);
-    }
+    /// <inheritdoc cref="NewIterator(Iterator, IColumnFamilyHandle?)"/>
+    public Iterator CreateIteratorWithBase(Iterator baseIterator, IColumnFamilyHandle? cf = null) =>
+        NewIterator(baseIterator, cf);
 
-    public string? Get(string key, IColumnFamilyHandle? cf = null, OptionsHandle? options = null, Encoding? encoding = null)
-    {
-        encoding ??= defaultEncoding;
-        var value = Get(encoding.GetBytes(key), cf, options);
-        return value is null ? null : encoding.GetString(value);
-    }
-
-    public byte[]? Get(byte[] key, IColumnFamilyHandle? cf = null, OptionsHandle? options = null) => Get(key, (ulong)key.GetLongLength(0), cf, options);
-
-    public byte[]? Get(byte[] key, ulong keyLength, IColumnFamilyHandle? cf = null, OptionsHandle? options = null)
+    /// <summary>Reads a key as the batch alone would leave it, ignoring the database.</summary>
+    public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, OptionsHandle? options = null)
     {
         fixed (byte* keyPtr = key)
         {
-            return GetFromBatch(keyPtr, (nuint)keyLength, cf, options);
+            nuint valueLength;
+            sbyte* errptr = null;
+            var valuePtr = cf is null
+                ? rocksdb_writebatch_wi_get_from_batch(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options((options ?? RocksDb.DefaultOptions).Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_writebatch_wi_get_from_batch_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options((options ?? RocksDb.DefaultOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+            RocksDbInterop.ThrowIfError(errptr);
+            return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
         }
     }
 
-    public ulong Get(byte[] key, byte[] buffer, ulong offset, ulong length, IColumnFamilyHandle? cf = null, OptionsHandle? options = null) => Get(key, (ulong)key.GetLongLength(0), buffer, offset, length, cf, options);
-
-    public ulong Get(byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, IColumnFamilyHandle? cf = null, OptionsHandle? options = null)
-    {
-        unsafe
-        {
-            fixed (byte* keyPtr = key)
-            {
-                var value = GetFromBatch(keyPtr, (nuint)keyLength, cf, options);
-                if (value is null)
-                    return 0;
-                var valLength = Math.Min(length, (ulong)value.Length);
-                Buffer.BlockCopy(value, 0, buffer, (int)offset, (int)valLength);
-                return valLength;
-            }
-        }
-    }
-
-    public string? Get(RocksDb db, string key, IColumnFamilyHandle? cf = null, ReadOptions? options = null, Encoding? encoding = null)
-    {
-        encoding ??= defaultEncoding;
-        var value = Get(db, encoding.GetBytes(key), cf, options);
-        return value is null ? null : encoding.GetString(value);
-    }
-
-    public byte[]? Get(RocksDb db, byte[] key, IColumnFamilyHandle? cf = null, ReadOptions? options = null) => Get(db, key, (ulong)key.GetLongLength(0), cf, options);
-
-    public byte[]? Get(RocksDb db, byte[] key, ulong keyLength, IColumnFamilyHandle? cf = null, ReadOptions? options = null)
+    /// <summary>Reads a key as the database would look with the batch applied on top.</summary>
+    public byte[]? Get(RocksDb db, ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? options = null)
     {
         fixed (byte* keyPtr = key)
         {
-            return GetFromBatchAndDb(db, keyPtr, (nuint)keyLength, cf, options);
+            nuint valueLength;
+            sbyte* errptr = null;
+            var valuePtr = cf is null
+                ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+            RocksDbInterop.ThrowIfError(errptr);
+            return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
         }
     }
 
-    public ulong Get(RocksDb db, byte[] key, byte[] buffer, ulong offset, ulong length, IColumnFamilyHandle? cf = null, ReadOptions? options = null) => Get(db, key, (ulong)key.GetLongLength(0), buffer, offset, length, cf, options);
-
-    public ulong Get(RocksDb db, byte[] key, ulong keyLength, byte[] buffer, ulong offset, ulong length, IColumnFamilyHandle? cf = null, ReadOptions? options = null)
-    {
-        unsafe
-        {
-            fixed (byte* keyPtr = key)
-            {
-                var value = GetFromBatchAndDb(db, keyPtr, (nuint)keyLength, cf, options);
-                if (value is null)
-                    return 0;
-                var valLength = Math.Min(length, (ulong)value.Length);
-                Buffer.BlockCopy(value, 0, buffer, (int)offset, (int)valLength);
-                return valLength;
-            }
-        }
-    }
-
+    /// <summary>
+    /// Creates an iterator over the database view with the batch applied on top, taking
+    /// ownership of <paramref name="baseIterator"/>.
+    /// </summary>
+    /// <remarks>
+    /// The overlay borrows this batch's index and storage, so the batch must outlive the
+    /// returned iterator.
+    /// </remarks>
     public Iterator NewIterator(Iterator baseIterator, IColumnFamilyHandle? cf = null)
     {
         nint iteratorHandle = cf is null
             ? (nint)rocksdb_writebatch_wi_create_iterator_with_base(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle))
             : (nint)rocksdb_writebatch_wi_create_iterator_with_base_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Iterator(baseIterator.Handle), RocksDbInterop.ColumnFamily(cf.Handle));
+        // The returned iterator owns the base one, so detach it to avoid a double destroy. The
+        // base's read options move over too: the native base iterator keeps reading them (and any
+        // iterate bounds) in place, so the overlay must keep them alive.
         baseIterator.Detach();
-        // Note: passing in base iterator here only to ensure that it is not collected before the iterator
-        return new Iterator(iteratorHandle);
+        return new Iterator(iteratorHandle, baseIterator.ReadOptions);
     }
 
-    public WriteBatchWithIndex Put(string key, string val, Encoding? encoding = null)
-    {
-        encoding ??= defaultEncoding;
-
-        Put(encoding.GetBytes(key), encoding.GetBytes(val));
-        return this;
-    }
-
-    private byte[]? GetFromBatch(byte* key, nuint keyLength, IColumnFamilyHandle? cf, OptionsHandle? options)
-    {
-        nuint valueLength;
-        sbyte* errptr = null;
-        var valuePtr = cf is null
-            ? rocksdb_writebatch_wi_get_from_batch(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options((options ?? RocksDb.DefaultOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : rocksdb_writebatch_wi_get_from_batch_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options((options ?? RocksDb.DefaultOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
-        RocksDbInterop.ThrowIfError(errptr);
-        return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
-    }
-
-    private byte[]? GetFromBatchAndDb(RocksDb db, byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? options)
-    {
-        nuint valueLength;
-        sbyte* errptr = null;
-        var valuePtr = cf is null
-            ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), (sbyte*)key, keyLength, &valueLength, &errptr)
-            : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(db.Handle), RocksDbInterop.ReadOptions((options ?? RocksDb.DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &valueLength, &errptr);
-        RocksDbInterop.ThrowIfError(errptr);
-        return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
-    }
-
-    public WriteBatchWithIndex Put(byte[] key, byte[] val, IColumnFamilyHandle? cf = null) => Put(key, (ulong)key.Length, val, (ulong)val.Length, cf);
-
-    public WriteBatchWithIndex Put(byte[] key, ulong klen, byte[] val, ulong vlen, IColumnFamilyHandle? cf = null)
-    {
-        fixed (byte* keyPtr = key)
-        fixed (byte* valuePtr = val)
-        {
-            Put(keyPtr, klen, valuePtr, vlen, cf);
-        }
-
-        return this;
-    }
-
-    public unsafe void Put(byte* key, ulong klen, byte* val, ulong vlen, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_put(RocksDbInterop.WriteBatchWithIndex(handle), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_put_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
-        }
-    }
-
-    public unsafe WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)
+    public WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -202,7 +111,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe WriteBatchWithIndex Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)
+    public WriteBatchWithIndex Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* valuePtr = &MemoryMarshal.GetReference(value))
@@ -219,90 +128,7 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public WriteBatchWithIndex Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-    {
-        rocksdb_writebatch_wi_putv(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
-        return this;
-    }
-
-    public WriteBatchWithIndex PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-    {
-        rocksdb_writebatch_wi_putv_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
-        return this;
-    }
-
-    public WriteBatchWithIndex Merge(byte[] key, ulong klen, byte[] val, ulong vlen, IColumnFamilyHandle? cf = null)
-    {
-        fixed (byte* keyPtr = key)
-        fixed (byte* valuePtr = val)
-        {
-            Merge(keyPtr, klen, valuePtr, vlen, cf);
-        }
-
-        return this;
-    }
-
-    public unsafe void Merge(byte* key, ulong klen, byte* val, ulong vlen, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_merge(RocksDbInterop.WriteBatchWithIndex(handle), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_merge_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
-        }
-    }
-
-    public WriteBatchWithIndex MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
-    {
-        fixed (byte* keyPtr = key)
-        fixed (byte* valuePtr = val)
-        {
-            MergeCf(columnFamily, keyPtr, klen, valuePtr, vlen);
-        }
-        return this;
-    }
-
-    public unsafe void MergeCf(nint columnFamily, byte* key, ulong klen, byte* val, ulong vlen) => rocksdb_writebatch_wi_merge_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), (sbyte*)key, (nuint)klen, (sbyte*)val, (nuint)vlen);
-
-    public WriteBatchWithIndex Mergev(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-    {
-        rocksdb_writebatch_wi_mergev(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
-        return this;
-    }
-
-    public WriteBatchWithIndex MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-    {
-        rocksdb_writebatch_wi_mergev_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(columnFamily), numKeys, (sbyte**)keysList, (nuint*)keysListSizes, numValues, (sbyte**)valuesList, (nuint*)valuesListSizes);
-        return this;
-    }
-
-    public WriteBatchWithIndex Delete(byte[] key, IColumnFamilyHandle? cf = null) => Delete(key, (ulong)key.Length, cf);
-
-    public WriteBatchWithIndex Delete(byte[] key, ulong klen, IColumnFamilyHandle? cf = null)
-    {
-        fixed (byte* keyPtr = key)
-        {
-            Delete(keyPtr, klen, cf);
-        }
-
-        return this;
-    }
-
-    public unsafe void Delete(byte* key, ulong klen, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_delete(RocksDbInterop.WriteBatchWithIndex(handle), (sbyte*)key, (nuint)klen);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_delete_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, (nuint)klen);
-        }
-    }
-
-    public unsafe WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
+    public WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         {
@@ -318,70 +144,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return this;
     }
 
-    public unsafe void Deletev(int numKeys, nint keysList, nint keysListSizes, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_deletev(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_deletev_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), numKeys, (sbyte**)keysList, (nuint*)keysListSizes);
-        }
-    }
-
-    public WriteBatchWithIndex DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, IColumnFamilyHandle? cf = null)
-    {
-        fixed (byte* startKeyPtr = startKey)
-        fixed (byte* endKeyPtr = endKey)
-        {
-            DeleteRange(startKeyPtr, sklen, endKeyPtr, eklen, cf);
-        }
-
-        return this;
-    }
-
-    public unsafe void DeleteRange(byte* startKey, ulong sklen, byte* endKey, ulong eklen, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_delete_range(RocksDbInterop.WriteBatchWithIndex(handle), (sbyte*)startKey, (nuint)sklen, (sbyte*)endKey, (nuint)eklen);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_delete_range_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startKey, (nuint)sklen, (sbyte*)endKey, (nuint)eklen);
-        }
-    }
-
-    public unsafe void DeleteRangev(int numKeys, nint startKeysList, nint startKeysListSizes, nint endKeysList, nint endKeysListSizes, IColumnFamilyHandle? cf = null)
-    {
-        if (cf is null)
-        {
-            rocksdb_writebatch_wi_delete_rangev(RocksDbInterop.WriteBatchWithIndex(handle), numKeys, (sbyte**)startKeysList, (nuint*)startKeysListSizes, (sbyte**)endKeysList, (nuint*)endKeysListSizes);
-        }
-        else
-        {
-            rocksdb_writebatch_wi_delete_rangev_cf(RocksDbInterop.WriteBatchWithIndex(handle), RocksDbInterop.ColumnFamily(cf.Handle), numKeys, (sbyte**)startKeysList, (nuint*)startKeysListSizes, (sbyte**)endKeysList, (nuint*)endKeysListSizes);
-        }
-    }
-
-    public WriteBatchWithIndex PutLogData(byte[] blob, ulong len)
-    {
-        fixed (byte* blobPtr = blob) { rocksdb_writebatch_wi_put_log_data(RocksDbInterop.WriteBatchWithIndex(handle), (sbyte*)blobPtr, (nuint)len); }
-        return this;
-    }
-
-    /// <inheritdoc cref="IWriteBatch.Iterate" />
-    public WriteBatchWithIndex Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
-    {
-        rocksdb_writebatch_wi_iterate(
-            RocksDbInterop.WriteBatchWithIndex(handle),
-            state,
-            put,
-            deleted);
-        return this;
-    }
-
     /// <summary>
     /// Get the write batch as bytes
     /// </summary>
@@ -393,30 +155,6 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         return RocksDbInterop.Bytes((nint)data, size)!;
     }
 
-    /// <summary>
-    /// Get the write batch as bytes
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <param name="offset"></param>
-    /// <param name="size"></param>
-    /// <returns>null if size was not large enough to hold the data</returns>
-    public byte[]? ToBytes(byte[] buffer, int offset = 0, int size = -1)
-    {
-        if (size < 0)
-        {
-            size = buffer.Length;
-        }
-
-        var bytes = ToBytes();
-        if (bytes is not null && bytes.Length <= size)
-        {
-            Buffer.BlockCopy(bytes, 0, buffer, offset, bytes.Length);
-            return buffer;
-        }
-
-        return null;
-    }
-
     public void SetSavePoint() => rocksdb_writebatch_wi_set_save_point(RocksDbInterop.WriteBatchWithIndex(handle));
 
     public void RollbackToSavePoint()
@@ -425,43 +163,4 @@ public unsafe class WriteBatchWithIndex : IWriteBatch
         rocksdb_writebatch_wi_rollback_to_save_point(RocksDbInterop.WriteBatchWithIndex(handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
-
-
-    IWriteBatch IWriteBatch.Clear()
-        => Clear();
-    IWriteBatch IWriteBatch.Put(string key, string val, Encoding? encoding)
-        => Put(key, val, encoding);
-    IWriteBatch IWriteBatch.Put(byte[] key, byte[] val, IColumnFamilyHandle? cf)
-        => Put(key, val, cf);
-    IWriteBatch IWriteBatch.Put(byte[] key, ulong klen, byte[] val, ulong vlen, IColumnFamilyHandle? cf)
-        => Put(key, klen, val, vlen, cf);
-    IWriteBatch IWriteBatch.Putv(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-        => Putv(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.PutvCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-        => PutvCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Merge(byte[] key, ulong klen, byte[] val, ulong vlen, IColumnFamilyHandle? cf)
-        => Merge(key, klen, val, vlen, cf);
-    IWriteBatch IWriteBatch.MergeCf(nint columnFamily, byte[] key, ulong klen, byte[] val, ulong vlen)
-        => MergeCf(columnFamily, key, klen, val, vlen);
-    IWriteBatch IWriteBatch.Mergev(int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-        => Mergev(numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.MergevCf(nint columnFamily, int numKeys, nint keysList, nint keysListSizes, int numValues, nint valuesList, nint valuesListSizes)
-        => MergevCf(columnFamily, numKeys, keysList, keysListSizes, numValues, valuesList, valuesListSizes);
-    IWriteBatch IWriteBatch.Delete(byte[] key, IColumnFamilyHandle? cf)
-        => Delete(key, cf);
-    IWriteBatch IWriteBatch.Delete(byte[] key, ulong klen, IColumnFamilyHandle? cf)
-        => Delete(key, klen, cf);
-    IWriteBatch IWriteBatch.DeleteRange(byte[] startKey, ulong sklen, byte[] endKey, ulong eklen, IColumnFamilyHandle? cf)
-        => DeleteRange(startKey, sklen, endKey, eklen, cf);
-    IWriteBatch IWriteBatch.PutLogData(byte[] blob, ulong len)
-        => PutLogData(blob, len);
-    IWriteBatch IWriteBatch.Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)
-        => Iterate(state, put, deleted);
-
-    IWriteBatch IWriteBatch.Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf)
-        => Put(key, value, cf);
-    IWriteBatch IWriteBatch.Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf)
-        => Merge(key, value, cf);
-    IWriteBatch IWriteBatch.Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
-        => Delete(key, cf);
 }

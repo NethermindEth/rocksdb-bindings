@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 using System.Runtime.InteropServices;
-using System.Text;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
@@ -109,13 +108,6 @@ public unsafe class ReadOptions : IDisposable
         return this;
     }
 
-    public unsafe ReadOptions SetIterateLowerBound(byte* key, ulong keylen)
-    {
-        nuint klen = (nuint)keylen;
-        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, klen);
-        return this;
-    }
-
     /// <summary>
     /// Sets the inclusive lower bound for iteration, copying it into memory owned and freed by
     /// these options.
@@ -126,23 +118,6 @@ public unsafe class ReadOptions : IDisposable
         var buffer = AllocateCopy(key);
         rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)buffer, (nuint)key.Length);
         InstallBound(ref iterateLowerBound, buffer);
-        return this;
-    }
-
-    public ReadOptions SetIterateLowerBound(byte[] key, ulong keyLen) => SetIterateLowerBound(key.AsSpan(0, checked((int)keyLen)));
-
-    public ReadOptions SetIterateLowerBound(byte[] key) => SetIterateLowerBound(key.AsSpan());
-
-    public unsafe ReadOptions SetIterateLowerBound(string stringKey, Encoding? encoding = null)
-    {
-        var key = (encoding ?? Encoding.UTF8).GetBytes(stringKey);
-        return SetIterateLowerBound(key);
-    }
-
-    public unsafe ReadOptions SetIterateUpperBound(byte* key, ulong keylen)
-    {
-        nuint klen = (nuint)keylen;
-        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)key, klen);
         return this;
     }
 
@@ -159,10 +134,6 @@ public unsafe class ReadOptions : IDisposable
         return this;
     }
 
-    public ReadOptions SetIterateUpperBound(byte[] key, ulong keyLen) => SetIterateUpperBound(key.AsSpan(0, checked((int)keyLen)));
-
-    public ReadOptions SetIterateUpperBound(byte[] key) => SetIterateUpperBound(key.AsSpan());
-
     /// <summary>
     /// Sets the inclusive lower and exclusive upper bounds for iteration, copying both into
     /// memory owned and freed by these options.
@@ -170,12 +141,6 @@ public unsafe class ReadOptions : IDisposable
     /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
     public ReadOptions SetIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
         => SetIterateLowerBound(lowerBound).SetIterateUpperBound(upperBound);
-
-    public unsafe ReadOptions SetIterateUpperBound(string stringKey, Encoding? encoding = null)
-    {
-        var key = (encoding ?? Encoding.UTF8).GetBytes(stringKey);
-        return SetIterateUpperBound(key);
-    }
 
     public ReadOptions SetReadTier(int value)
     {

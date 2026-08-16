@@ -3,7 +3,6 @@
 
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
-using System.Text;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
@@ -17,23 +16,6 @@ internal static unsafe class RocksDbInterop
     {
         if (errptr != null)
             throw new RocksDbNativeException((nint)errptr);
-    }
-
-    public static string? PtrToStringAndFree(sbyte* value, nuint length, Encoding? encoding = null)
-    {
-        if (value == null)
-            return null;
-
-        encoding ??= Encoding.UTF8;
-
-        try
-        {
-            return encoding.GetString((byte*)value, checked((int)length));
-        }
-        finally
-        {
-            rocksdb_free(value);
-        }
     }
 
     public static string? NullTerminatedStringAndFree(sbyte* value)
@@ -78,15 +60,6 @@ internal static unsafe class RocksDbInterop
         return result;
     }
 
-    public static T? Deserialize<T>(nint value, nuint length, Func<Stream, T> deserializer)
-    {
-        if (value == nint.Zero)
-            return default;
-
-        using var stream = new UnmanagedMemoryStream((byte*)value, checked((long)length));
-        return deserializer(stream);
-    }
-
     public static T? Deserialize<T>(nint value, nuint length, ISpanDeserializer<T> deserializer)
         => value == nint.Zero ? default : deserializer.Deserialize(new ReadOnlySpan<byte>((void*)value, checked((int)length)));
 
@@ -125,11 +98,20 @@ internal static unsafe class RocksDbInterop
 
 /// <summary>
 /// A UTF-8 copy of a string that the native call consumes synchronously; disposing frees it.
-/// Unlike <see cref="RocksSafePath"/>, never pass it to a native function that retains the pointer.
+/// Never pass it to a native function that retains the pointer instead of copying.
 /// </summary>
-internal unsafe struct TransientUtf8String(string value) : IDisposable
+internal unsafe struct TransientUtf8String : IDisposable
 {
-    public nint Handle { get; private set; } = (nint)Utf8StringMarshaller.ConvertToUnmanaged(value);
+    public TransientUtf8String(string value)
+    {
+        // Guarded here because a null would marshal to a null pointer, which the native string
+        // parameters do not accept.
+        ArgumentNullException.ThrowIfNull(value);
+
+        Handle = (nint)Utf8StringMarshaller.ConvertToUnmanaged(value);
+    }
+
+    public nint Handle { get; private set; }
 
     public void Dispose()
     {

@@ -124,11 +124,11 @@ public class MergeOperatorTests
     }
 
     [Test]
-    public async Task Merge_WithExplicitLengths_MergesOnlyThoseBytes()
+    public async Task Merge_WithSlicedSpans_MergesOnlyThoseBytes()
     {
         using var database = Merging(Concatenating());
 
-        database.Db.Merge("keyX"u8.ToArray(), 3, "helloX"u8.ToArray(), 5);
+        database.Db.Merge("keyX"u8[..3], "helloX"u8[..5]);
 
         await Assert.That(database.Db.Get("key"u8.ToArray())).IsEquivalentTo("hello"u8.ToArray(), CollectionOrdering.Matching);
     }

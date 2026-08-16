@@ -33,6 +33,14 @@ public class RocksDbTests
     }
 
     [Test]
+    public async Task Open_NullPath_ThrowsInsteadOfPassingANullPointerToTheNativeCall()
+    {
+        using var options = new DbOptions();
+
+        await Assert.That(() => RocksDb.Open(options, null!)).ThrowsExactly<ArgumentNullException>();
+    }
+
+    [Test]
     public async Task Open_RecordsThePathItWasGiven()
     {
         using var database = TestDatabase.Create();
@@ -142,13 +150,13 @@ public class RocksDbTests
     }
 
     [Test]
-    public async Task Put_WithExplicitLengths_StoresOnlyThatManyBytes()
+    public async Task Put_WithSlicedSpans_StoresOnlyThoseBytes()
     {
         using var database = TestDatabase.Create();
 
-        database.Db.Put([1, 2, 3], keyLength: 2, [4, 5, 6], valueLength: 1);
+        database.Db.Put([1, 2, 3], value: ((byte[])[4, 5, 6]).AsSpan(0, 1));
 
-        await Assert.That(database.Db.Get(new byte[] { 1, 2 })).IsEquivalentTo(new byte[] { 4 }, CollectionOrdering.Matching);
+        await Assert.That(database.Db.Get(new byte[] { 1, 2, 3 })).IsEquivalentTo(new byte[] { 4 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -159,16 +167,6 @@ public class RocksDbTests
         database.Db.Put("kü", "vé");
 
         await Assert.That(database.Db.Get(Encoding.UTF8.GetBytes("kü"))).IsEquivalentTo(Encoding.UTF8.GetBytes("vé"), CollectionOrdering.Matching);
-    }
-
-    [Test]
-    public async Task Put_WithAnExplicitEncoding_RoundTripsThroughGet()
-    {
-        using var database = TestDatabase.Create();
-
-        database.Db.Put("kü", "vé", encoding: Encoding.Unicode);
-
-        await Assert.That(database.Db.Get("kü", encoding: Encoding.Unicode)).IsEqualTo("vé");
     }
 
     [Test]
@@ -291,30 +289,6 @@ public class RocksDbTests
     }
 
     [Test]
-    public async Task Get_IntoABuffer_ReturnsTheStoredLengthAndCopiesWhatFits()
-    {
-        using var database = TestDatabase.Create();
-        database.Db.Put(Key, new byte[] { 1, 2, 3, 4, 5 });
-        var buffer = new byte[4];
-
-        var length = database.Db.Get(Key, buffer, offset: 1, length: 2);
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(length).IsEqualTo(5L);
-            await Assert.That(buffer).IsEquivalentTo(new byte[] { 0, 1, 2, 0 }, CollectionOrdering.Matching);
-        }
-    }
-
-    [Test]
-    public async Task Get_IntoABuffer_ReturnsMinusOneForAMissingKey()
-    {
-        using var database = TestDatabase.Create();
-
-        await Assert.That(database.Db.Get(Key, new byte[4], 0, 4)).IsEqualTo(-1L);
-    }
-
-    [Test]
     public async Task Get_WithASpanDeserializer_DecodesTheValue()
     {
         using var database = TestDatabase.Create();
@@ -329,25 +303,6 @@ public class RocksDbTests
         using var database = TestDatabase.Create();
 
         await Assert.That(database.Db.Get(Key, new Int32Deserializer())).IsEqualTo(0);
-    }
-
-    [Test]
-    public async Task Get_WithAStreamDeserializer_DecodesTheValue()
-    {
-        using var database = TestDatabase.Create();
-        database.Db.Put(Key, "hello"u8.ToArray());
-
-        var value = database.Db.Get(Key, stream => new StreamReader(stream).ReadToEnd());
-
-        await Assert.That(value).IsEqualTo("hello");
-    }
-
-    [Test]
-    public async Task Get_WithAStreamDeserializer_ReturnsNullForAMissingKey()
-    {
-        using var database = TestDatabase.Create();
-
-        await Assert.That(database.Db.Get(Key, stream => new StreamReader(stream).ReadToEnd())).IsNull();
     }
 
     [Test]
@@ -412,29 +367,6 @@ public class RocksDbTests
 
         await Assert.That(() => database.Db.MultiGet([[.. "a"u8]], []))
             .ThrowsExactly<ArgumentException>();
-    }
-
-    [Test]
-    public async Task MultiGet_OfStrings_RoundTripsThroughUtf8()
-    {
-        using var database = TestDatabase.Create();
-        database.Db.Put("a", "1");
-
-        var results = database.Db.MultiGet(["a", "absent"]);
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(results[0]).IsEqualTo(new KeyValuePair<string, string?>("a", "1"));
-            await Assert.That(results[1]).IsEqualTo(new KeyValuePair<string, string?>("absent", null));
-        }
-    }
-
-    [Test]
-    public async Task MultiGet_OfStrings_NullKeyArray_Throws()
-    {
-        using var database = TestDatabase.Create();
-
-        await Assert.That(() => database.Db.MultiGet((string[])null!)).ThrowsExactly<ArgumentNullException>();
     }
 
     [Test]

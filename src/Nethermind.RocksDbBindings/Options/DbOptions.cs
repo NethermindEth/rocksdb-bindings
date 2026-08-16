@@ -366,7 +366,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDbLogDir(string value)
     {
-        using (var safePath = new RocksSafePath(value))
+        using (var safePath = new TransientUtf8String(value))
         {
             rocksdb_options_set_db_log_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
         }
@@ -384,7 +384,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalDir(string value)
     {
-        using (var safePath = new RocksSafePath(value))
+        using (var safePath = new TransientUtf8String(value))
         {
             rocksdb_options_set_wal_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
         }

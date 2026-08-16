@@ -21,7 +21,7 @@ public class ReplicationConsumer(RocksDb db)
     {
         if (_db == null) throw new InvalidOperationException("DB is not initialized.");
 
-        using var writeBatch = new WriteBatch(batch.Data);
+        using var writeBatch = WriteBatch.FromSpan(batch.Data);
         _db.Write(writeBatch);
     }
 

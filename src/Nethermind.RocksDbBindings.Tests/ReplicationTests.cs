@@ -226,7 +226,7 @@ public class ReplicationTests
 
         var batch = new ReplicationSource(primary.Db).GetWalUpdates(0).First();
 
-        using var restored = new WriteBatch(batch.Data);
+        using var restored = WriteBatch.FromSpan(batch.Data);
         await Assert.That(restored.Count()).IsEqualTo(1);
     }
 

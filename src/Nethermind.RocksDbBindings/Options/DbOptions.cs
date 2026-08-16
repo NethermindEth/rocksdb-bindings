@@ -5,10 +5,15 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
+/// <inheritdoc/>
 public class DbOptions : Options<DbOptions> { }
 
 // Summaries taken from:
 // rocksdb/include/rocksdb/options.h
+/// <remarks>
+/// Databases copy these options when they are opened, so disposing after the open call returns
+/// is safe even while the database is in use.
+/// </remarks>
 public unsafe abstract partial class Options<T> : OptionsHandle where T : Options<T>
 {
     internal bool CreateIfMissing { get; set; }
@@ -197,6 +202,51 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     public T SetMaxBackgroundCompactions(int value)
     {
         rocksdb_options_set_max_background_compactions(RocksDbInterop.Options(Handle), value);
+        return (T)this;
+    }
+
+    /// <summary>
+    /// The maximum number of threads that will concurrently perform a compaction job by breaking
+    /// it into multiple, smaller ones that are run simultaneously.
+    /// </summary>
+    public T SetMaxSubcompactions(uint value)
+    {
+        rocksdb_options_set_max_subcompactions(RocksDbInterop.Options(Handle), value);
+        return (T)this;
+    }
+
+    /// <summary>
+    /// A global cache for table-level rows. rocksdb holds its own reference on the cache, so it
+    /// may be disposed once no options wrapper is being configured with it.
+    /// </summary>
+    public T SetRowCache(Cache cache)
+    {
+        rocksdb_options_set_row_cache(RocksDbInterop.Options(Handle), RocksDbInterop.Cache(cache.Handle));
+        // Without this, the cache's finalizer could destroy the handle mid-call.
+        GC.KeepAlive(cache);
+        return (T)this;
+    }
+
+    /// <summary>The number of levels in the LSM tree.</summary>
+    public int GetNumLevels()
+    {
+        var levels = rocksdb_options_get_num_levels(RocksDbInterop.Options(Handle));
+        // Without this, the finalizer could destroy the options mid-call.
+        GC.KeepAlive(this);
+        return levels;
+    }
+
+    /// <summary>
+    /// Applies a rocksdb options string of <c>name=value</c> pairs separated by semicolons, as
+    /// accepted by <c>GetOptionsFromString</c>, on top of the current options.
+    /// </summary>
+    /// <exception cref="RocksDbNativeException">The string contains an unknown or malformed option.</exception>
+    public T ApplyFromString(string optionsString)
+    {
+        using var nativeString = new TransientUtf8String(optionsString);
+        sbyte* errptr = null;
+        rocksdb_get_options_from_string(RocksDbInterop.Options(Handle), (sbyte*)nativeString.Handle, RocksDbInterop.Options(Handle), &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
         return (T)this;
     }
 

@@ -109,6 +109,17 @@ public class WriteBatchTests
     }
 
     [Test]
+    public async Task DataSize_GrowsAsOperationsAreRecorded()
+    {
+        using var batch = new WriteBatch();
+        var emptySize = batch.DataSize;
+
+        batch.Put(Key, Value);
+
+        await Assert.That(batch.DataSize).IsGreaterThan(emptySize);
+    }
+
+    [Test]
     public async Task Put_RecordsTheKeyAndValue()
     {
         using var batch = new WriteBatch();

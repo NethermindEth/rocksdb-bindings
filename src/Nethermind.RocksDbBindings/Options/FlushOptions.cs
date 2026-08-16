@@ -5,6 +5,10 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
+/// <remarks>
+/// The native flush reads these options in place, so dispose only after every flush using them
+/// has returned.
+/// </remarks>
 public unsafe class FlushOptions : OptionsHandle
 {
     public FlushOptions() : base(createHandle: false)

@@ -292,21 +292,206 @@ public class OptionsTests
     }
 
     /// <remarks>
-    /// Each bound is copied into native memory the options object owns, and setting it again has
-    /// to free the previous copy before allocating the next one.
+    /// Each bound is copied into native memory the options object owns; setting it again frees
+    /// the previous copy, and only the last bounds set may constrain iteration.
     /// </remarks>
     [Test]
     public async Task ReadOptions_IterateBoundsCanBeReplaced()
     {
-        var options = new ReadOptions();
+        using var database = TestDatabase.Create();
+        database.Db.Put([14], [1]);
+        database.Db.Put([15], [2]);
+        database.Db.Put([16], [3]);
 
-        await Assert.That(() =>
+        using var options = new ReadOptions();
+        for (var i = 0; i < 16; i++)
         {
-            for (var i = 0; i < 16; i++)
-            {
-                options.SetIterateLowerBound([(byte)i]);
-                options.SetIterateUpperBound([(byte)(i + 1)]);
-            }
-        }).ThrowsNothing();
+            options.SetIterateLowerBound([(byte)i]);
+            options.SetIterateUpperBound([(byte)(i + 1)]);
+        }
+
+        var keys = new List<byte>();
+        using (var iterator = database.Db.NewIterator(readOptions: options))
+        {
+            for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
+                keys.Add(iterator.GetKeySpan()[0]);
+        }
+
+        await Assert.That(keys).IsEquivalentTo(new byte[] { 15 }, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task ReadOptions_SetIterateBounds_ConfinesIterationToTheRange()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put("a", "1");
+        database.Db.Put("b", "2");
+        database.Db.Put("c", "3");
+        database.Db.Put("d", "4");
+
+        using var options = new ReadOptions().SetIterateBounds("b"u8, "d"u8);
+        var keys = new List<string>();
+        using (var iterator = database.Db.NewIterator(readOptions: options))
+        {
+            for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
+                keys.Add(iterator.StringKey());
+        }
+
+        await Assert.That(keys).IsEquivalentTo(new[] { "b", "c" }, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task ReadOptions_Dispose_IsIdempotentAndFreesTheBounds()
+    {
+        var options = new ReadOptions().SetIterateBounds("a"u8, "b"u8);
+
+        options.Dispose();
+        options.Dispose();
+
+        await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+    }
+
+    [Test]
+    public async Task WriteOptions_CanBeDisposedOnceItsWritesHaveReturned()
+    {
+        using var database = TestDatabase.Create();
+        var options = new WriteOptions();
+        database.Db.Put("key"u8, "value"u8, writeOptions: options);
+
+        options.Dispose();
+        options.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+            await Assert.That(database.Db.Get("key")).IsEqualTo("value");
+        }
+    }
+
+    [Test]
+    public async Task FlushOptions_Dispose_IsIdempotent()
+    {
+        var options = new FlushOptions();
+
+        options.Dispose();
+        options.Dispose();
+
+        await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+    }
+
+    /// <remarks>
+    /// Databases copy their options at open, so disposing the wrapper afterwards must leave the
+    /// database fully usable.
+    /// </remarks>
+    [Test]
+    public async Task DbOptions_CanBeDisposedOnceTheDatabaseIsOpen()
+    {
+        using var directory = new TempDirectory();
+        var options = new DbOptions().SetCreateIfMissing();
+        using var db = RocksDb.Open(options, directory.Reserve("db"));
+
+        options.Dispose();
+
+        db.Put("key", "value");
+        await Assert.That(db.Get("key")).IsEqualTo("value");
+    }
+
+    private static unsafe uint MaxSubcompactions(DbOptions options)
+        => RocksDbNative.rocksdb_options_get_max_subcompactions((rocksdb_options_t*)options.Handle);
+
+    private static unsafe byte LowPriority(WriteOptions options)
+        => RocksDbNative.rocksdb_writeoptions_get_low_pri((rocksdb_writeoptions_t*)options.Handle);
+
+    [Test]
+    public async Task DbOptions_SetMaxSubcompactions_ReachesTheNativeOptions()
+    {
+        using var options = new DbOptions().SetMaxSubcompactions(4);
+
+        await Assert.That(MaxSubcompactions(options)).IsEqualTo(4u);
+    }
+
+    [Test]
+    public async Task DbOptions_GetNumLevels_ReturnsTheRocksDbDefault()
+    {
+        using var options = new DbOptions();
+
+        await Assert.That(options.GetNumLevels()).IsEqualTo(7);
+    }
+
+    [Test]
+    public async Task DbOptions_ApplyFromString_AppliesRecognizedOptions()
+    {
+        using var options = new DbOptions().ApplyFromString("max_subcompactions=3");
+
+        await Assert.That(MaxSubcompactions(options)).IsEqualTo(3u);
+    }
+
+    [Test]
+    public async Task DbOptions_ApplyFromString_ThrowsOnAnUnknownOption()
+    {
+        using var options = new DbOptions();
+
+        await Assert.That(() => options.ApplyFromString("no_such_option=1"))
+            .Throws<RocksDbNativeException>();
+    }
+
+    [Test]
+    public async Task DbOptions_SetRowCache_LeavesReadsCorrectEvenAfterTheWrapperIsDisposed()
+    {
+        using var cache = Cache.CreateLru(8 * 1024 * 1024);
+        using var options = new DbOptions().SetCreateIfMissing().SetRowCache(cache);
+
+        using var database = TestDatabase.Create(options);
+        database.Db.Put("key", "value");
+
+        // rocksdb holds its own reference, so the wrapper can go while the database is open.
+        cache.Dispose();
+
+        await Assert.That(database.Db.Get("key")).IsEqualTo("value");
+    }
+
+    [Test]
+    public async Task WriteOptions_SetLowPriority_ReachesTheNativeWriteOptions()
+    {
+        using var options = new WriteOptions();
+
+        options.SetLowPriority(true);
+        await Assert.That(LowPriority(options)).IsEqualTo((byte)1);
+
+        options.SetLowPriority(false);
+        await Assert.That(LowPriority(options)).IsEqualTo((byte)0);
+    }
+
+    [Test]
+    public async Task Cache_CreateHyperClock_WorksAsABlockCache()
+    {
+        using var cache = Cache.CreateHyperClock(8 * 1024 * 1024);
+        var tableOptions = new BlockBasedTableOptions().SetBlockCache(cache);
+        using var options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(tableOptions);
+
+        using var database = TestDatabase.Create(options);
+        database.Db.Put("key", "value");
+        using var flushOptions = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flushOptions);
+
+        // The read has to come off disk for the block to reach the cache.
+        await Assert.That(database.Db.Get("key")).IsEqualTo("value");
+        await Assert.That(cache.GetUsage()).IsGreaterThan(0ul);
+
+        // rocksdb holds its own reference, so the wrapper can go while the database is open.
+        cache.Dispose();
+
+        await Assert.That(database.Db.Get("key")).IsEqualTo("value");
+    }
+
+    [Test]
+    public async Task Cache_Dispose_IsIdempotent()
+    {
+        var cache = Cache.CreateLru(1024);
+
+        cache.Dispose();
+        cache.Dispose();
+
+        await Assert.That(cache.Handle).IsEqualTo(nint.Zero);
     }
 }

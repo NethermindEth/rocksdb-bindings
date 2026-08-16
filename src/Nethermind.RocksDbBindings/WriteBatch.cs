@@ -104,6 +104,17 @@ public unsafe class WriteBatch : IWriteBatch, IDisposable
 
     public int Count() => rocksdb_writebatch_count(RocksDbInterop.WriteBatch(handle));
 
+    /// <summary>The size in bytes of the batch's serialized representation.</summary>
+    public nuint DataSize
+    {
+        get
+        {
+            nuint size;
+            rocksdb_writebatch_data(RocksDbInterop.WriteBatch(handle), &size);
+            return size;
+        }
+    }
+
     public WriteBatch Put(string key, string val, Encoding? encoding = null)
     {
         if (encoding is null)

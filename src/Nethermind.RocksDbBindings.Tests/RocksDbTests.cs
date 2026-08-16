@@ -633,4 +633,91 @@ public class RocksDbTests
 
         await Assert.That(db.Dispose).ThrowsNothing();
     }
+
+    [Test]
+    public async Task FlushWal_SucceedsAfterWrites()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, Value);
+
+        await Assert.That(() => database.Db.FlushWal(sync: true)).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task TryGetIntProperty_ReadsAnIntegerProperty()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, Value);
+
+        var found = database.Db.TryGetIntProperty("rocksdb.estimate-num-keys", out var keys);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(found).IsTrue();
+            await Assert.That(keys).IsEqualTo(1ul);
+        }
+    }
+
+    [Test]
+    public async Task TryGetIntProperty_ReturnsFalseForAnUnknownProperty()
+    {
+        using var database = TestDatabase.Create();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.TryGetIntProperty("rocksdb.no-such-property", out var value)).IsFalse();
+            await Assert.That(value).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    public async Task Repair_LeavesAFlushedDatabaseReopenableWithItsData()
+    {
+        using var directory = new TempDirectory();
+        var path = directory.Reserve("db");
+
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        using (var db = RocksDb.Open(creatingOptions, path))
+        {
+            db.Put(Key, Value);
+            using var flushOptions = new FlushOptions().SetWaitForFlush(true);
+            db.Flush(flushOptions);
+        }
+
+        using var repairOptions = new DbOptions();
+        RocksDb.Repair(repairOptions, path);
+
+        using var reopenOptions = new DbOptions();
+        using var reopened = RocksDb.Open(reopenOptions, path);
+        await Assert.That(reopened.Get(Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+    }
+
+    /// <summary>Counts its enumerations, like a non-replayable LINQ source would misbehave past one.</summary>
+    private sealed class SingleEnumerationOptions : IEnumerable<KeyValuePair<string, string>>
+    {
+        public int EnumerationCount { get; private set; }
+
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator()
+        {
+            EnumerationCount++;
+            yield return new("write_buffer_size", "1048576");
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <remarks>
+    /// The native call indexes the keys and values arrays through one count, so they must come
+    /// from a single enumeration; a second pass over an unstable source could desynchronize them.
+    /// </remarks>
+    [Test]
+    public async Task SetOptions_EnumeratesTheOptionsExactlyOnce()
+    {
+        using var database = TestDatabase.Create();
+        var options = new SingleEnumerationOptions();
+
+        database.Db.SetOptions(options);
+
+        await Assert.That(options.EnumerationCount).IsEqualTo(1);
+    }
 }

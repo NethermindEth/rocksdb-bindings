@@ -10,6 +10,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
+/// <inheritdoc/>
 public class ColumnFamilyOptions : Options<ColumnFamilyOptions> { }
 
 // The callbacks live here rather than on Options<T> because UnmanagedCallersOnly methods

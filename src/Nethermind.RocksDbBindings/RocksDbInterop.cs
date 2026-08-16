@@ -123,26 +123,53 @@ internal static unsafe class RocksDbInterop
     public static rocksdb_universal_compaction_options_t* UniversalCompactionOptions(nint value) => (rocksdb_universal_compaction_options_t*)value;
 }
 
+/// <summary>
+/// A UTF-8 copy of a string that the native call consumes synchronously; disposing frees it.
+/// Unlike <see cref="RocksSafePath"/>, never pass it to a native function that retains the pointer.
+/// </summary>
+internal unsafe struct TransientUtf8String(string value) : IDisposable
+{
+    public nint Handle { get; private set; } = (nint)Utf8StringMarshaller.ConvertToUnmanaged(value);
+
+    public void Dispose()
+    {
+        Utf8StringMarshaller.Free((byte*)Handle);
+        Handle = nint.Zero;
+    }
+}
+
+/// <summary>
+/// UTF-8 copies of strings that the native call consumes synchronously; disposing frees them.
+/// Every native function this is passed to copies the strings before returning.
+/// </summary>
 internal sealed unsafe class NativeUtf8StringArray : IDisposable
 {
-    private readonly RocksSafePath[] values;
     private readonly nint* buffer;
+    private readonly int count;
 
     public NativeUtf8StringArray(string[] strings)
     {
         if (strings is null)
         {
             Pointer = null;
-            values = [];
             return;
         }
 
-        values = new RocksSafePath[strings.Length];
-        buffer = (nint*)NativeMemory.Alloc((nuint)strings.Length, (nuint)sizeof(nint));
-        for (int i = 0; i < strings.Length; i++)
+        count = strings.Length;
+        // Zeroed so a conversion failure part-way leaves only pointers that are safe to free.
+        buffer = (nint*)NativeMemory.AllocZeroed((nuint)count, (nuint)sizeof(nint));
+        try
         {
-            values[i] = new RocksSafePath(strings[i]);
-            buffer[i] = values[i].Handle;
+            for (int i = 0; i < count; i++)
+            {
+                buffer[i] = (nint)Utf8StringMarshaller.ConvertToUnmanaged(strings[i]);
+            }
+        }
+        catch
+        {
+            // The constructor never returns, so nothing else will call Dispose.
+            Dispose();
+            throw;
         }
 
         Pointer = (sbyte**)buffer;
@@ -152,8 +179,8 @@ internal sealed unsafe class NativeUtf8StringArray : IDisposable
 
     public void Dispose()
     {
-        for (int i = 0; i < values.Length; i++)
-            values[i]?.Dispose();
+        for (int i = 0; i < count; i++)
+            Utf8StringMarshaller.Free((byte*)buffer[i]);
 
         NativeMemory.Free(buffer);
     }

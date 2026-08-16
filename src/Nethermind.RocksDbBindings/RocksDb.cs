@@ -263,14 +263,39 @@ public unsafe sealed class RocksDb : IDisposable
         return new Checkpoint(checkpoint);
     }
 
+    // Enumerates the options exactly once: the native call indexes both arrays through one
+    // count, so keys and values must come from the same stable snapshot.
+    private static (string[] Keys, string[] Values) SplitOptions(IEnumerable<KeyValuePair<string, string>> options)
+    {
+        KeyValuePair<string, string>[] pairs = [.. options];
+        var keys = new string[pairs.Length];
+        var values = new string[pairs.Length];
+        for (var i = 0; i < pairs.Length; i++)
+            (keys[i], values[i]) = pairs[i];
+
+        return (keys, values);
+    }
+
     public void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
     {
-        var keys = options.Select(e => e.Key).ToArray();
-        var values = options.Select(e => e.Value).ToArray();
+        var (keys, values) = SplitOptions(options);
         using var nativeKeys = new NativeUtf8StringArray(keys);
         using var nativeValues = new NativeUtf8StringArray(values);
         sbyte* errptr = null;
         rocksdb_set_options(RocksDbInterop.Db(Handle), keys.Length, nativeKeys.Pointer, nativeValues.Pointer, &errptr);
+        GC.KeepAlive(this);
+        RocksDbInterop.ThrowIfError(errptr);
+    }
+
+    /// <summary>Changes mutable options of a single column family at runtime.</summary>
+    public void SetOptions(IColumnFamilyHandle cf, IEnumerable<KeyValuePair<string, string>> options)
+    {
+        var (keys, values) = SplitOptions(options);
+        using var nativeKeys = new NativeUtf8StringArray(keys);
+        using var nativeValues = new NativeUtf8StringArray(values);
+        sbyte* errptr = null;
+        rocksdb_set_options_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), keys.Length, nativeKeys.Pointer, nativeValues.Pointer, &errptr);
+        GC.KeepAlive(this);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -590,10 +615,14 @@ public unsafe sealed class RocksDb : IDisposable
 
     private rocksdb_pinnableslice_t* GetPinned(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
+        var options = readOptions ?? DefaultReadOptions;
         sbyte* errptr = null;
         var pinned = cf is null
-            ? rocksdb_get_pinned(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), (sbyte*)key, keyLength, &errptr)
-            : rocksdb_get_pinned_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            ? rocksdb_get_pinned(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions(options.Handle), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ReadOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+        // Without these, the finalizers could destroy the db or read options mid-call.
+        GC.KeepAlive(this);
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
         return pinned;
     }
@@ -1029,6 +1058,64 @@ public unsafe sealed class RocksDb : IDisposable
     {
         sbyte* errptr = null;
         rocksdb_flush(RocksDbInterop.Db(Handle), RocksDbInterop.FlushOptions(flushOptions.Handle), &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+    }
+
+    /// <summary>Flushes the memtable of a single column family into SST files.</summary>
+    public void Flush(FlushOptions flushOptions, IColumnFamilyHandle cf)
+    {
+        sbyte* errptr = null;
+        rocksdb_flush_cf(RocksDbInterop.Db(Handle), RocksDbInterop.FlushOptions(flushOptions.Handle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
+        GC.KeepAlive(this);
+        GC.KeepAlive(flushOptions);
+        RocksDbInterop.ThrowIfError(errptr);
+    }
+
+    /// <summary>Flushes the write-ahead log, optionally syncing it to disk.</summary>
+    public void FlushWal(bool sync)
+    {
+        sbyte* errptr = null;
+        rocksdb_flush_wal(RocksDbInterop.Db(Handle), RocksDbInterop.Bool(sync), &errptr);
+        GC.KeepAlive(this);
+        RocksDbInterop.ThrowIfError(errptr);
+    }
+
+    /// <summary>
+    /// Reads an integer-valued property such as <c>rocksdb.estimate-num-keys</c> without the
+    /// string round-trip of <see cref="GetProperty(string)"/>.
+    /// </summary>
+    /// <returns>False when the property does not exist or is not integer-valued.</returns>
+    public bool TryGetIntProperty(string propertyName, out ulong value)
+    {
+        using var property = new TransientUtf8String(propertyName);
+        ulong result;
+        var found = rocksdb_property_int(RocksDbInterop.Db(Handle), (sbyte*)property.Handle, &result) == 0;
+        GC.KeepAlive(this);
+        value = found ? result : 0;
+        return found;
+    }
+
+    /// <inheritdoc cref="TryGetIntProperty(string, out ulong)"/>
+    public bool TryGetIntProperty(string propertyName, IColumnFamilyHandle cf, out ulong value)
+    {
+        using var property = new TransientUtf8String(propertyName);
+        ulong result;
+        var found = rocksdb_property_int_cf(RocksDbInterop.Db(Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)property.Handle, &result) == 0;
+        GC.KeepAlive(this);
+        value = found ? result : 0;
+        return found;
+    }
+
+    /// <summary>
+    /// Attempts to repair a database that cannot be opened, rebuilding what is salvageable from
+    /// its files. Data may be lost; take a copy first if the files matter.
+    /// </summary>
+    public static void Repair(DbOptions options, string path)
+    {
+        using var pathSafe = new TransientUtf8String(path);
+        sbyte* errptr = null;
+        rocksdb_repair_db(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
+        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 

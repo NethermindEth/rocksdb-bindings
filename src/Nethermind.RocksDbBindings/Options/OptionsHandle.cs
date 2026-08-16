@@ -13,7 +13,7 @@ Note on SetXXX() syntax:
    1. The rocksdb C API does not support reading the options and so a class with properties is not an appropriate representation
    2. The API functions are named as imperatives and don't always begin with "set" so one like "OptimizeLevelStyleCompaction" wouldn't work right
 */
-public unsafe abstract class OptionsHandle
+public unsafe abstract class OptionsHandle : IDisposable
 {
     // RocksDB uses these in place rather than copying them, so the managed wrappers are held here to
     // keep the garbage collector from running their finalizers while rocksdb still points at them.
@@ -34,7 +34,20 @@ public unsafe abstract class OptionsHandle
             Handle = (nint)rocksdb_options_create();
     }
 
-    ~OptionsHandle()
+    ~OptionsHandle() => ReleaseHandle();
+
+    /// <summary>Destroys the native options deterministically; the finalizer is only a backstop.</summary>
+    /// <remarks>
+    /// Dispose only after every native call using these options has returned. See the derived
+    /// types for their specific lifetime rules.
+    /// </remarks>
+    public void Dispose()
+    {
+        ReleaseHandle();
+        GC.SuppressFinalize(this);
+    }
+
+    private void ReleaseHandle()
     {
         if (Handle != nint.Zero)
         {

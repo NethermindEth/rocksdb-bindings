@@ -8,7 +8,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class ReadOptions
+public unsafe class ReadOptions : IDisposable
 {
     private nint iterateLowerBound;
     private nint iterateUpperBound;
@@ -20,15 +20,53 @@ public unsafe class ReadOptions
 
     public nint Handle { get; protected set; }
 
-    ~ReadOptions()
+    ~ReadOptions() => ReleaseHandle();
+
+    /// <summary>Destroys the native options deterministically; the finalizer is only a backstop.</summary>
+    /// <remarks>
+    /// Iterators read these options and any iterate bounds in place for their whole lifetime, so
+    /// dispose only after every iterator and read using these options is done.
+    /// </remarks>
+    public void Dispose()
+    {
+        ReleaseHandle();
+        GC.SuppressFinalize(this);
+    }
+
+    private void ReleaseHandle()
     {
         if (Handle != nint.Zero)
         {
             rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
-            NativeMemory.Free((void*)iterateLowerBound);
-            NativeMemory.Free((void*)iterateUpperBound);
             Handle = nint.Zero;
         }
+
+        FreeBound(ref iterateLowerBound);
+        FreeBound(ref iterateUpperBound);
+    }
+
+    private static void FreeBound(ref nint bound)
+    {
+        var buffer = bound;
+        bound = nint.Zero;
+        NativeMemory.Free((void*)buffer);
+    }
+
+    private static nint AllocateCopy(ReadOnlySpan<byte> key)
+    {
+        var buffer = (byte*)NativeMemory.Alloc((nuint)key.Length);
+        key.CopyTo(new Span<byte>(buffer, key.Length));
+        return (nint)buffer;
+    }
+
+    // The native setter stores the pointer without copying, so the old buffer must stay alive
+    // until the new one is installed: allocate, point rocksdb at it, then free the old one. A
+    // failed allocation thus leaves both the field and rocksdb on the still-valid old buffer.
+    private static void InstallBound(ref nint bound, nint buffer)
+    {
+        var previous = bound;
+        bound = buffer;
+        NativeMemory.Free((void*)previous);
     }
 
     public ReadOptions SetBackgroundPurgeOnIteratorCleanup(bool value)
@@ -78,17 +116,22 @@ public unsafe class ReadOptions
         return this;
     }
 
-    public ReadOptions SetIterateLowerBound(byte[] key, ulong keyLen)
+    /// <summary>
+    /// Sets the inclusive lower bound for iteration, copying it into memory owned and freed by
+    /// these options.
+    /// </summary>
+    /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
+    public ReadOptions SetIterateLowerBound(ReadOnlySpan<byte> key)
     {
-        NativeMemory.Free((void*)iterateLowerBound);
-        iterateLowerBound = (nint)NativeMemory.Alloc((nuint)key.Length);
-        key.CopyTo(new Span<byte>((void*)iterateLowerBound, key.Length));
-        nuint klen = (nuint)keyLen;
-        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateLowerBound, klen);
+        var buffer = AllocateCopy(key);
+        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)buffer, (nuint)key.Length);
+        InstallBound(ref iterateLowerBound, buffer);
         return this;
     }
 
-    public ReadOptions SetIterateLowerBound(byte[] key) => SetIterateLowerBound(key, (ulong)key.GetLongLength(0));
+    public ReadOptions SetIterateLowerBound(byte[] key, ulong keyLen) => SetIterateLowerBound(key.AsSpan(0, checked((int)keyLen)));
+
+    public ReadOptions SetIterateLowerBound(byte[] key) => SetIterateLowerBound(key.AsSpan());
 
     public unsafe ReadOptions SetIterateLowerBound(string stringKey, Encoding? encoding = null)
     {
@@ -103,17 +146,30 @@ public unsafe class ReadOptions
         return this;
     }
 
-    public ReadOptions SetIterateUpperBound(byte[] key, ulong keyLen)
+    /// <summary>
+    /// Sets the exclusive upper bound for iteration, copying it into memory owned and freed by
+    /// these options.
+    /// </summary>
+    /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
+    public ReadOptions SetIterateUpperBound(ReadOnlySpan<byte> key)
     {
-        NativeMemory.Free((void*)iterateUpperBound);
-        iterateUpperBound = (nint)NativeMemory.Alloc((nuint)key.Length);
-        key.CopyTo(new Span<byte>((void*)iterateUpperBound, key.Length));
-        nuint klen = (nuint)keyLen;
-        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)iterateUpperBound, klen);
+        var buffer = AllocateCopy(key);
+        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)buffer, (nuint)key.Length);
+        InstallBound(ref iterateUpperBound, buffer);
         return this;
     }
 
-    public ReadOptions SetIterateUpperBound(byte[] key) => SetIterateUpperBound(key, (ulong)key.GetLongLength(0));
+    public ReadOptions SetIterateUpperBound(byte[] key, ulong keyLen) => SetIterateUpperBound(key.AsSpan(0, checked((int)keyLen)));
+
+    public ReadOptions SetIterateUpperBound(byte[] key) => SetIterateUpperBound(key.AsSpan());
+
+    /// <summary>
+    /// Sets the inclusive lower and exclusive upper bounds for iteration, copying both into
+    /// memory owned and freed by these options.
+    /// </summary>
+    /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
+    public ReadOptions SetIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
+        => SetIterateLowerBound(lowerBound).SetIterateUpperBound(upperBound);
 
     public unsafe ReadOptions SetIterateUpperBound(string stringKey, Encoding? encoding = null)
     {

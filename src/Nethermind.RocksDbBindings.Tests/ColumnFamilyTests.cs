@@ -262,4 +262,63 @@ public class ColumnFamilyTests
 
         await Assert.That(readOnly.Get(Key, readOnly.GetColumnFamily("blocks"))).IsEquivalentTo(Value, CollectionOrdering.Matching);
     }
+
+    [Test]
+    public async Task Flush_CanBeScopedToAFamily()
+    {
+        using var options = CreatingOptions();
+        using var database = TestDatabase.Create(options, Families("blocks"));
+        var blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put(Key, Value, blocks);
+
+        using var flushOptions = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flushOptions, blocks);
+
+        using (Assert.Multiple())
+        {
+            // The flushed family has SST data; the untouched default family has none.
+            await Assert.That(database.Db.TryGetIntProperty("rocksdb.total-sst-files-size", blocks, out var flushedSize)).IsTrue();
+            await Assert.That(flushedSize).IsGreaterThan(0ul);
+            await Assert.That(database.Db.TryGetIntProperty("rocksdb.total-sst-files-size", database.Db.GetDefaultColumnFamily(), out var defaultSize)).IsTrue();
+            await Assert.That(defaultSize).IsEqualTo(0ul);
+            await Assert.That(database.Db.Get(Key, blocks)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    public async Task SetOptions_CanBeScopedToAFamily()
+    {
+        using var options = CreatingOptions();
+        using var database = TestDatabase.Create(options, Families("blocks"));
+        var blocks = database.Db.GetColumnFamily("blocks");
+
+        database.Db.SetOptions(blocks, [new KeyValuePair<string, string>("write_buffer_size", "65536")]);
+
+        // Writing past the shrunken buffer forces a memtable switch, observable as an immutable
+        // memtable or an already-flushed SST file — in that family only.
+        var payload = new byte[8 * 1024];
+        for (var i = 0; i < 40; i++)
+            database.Db.Put([(byte)i], payload.AsSpan(), blocks);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(MemtableSwitched(database.Db, blocks)).IsTrue();
+            await Assert.That(MemtableSwitched(database.Db, database.Db.GetDefaultColumnFamily())).IsFalse();
+        }
+
+        static bool MemtableSwitched(RocksDb db, IColumnFamilyHandle cf)
+            => (db.TryGetIntProperty("rocksdb.num-immutable-mem-table", cf, out var immutable) && immutable > 0)
+                || (db.TryGetIntProperty("rocksdb.total-sst-files-size", cf, out var sstSize) && sstSize > 0);
+    }
+
+    [Test]
+    public async Task SetOptions_ThrowsOnAnUnknownOption()
+    {
+        using var options = CreatingOptions();
+        using var database = TestDatabase.Create(options, Families("blocks"));
+        var blocks = database.Db.GetColumnFamily("blocks");
+
+        await Assert.That(() => database.Db.SetOptions(blocks, [new KeyValuePair<string, string>("no_such_option", "1")]))
+            .Throws<RocksDbNativeException>();
+    }
 }

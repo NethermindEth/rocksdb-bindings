@@ -45,7 +45,8 @@ internal sealed unsafe class OptionsBase
         try
         {
             var comparator = (IComparator)GCHandle.FromIntPtr(((ComparatorState*)state)->Instance).Target!;
-            return comparator.Compare((nint)a, alen, (nint)b, blen);
+            // The spans live only for this call, which is all the interface promises.
+            return comparator.Compare(new ReadOnlySpan<byte>(a, checked((int)alen)), new ReadOnlySpan<byte>(b, checked((int)blen)));
         }
         catch (Exception exception)
         {

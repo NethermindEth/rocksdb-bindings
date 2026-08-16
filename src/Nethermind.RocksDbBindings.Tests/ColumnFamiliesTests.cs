@@ -64,6 +64,26 @@ public class ColumnFamiliesTests
         await Assert.That(families.Names).IsEquivalentTo(new[] { ColumnFamilies.DefaultName, "blocks" }, CollectionOrdering.Matching);
     }
 
+    /// <remarks>
+    /// rocksdb rejects an open that names a family twice, so a repeated name reconfigures the one
+    /// already there instead of queueing a duplicate.
+    /// </remarks>
+    [Test]
+    public async Task Add_WithARepeatedName_ReplacesTheOptionsInPlace()
+    {
+        var families = new ColumnFamilies();
+        families.Add("blocks", new ColumnFamilyOptions());
+        var replacement = new ColumnFamilyOptions();
+
+        families.Add("blocks", replacement);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(families.Names).IsEquivalentTo(new[] { ColumnFamilies.DefaultName, "blocks" }, CollectionOrdering.Matching);
+            await Assert.That(families.OptionHandles.Last()).IsEqualTo(replacement.Handle);
+        }
+    }
+
     [Test]
     public async Task OptionHandles_LineUpWithNames()
     {
@@ -72,6 +92,24 @@ public class ColumnFamiliesTests
         families.Add("blocks", blocks);
 
         await Assert.That(families.OptionHandles.Last()).IsEqualTo(blocks.Handle);
+    }
+
+    /// <remarks>
+    /// A null reaches native code as a zero handle at open, far from the call that supplied it, so
+    /// every route into a descriptor has to reject one.
+    /// </remarks>
+    [Test]
+    public async Task Add_WithNulls_ThrowsAtTheCallThatSuppliedThem()
+    {
+        var families = new ColumnFamilies();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => families.Add("blocks", null!)).Throws<ArgumentNullException>();
+            await Assert.That(() => families.Add(null!, new ColumnFamilyOptions())).Throws<ArgumentNullException>();
+            await Assert.That(() => families.Add(null!)).Throws<ArgumentNullException>();
+            await Assert.That(() => new ColumnFamilies.Descriptor("blocks", null!)).Throws<ArgumentNullException>();
+        }
     }
 
     [Test]

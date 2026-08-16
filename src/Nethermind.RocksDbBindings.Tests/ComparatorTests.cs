@@ -12,13 +12,15 @@ public class ComparatorTests
     {
         public string Name => "descending";
 
-        public unsafe int Compare(nint a, nuint alen, nint b, nuint blen)
-            => new ReadOnlySpan<byte>((void*)b, (int)blen).SequenceCompareTo(new ReadOnlySpan<byte>((void*)a, (int)alen));
+        public int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => b.SequenceCompareTo(a);
     }
 
-    private sealed class DescendingStringComparator : StringComparatorBase
+    private sealed class DescendingStringComparator : IComparator
     {
-        public override int Compare(string a, string b) => string.CompareOrdinal(b, a);
+        public string Name => "descending-string";
+
+        public int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+            => string.CompareOrdinal(Encoding.UTF8.GetString(b), Encoding.UTF8.GetString(a));
     }
 
     private static List<string> Keys(RocksDb db)
@@ -42,18 +44,9 @@ public class ComparatorTests
         return database;
     }
 
-    /// <summary>Calls the native-facing overload the way rocksdb does, with raw pointers.</summary>
-    private static unsafe int CompareEncoded(StringComparatorBase comparator, string a, string b)
-    {
-        var left = comparator.Encoding.GetBytes(a);
-        var right = comparator.Encoding.GetBytes(b);
-
-        fixed (byte* leftPtr = left)
-        fixed (byte* rightPtr = right)
-        {
-            return comparator.Compare((nint)leftPtr, (nuint)left.Length, (nint)rightPtr, (nuint)right.Length);
-        }
-    }
+    /// <summary>Calls the comparator the way rocksdb does, over the encoded key bytes.</summary>
+    private static int CompareEncoded(StringComparator comparator, string a, string b)
+        => comparator.Compare(comparator.Encoding.GetBytes(a), comparator.Encoding.GetBytes(b));
 
     [Test]
     public async Task ACustomComparator_DrivesTheIterationOrder()
@@ -84,7 +77,7 @@ public class ComparatorTests
     }
 
     [Test]
-    public async Task AStringComparatorSubclass_DrivesTheIterationOrder()
+    public async Task AStringDecodingComparator_DrivesTheIterationOrder()
     {
         using var database = Ordered(new DescendingStringComparator());
 
@@ -154,10 +147,6 @@ public class ComparatorTests
     [Arguments("")]
     public async Task StringComparator_RejectsAnUnusableName(string? name)
         => await Assert.That(() => new StringComparator(name!)).Throws<ArgumentException>();
-
-    [Test]
-    public async Task AStringComparatorSubclass_WithoutAName_IsNamedAfterItself()
-        => await Assert.That(new DescendingStringComparator().Name).IsEqualTo(nameof(DescendingStringComparator));
 
     /// <remarks>
     /// RocksDB tells orderings apart by this name alone, so two comparators that sort keys

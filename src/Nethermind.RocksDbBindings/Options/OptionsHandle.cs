@@ -38,15 +38,13 @@ public abstract class NativeOptions : IDisposable
     protected abstract void DestroyHandle();
 }
 
-/*
-Configure options for a RocksDb store.
-
-Note on SetXXX() syntax:
-   Why not syntax like new Options { XXX = ... } instead?  Two reasons
-   1. The rocksdb C API does not support reading the options and so a class with properties is not an appropriate representation
-   2. The API functions are named as imperatives and don't always begin with "set" so one like "OptimizeLevelStyleCompaction" wouldn't work right
-*/
 /// <summary>A <c>rocksdb_options_t</c>: the options a database or column family is opened with.</summary>
+/// <remarks>
+/// Configured by calling methods rather than by assigning properties, for two reasons: the C API
+/// is write-only, so a property could not report what an option is currently set to, and not every
+/// method is a simple assignment — <see cref="Options{T}.OptimizeLevelStyleCompaction"/> and its
+/// like set several options at once.
+/// </remarks>
 public unsafe abstract class OptionsHandle : NativeOptions
 {
     // RocksDB uses these in place rather than copying them, so the managed wrappers are held here to
@@ -54,7 +52,8 @@ public unsafe abstract class OptionsHandle : NativeOptions
     internal BlockBasedTableOptions? BlockBasedTableFactory { get; set; }
     internal SliceTransform? PrefixExtractor { get; set; }
 
-    //Stores some path values for the RocksDb class
+    // Not native options: the paths are kept here so an opened database can report where its
+    // write-ahead log and its LOG file went.
     internal string? WalPath { get; set; }
     internal string? LogPath { get; set; }
 

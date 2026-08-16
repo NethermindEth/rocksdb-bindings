@@ -4,8 +4,9 @@
 namespace Nethermind.RocksDbBindings;
 
 /// <summary>
-/// A Snapshot is an immutable object and can therefore be safely
-/// accessed from multiple threads without any external synchronization.
+/// A fixed view of the database at the moment it was taken. Reads pinned to it see that state
+/// however much is written afterwards, and it is immutable, so any number of threads may use it
+/// at once.
 /// </summary>
 public sealed class Snapshot : IDisposable
 {

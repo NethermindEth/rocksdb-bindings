@@ -38,8 +38,8 @@ this distribution is stated in the corresponding section.
 
 https://github.com/curiosity-ai/rocksdb-sharp
 
-Parts of the managed API in Nethermind.RocksDbBindings.dll are derived from
-rocksdb-sharp.
+Parts of the managed API in Nethermind.RocksDbBindings.dll were originally
+derived from rocksdb-sharp and have since been substantially rewritten.
 
 BSD-2-Clause
 

@@ -5,6 +5,12 @@ using System.Text;
 
 namespace Nethermind.RocksDbBindings;
 
+/// <summary>Orders the keys of a database or column family.</summary>
+/// <remarks>
+/// RocksDB calls this on every comparison it makes, so implementations belong on the byte
+/// representation and should avoid allocating. An exception thrown here cannot unwind through the
+/// rocksdb frames that called it and terminates the process.
+/// </remarks>
 public interface IComparator
 {
     /// <summary>
@@ -14,72 +20,56 @@ public interface IComparator
     /// </summary>
     string Name { get; }
 
-    int Compare(nint a, nuint alen, nint b, nuint blen);
-}
-
-public abstract class StringComparatorBase(Encoding? encoding = null, string? name = null) : IComparator
-{
-    public Encoding Encoding { get; } = encoding ?? Encoding.UTF8;
-
-    /// <inheritdoc />
-    /// <remarks>
-    /// Defaults to the concrete type's name. Pass an explicit name to the constructor when one
-    /// type can be configured to order keys in more than one way, as <see cref="StringComparator" />
-    /// can: without it every configuration of that type reports the same name and rocksdb cannot
-    /// tell one ordering from another.
-    /// </remarks>
-    public string Name => name ?? GetType().Name;
-
-    public abstract int Compare(string a, string b);
-
-    public unsafe int Compare(nint a, nuint alen, nint b, nuint blen)
-    {
-        var astr = Encoding.GetString((byte*)a, (int)alen);
-        var bstr = Encoding.GetString((byte*)b, (int)blen);
-        return Compare(astr, bstr);
-    }
-}
-
-public class StringComparator : StringComparatorBase
-{
-    public Comparison<string> CompareFunc { get; }
-
     /// <summary>
-    /// Orders keys with <paramref name="comparer" />.
+    /// Orders <paramref name="a"/> against <paramref name="b"/>: negative when it sorts first,
+    /// positive when it sorts last, zero when the two are equivalent.
     /// </summary>
+    /// <remarks>
+    /// The spans point into rocksdb's own memory and are valid only for the duration of the call.
+    /// </remarks>
+    int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);
+}
+
+/// <summary>Orders keys as the strings they decode to.</summary>
+/// <remarks>
+/// Decoding allocates two strings per comparison, on a path rocksdb takes for every read,
+/// iteration step and compaction merge. Implement <see cref="IComparator"/> over the bytes where
+/// that cost matters.
+/// </remarks>
+public sealed class StringComparator : IComparator
+{
+    private readonly Comparison<string> _compare;
+
     /// <param name="name">
-    /// Identifies the ordering to rocksdb. Required, unlike on the other
-    /// <see cref="StringComparatorBase" /> subclasses, because this one takes its ordering as an
-    /// argument: nothing about the instance distinguishes one configuration from another, so no
-    /// default could tell them apart. Give each distinct ordering its own name.
+    /// Identifies the ordering to rocksdb. Required, because instances of this type differ only in
+    /// the arguments they were given: nothing about one distinguishes it from another that orders
+    /// keys differently. Give each distinct ordering its own name.
     /// </param>
     /// <param name="comparer">
-    /// Defaults to <see cref="StringComparer.Ordinal" />. Avoid culture-sensitive comparers: their
+    /// Defaults to <see cref="StringComparer.Ordinal"/>. Avoid culture-sensitive comparers: their
     /// ordering follows the machine's current culture, so a database written on one machine can be
-    /// ordered differently on another while still reporting <paramref name="name" /> and passing
-    /// the comparator check that would otherwise catch it.
+    /// ordered differently on another while still reporting <paramref name="name"/> and passing the
+    /// comparator check that would otherwise catch it.
     /// </param>
     /// <param name="encoding">
     /// Decodes keys before they are compared. Defaults to UTF-8, matching the rest of the bindings.
     /// </param>
     public StringComparator(string name, IComparer<string>? comparer = null, Encoding? encoding = null)
-        : base(encoding, name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        CompareFunc = (comparer ?? StringComparer.Ordinal).Compare;
+        Name = name;
+        Encoding = encoding ?? Encoding.UTF8;
+        _compare = (comparer ?? StringComparer.Ordinal).Compare;
     }
 
-    /// <summary>
-    /// Orders keys ordinally, optionally ignoring case.
-    /// </summary>
     /// <param name="name">
-    /// Identifies the ordering to rocksdb. Two comparators that order keys differently must not
-    /// share a name, so a case-sensitive and a case-insensitive one need separate names.
+    /// Identifies the ordering to rocksdb. A case-sensitive and a case-insensitive comparator
+    /// order keys differently, so they need separate names.
     /// </param>
     /// <param name="ignoreCase">
-    /// Selects <see cref="StringComparer.OrdinalIgnoreCase" /> over
-    /// <see cref="StringComparer.Ordinal" />. Both are culture independent.
+    /// Selects <see cref="StringComparer.OrdinalIgnoreCase"/> over
+    /// <see cref="StringComparer.Ordinal"/>. Both are culture independent.
     /// </param>
     /// <param name="encoding">
     /// Decodes keys before they are compared. Defaults to UTF-8, matching the rest of the bindings.
@@ -89,5 +79,16 @@ public class StringComparator : StringComparatorBase
     {
     }
 
-    public override int Compare(string a, string b) => CompareFunc(a, b);
+    /// <inheritdoc />
+    public string Name { get; }
+
+    /// <summary>Decodes keys before they are compared.</summary>
+    public Encoding Encoding { get; }
+
+    /// <inheritdoc />
+    public int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        => Compare(Encoding.GetString(a), Encoding.GetString(b));
+
+    /// <summary>Orders two decoded keys.</summary>
+    public int Compare(string a, string b) => _compare(a, b);
 }

@@ -4,7 +4,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 
 ## Project structure
 
-- [src](./src/): The main codebase. The C# API is derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp). It is now being extensively refactored and modernized.
+- [src](./src/): The main codebase. The C# API was originally derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), and has since been substantially rewritten.
 - [generation](./generation/): RocksDB bindings generation with ClangSharp.
 - [build-rocksdb.yml](./.github/workflows/build-rocksdb.yml): Builds RocksDB and generates bindings for the specified version.
 - [test-publish.yml](./.github/workflows/test-publish.yml): Runs the tests and optionally publishes on NuGet.

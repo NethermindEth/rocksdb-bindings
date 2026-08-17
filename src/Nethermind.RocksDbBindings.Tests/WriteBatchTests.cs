@@ -57,7 +57,7 @@ public class WriteBatchTests
 
     private static unsafe void Collect(void* state, Entry entry)
     {
-        // Nothing may escape into the rocksdb frames that called this, so failures are reported
+        // Nothing may escape into the RocksDB frames that called this, so failures are reported
         // by the entries the test inspects afterwards rather than by an exception.
         try
         {

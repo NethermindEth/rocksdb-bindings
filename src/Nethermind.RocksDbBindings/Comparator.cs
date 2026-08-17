@@ -9,7 +9,7 @@ namespace Nethermind.RocksDbBindings;
 /// <remarks>
 /// RocksDB calls this on every comparison it makes, so implementations belong on the byte
 /// representation and should avoid allocating. An exception thrown here cannot unwind through the
-/// rocksdb frames that called it and terminates the process.
+/// RocksDB frames that called it and terminates the process.
 /// </remarks>
 public interface IComparator
 {
@@ -25,14 +25,14 @@ public interface IComparator
     /// positive when it sorts last, zero when the two are equivalent.
     /// </summary>
     /// <remarks>
-    /// The spans point into rocksdb's own memory and are valid only for the duration of the call.
+    /// The spans point into RocksDB's own memory and are valid only for the duration of the call.
     /// </remarks>
     int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);
 }
 
 /// <summary>Orders keys as the strings they decode to.</summary>
 /// <remarks>
-/// Decoding allocates two strings per comparison, on a path rocksdb takes for every read,
+/// Decoding allocates two strings per comparison, on a path RocksDB takes for every read,
 /// iteration step and compaction merge. Implement <see cref="IComparator"/> over the bytes where
 /// that cost matters.
 /// </remarks>
@@ -41,7 +41,7 @@ public sealed class StringComparator : IComparator
     private readonly Comparison<string> _compare;
 
     /// <param name="name">
-    /// Identifies the ordering to rocksdb. Required, because instances of this type differ only in
+    /// Identifies the ordering to RocksDB. Required, because instances of this type differ only in
     /// the arguments they were given: nothing about one distinguishes it from another that orders
     /// keys differently. Give each distinct ordering its own name.
     /// </param>
@@ -64,7 +64,7 @@ public sealed class StringComparator : IComparator
     }
 
     /// <param name="name">
-    /// Identifies the ordering to rocksdb. A case-sensitive and a case-insensitive comparator
+    /// Identifies the ordering to RocksDB. A case-sensitive and a case-insensitive comparator
     /// order keys differently, so they need separate names.
     /// </param>
     /// <param name="ignoreCase">

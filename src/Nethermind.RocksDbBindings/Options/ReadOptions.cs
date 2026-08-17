@@ -59,8 +59,8 @@ public unsafe class ReadOptions : IDisposable
     }
 
     // The native setter stores the pointer without copying, so the old buffer must stay alive
-    // until the new one is installed: allocate, point rocksdb at it, then free the old one. A
-    // failed allocation thus leaves both the field and rocksdb on the still-valid old buffer.
+    // until the new one is installed: allocate, point RocksDB at it, then free the old one. A
+    // failed allocation thus leaves both the field and RocksDB on the still-valid old buffer.
     private static void InstallBound(ref nint bound, nint buffer)
     {
         var previous = bound;

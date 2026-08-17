@@ -6,13 +6,13 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <summary>
-/// Creates a compaction filter from callbacks that rocksdb invokes directly. Each one must be a
+/// Creates a compaction filter from callbacks that RocksDB invokes directly. Each one must be a
 /// static method marked with <c>[UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]</c>,
 /// and <paramref name="state"/> is passed back to every call.
 /// </summary>
 /// <remarks>
 /// Every callback must catch all managed exceptions. An exception cannot unwind through the
-/// rocksdb frames that invoked it, so one that escapes terminates the process.
+/// RocksDB frames that invoked it, so one that escapes terminates the process.
 /// <para>
 /// RocksDB stores a compaction filter as a non-owning pointer and never destroys it, so the
 /// caller must keep <paramref name="state"/> and everything it reaches alive for as long as any

@@ -5,7 +5,7 @@ namespace Nethermind.RocksDbBindings.Tests;
 
 /// <summary>
 /// A freshly created database in its own temporary directory. Disposing closes the database
-/// first and only then removes the files, which is the order rocksdb requires on Windows.
+/// first and only then removes the files, which is the order RocksDB requires on Windows.
 /// </summary>
 internal sealed class TestDatabase : IDisposable
 {

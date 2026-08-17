@@ -16,7 +16,7 @@ namespace Nethermind.RocksDbBindings;
 /// </remarks>
 public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
 {
-    /// <summary>The name rocksdb gives the family that every database has.</summary>
+    /// <summary>The name RocksDB gives the family that every database has.</summary>
     public const string DefaultName = "default";
 
     private readonly List<Descriptor> _descriptors = [];
@@ -31,7 +31,7 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
     /// <summary>
     /// Adds a family, or replaces the options of one already named. Repeating
     /// <see cref="DefaultName"/> reconfigures the default family rather than adding a second one,
-    /// which rocksdb would reject.
+    /// which RocksDB would reject.
     /// </summary>
     public void Add(Descriptor descriptor)
     {

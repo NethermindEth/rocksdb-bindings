@@ -9,7 +9,7 @@ public unsafe class BlockBasedTableOptions
 {
     public nint Handle { get; protected set; }
 
-    // Held so the garbage collector cannot finalize them while rocksdb still points at them.
+    // Held so the garbage collector cannot finalize them while RocksDB still points at them.
     private BloomFilterPolicy? FilterPolicy { get; set; }
     private Cache? BlockCache { get; set; }
 

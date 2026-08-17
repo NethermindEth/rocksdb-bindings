@@ -36,7 +36,7 @@ public class ColumnFamiliesTests
 
     /// <remarks>
     /// The default family is always present, so adding it again has to replace the seeded
-    /// descriptor rather than produce a duplicate rocksdb would reject.
+    /// descriptor rather than produce a duplicate RocksDB would reject.
     /// </remarks>
     [Test]
     public async Task Add_WithTheDefaultName_ReplacesTheSeededDescriptor()
@@ -65,7 +65,7 @@ public class ColumnFamiliesTests
     }
 
     /// <remarks>
-    /// rocksdb rejects an open that names a family twice, so a repeated name reconfigures the one
+    /// RocksDB rejects an open that names a family twice, so a repeated name reconfigures the one
     /// already there instead of queueing a duplicate.
     /// </remarks>
     [Test]

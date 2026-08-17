@@ -43,14 +43,14 @@ public abstract class NativeOptions : IDisposable
 /// Configured by calling methods rather than by assigning properties, because not every method is
 /// a simple assignment: <see cref="Options{T}.OptimizeLevelStyleCompaction"/> and its like set
 /// several options at once. Options are also close to write-only here — the C API can read most
-/// of them back, but this type wraps almost none of those getters, and the ones rocksdb takes by
+/// of them back, but this type wraps almost none of those getters, and the ones RocksDB takes by
 /// reference (the comparator, the environment, the table and compaction factories) cannot be read
 /// back at all.
 /// </remarks>
 public unsafe abstract class OptionsHandle : NativeOptions
 {
     // RocksDB uses these in place rather than copying them, so the managed wrappers are held here to
-    // keep the garbage collector from running their finalizers while rocksdb still points at them.
+    // keep the garbage collector from running their finalizers while RocksDB still points at them.
     internal BlockBasedTableOptions? BlockBasedTableFactory { get; set; }
     internal SliceTransform? PrefixExtractor { get; set; }
 

@@ -11,7 +11,7 @@ public sealed unsafe class SstFileWriter : IDisposable
 {
     public nint Handle { get; private set; }
 
-    // Held so the garbage collector cannot finalize them while rocksdb still points at them.
+    // Held so the garbage collector cannot finalize them while RocksDB still points at them.
     private EnvOptions EnvOptions { get; }
     private ColumnFamilyOptions IoOptions { get; }
 

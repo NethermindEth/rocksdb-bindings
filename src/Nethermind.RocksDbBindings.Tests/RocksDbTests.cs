@@ -206,7 +206,7 @@ public class RocksDbTests
 
     /// <remarks>
     /// An empty value is still a value, so presence has to be decided by the returned pointer
-    /// rather than by the length rocksdb reports.
+    /// rather than by the length RocksDB reports.
     /// </remarks>
     [Test]
     public async Task HasKey_IsTrueForAKeyWithAnEmptyValue()
@@ -584,7 +584,7 @@ public class RocksDbTests
     }
 
     /// <remarks>
-    /// The LOCK file is the observable: rocksdb releases it only on the real native close, so a
+    /// The LOCK file is the observable: RocksDB releases it only on the real native close, so a
     /// reopen of the same path fails while any child still holds a lease.
     /// </remarks>
     [Test]

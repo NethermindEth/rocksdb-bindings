@@ -131,7 +131,7 @@ public class OptionsTests
     /// Keep this test. The round-trip tests below set an option and read it back through the same
     /// wrapper, so a setter and getter inverted in the same direction cancel out and every one of
     /// them still passes — verified by inverting both. This test is the only thing that catches
-    /// that, because it compares against rocksdb's own defaults rather than against the wrapper.
+    /// that, because it compares against RocksDB's own defaults rather than against the wrapper.
     /// </remarks>
     [Test]
     public async Task WriteOptions_DefaultToAnAsynchronousLoggedRegularPriorityWrite()
@@ -260,8 +260,8 @@ public class OptionsTests
         var tableOptions = new BlockBasedTableOptions().SetBlockSize(4096);
         var options = new ColumnFamilyOptions();
 
-        // The reference has to be kept on the managed side: rocksdb reads the table options in
-        // place, so a collected wrapper would destroy a handle rocksdb is still using.
+        // The reference has to be kept on the managed side: RocksDB reads the table options in
+        // place, so a collected wrapper would destroy a handle RocksDB is still using.
         await Assert.That(options.SetBlockBasedTableFactory(tableOptions)).IsSameReferenceAs(options);
 
         GC.Collect();
@@ -566,7 +566,7 @@ public class OptionsTests
         using var database = TestDatabase.Create(options);
         database.Db.Put("key", "value");
 
-        // rocksdb holds its own reference, so the wrapper can go while the database is open.
+        // RocksDB holds its own reference, so the wrapper can go while the database is open.
         cache.Dispose();
 
         await Assert.That(database.Db.Get("key")).IsEqualTo("value");
@@ -600,7 +600,7 @@ public class OptionsTests
         await Assert.That(database.Db.Get("key")).IsEqualTo("value");
         await Assert.That(cache.GetUsage()).IsGreaterThan(0ul);
 
-        // rocksdb holds its own reference, so the wrapper can go while the database is open.
+        // RocksDB holds its own reference, so the wrapper can go while the database is open.
         cache.Dispose();
 
         await Assert.That(database.Db.Get("key")).IsEqualTo("value");

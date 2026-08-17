@@ -18,7 +18,7 @@ public sealed unsafe class Cache : IDisposable
 
     /// <summary>Destroys the native cache wrapper; the SafeHandle's critical finalizer is the backstop.</summary>
     /// <remarks>
-    /// rocksdb holds its own reference on the cache once it is attached to options, so disposing
+    /// RocksDB holds its own reference on the cache once it is attached to options, so disposing
     /// this wrapper does not free memory still in use by an open database.
     /// </remarks>
     public void Dispose() => _handle.Dispose();
@@ -35,7 +35,7 @@ public sealed unsafe class Cache : IDisposable
     /// </summary>
     /// <param name="capacity">The cache capacity in bytes.</param>
     /// <param name="estimatedEntryCharge">
-    /// The estimated size of a cache entry in bytes, or 0 to let rocksdb size and adjust
+    /// The estimated size of a cache entry in bytes, or 0 to let RocksDB size and adjust
     /// automatically.
     /// </param>
     public static Cache CreateHyperClock(ulong capacity, ulong estimatedEntryCharge = 0)

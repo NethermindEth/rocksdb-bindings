@@ -17,7 +17,7 @@ public class ColumnFamilyOptions : Options<ColumnFamilyOptions> { }
 // cannot be declared in a generic type.
 internal sealed unsafe class OptionsBase
 {
-    // The managed instance is reached through a GCHandle stored in the state that rocksdb
+    // The managed instance is reached through a GCHandle stored in the state that RocksDB
     // hands back to every callback, so nothing has to outlive it on the managed side.
     [StructLayout(LayoutKind.Sequential)]
     internal struct ComparatorState
@@ -155,7 +155,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Applies rocksdb's level-compaction preset, sized to a memtable budget in bytes.
+    /// Applies RocksDB's level-compaction preset, sized to a memtable budget in bytes.
     /// </summary>
     public T OptimizeLevelStyleCompaction(ulong memtableMemoryBudget)
     {
@@ -164,7 +164,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Applies rocksdb's universal-compaction preset, sized to a memtable budget in bytes.
+    /// Applies RocksDB's universal-compaction preset, sized to a memtable budget in bytes.
     /// Universal compaction writes less than level compaction but uses more space.
     /// </summary>
     public T OptimizeUniversalStyleCompaction(ulong memtableMemoryBudget)
@@ -285,7 +285,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Installs rocksdb's built-in operator that reads values as little-endian 64-bit counters
+    /// Installs RocksDB's built-in operator that reads values as little-endian 64-bit counters
     /// and adds them.
     /// </summary>
     public T SetUint64addMergeOperator()

@@ -8,7 +8,7 @@ namespace Nethermind.RocksDbBindings.Tests;
 /// <remarks>
 /// Pins the layout and by-value ABI of <c>rocksdb_slice_t</c>, the C API's only non-opaque struct.
 /// Timestamp slices return the same struct the same way, and calling one without timestamp support
-/// aborts an assertion-enabled rocksdb, so key and value cover the ABI on their own.
+/// aborts an assertion-enabled RocksDB, so key and value cover the ABI on their own.
 /// </remarks>
 public class NativeSliceTests
 {

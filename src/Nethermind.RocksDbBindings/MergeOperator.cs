@@ -17,7 +17,7 @@ public static class MergeOperators
 {
     /// <summary>
     /// Combines operands into a single operand, without a base value. The operands come oldest
-    /// first. Report <c>success</c> as false when they cannot be combined; rocksdb then keeps
+    /// first. Report <c>success</c> as false when they cannot be combined; RocksDB then keeps
     /// them separate and merges them later.
     /// </summary>
     public delegate byte[] PartialMergeFunc(ReadOnlySpan<byte> key, OperandsEnumerator operands, out bool success);

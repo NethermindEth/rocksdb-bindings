@@ -20,7 +20,7 @@ public unsafe sealed class RocksDb : IDisposable
     private Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies;
 
     // Serializes column family creation, dropping, and lookup: a lease keeps the database open
-    // but does not serialize callers, and rocksdb documents the DB as safe for concurrent use.
+    // but does not serialize callers, and RocksDB documents the DB as safe for concurrent use.
     private readonly Lock _columnFamilyLock = new();
 
     private readonly RocksDbHandle _handle;
@@ -354,7 +354,7 @@ public unsafe sealed class RocksDb : IDisposable
     }
 
     /// <summary>
-    /// Reads the value for <paramref name="key"/> without copying it out of rocksdb-owned memory.
+    /// Reads the value for <paramref name="key"/> without copying it out of RocksDB-owned memory.
     /// </summary>
     /// <returns>
     /// True when the key exists; <paramref name="slice"/> then holds the value and must be disposed.
@@ -1079,7 +1079,7 @@ public unsafe sealed class RocksDb : IDisposable
     /// Skips the per-file key range and entry counts, leaving only the name, level and size.
     /// </param>
     /// <returns>
-    /// The metadata, empty when the database has no live files, or null when rocksdb declines to
+    /// The metadata, empty when the database has no live files, or null when RocksDB declines to
     /// report them at all.
     /// </returns>
     public List<LiveFileMetadata>? GetLiveFilesMetadata(bool populateFileMetadataOnly = false)

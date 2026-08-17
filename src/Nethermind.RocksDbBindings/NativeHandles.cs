@@ -40,7 +40,7 @@ internal sealed unsafe class RocksDbHandle : SafeHandle
     }
 }
 
-/// <summary>Owns a native cache wrapper; rocksdb keeps its own reference once attached.</summary>
+/// <summary>Owns a native cache wrapper; RocksDB keeps its own reference once attached.</summary>
 internal sealed unsafe class CacheHandle : SafeHandle
 {
     public CacheHandle(nint handle) : base(nint.Zero, ownsHandle: true) => SetHandle(handle);

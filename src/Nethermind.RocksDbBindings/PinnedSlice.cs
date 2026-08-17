@@ -6,11 +6,11 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <summary>
-/// A value read without copying: <see cref="Value"/> exposes bytes that stay in rocksdb-owned
+/// A value read without copying: <see cref="Value"/> exposes bytes that stay in RocksDB-owned
 /// memory, typically the block cache or a memtable.
 /// </summary>
 /// <remarks>
-/// The span is valid until <see cref="Dispose"/>, which releases the pin so rocksdb can reclaim
+/// The span is valid until <see cref="Dispose"/>, which releases the pin so RocksDB can reclaim
 /// the memory. While pinned, the slice holds a reference on the underlying block or memtable, so
 /// keep it short-lived; the ref struct constraint enforces that it cannot be stored on the heap.
 /// The native handle is released with an unconditional delete, and copies of the slice alias the

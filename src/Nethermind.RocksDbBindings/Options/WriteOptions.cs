@@ -8,8 +8,8 @@ namespace Nethermind.RocksDbBindings;
 /// <summary>Controls how a single write reaches the database.</summary>
 /// <remarks>
 /// Every option this type can set, it can also read back: each <c>Set</c> method is paired with a
-/// <c>Get</c> that asks rocksdb rather than reporting a managed copy of the last value set. Only
-/// three of rocksdb's nine write options are wrapped so far.
+/// <c>Get</c> that asks RocksDB rather than reporting a managed copy of the last value set. Only
+/// three of RocksDB's nine write options are wrapped so far.
 /// </remarks>
 public unsafe class WriteOptions : IDisposable
 {

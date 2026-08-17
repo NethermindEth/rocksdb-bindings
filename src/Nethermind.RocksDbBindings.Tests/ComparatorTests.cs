@@ -44,7 +44,7 @@ public class ComparatorTests
         return database;
     }
 
-    /// <summary>Calls the comparator the way rocksdb does, over the encoded key bytes.</summary>
+    /// <summary>Calls the comparator the way RocksDB does, over the encoded key bytes.</summary>
     private static int CompareEncoded(StringComparator comparator, string a, string b)
         => comparator.Compare(comparator.Encoding.GetBytes(a), comparator.Encoding.GetBytes(b));
 
@@ -175,7 +175,7 @@ public class ComparatorTests
 
     /// <remarks>
     /// The reason the name is a required argument: two <see cref="StringComparator" /> instances
-    /// differ only in the comparer they were handed, so without distinct names rocksdb would
+    /// differ only in the comparer they were handed, so without distinct names RocksDB would
     /// accept this reopen and read every key back in the wrong order.
     /// </remarks>
     [Test]

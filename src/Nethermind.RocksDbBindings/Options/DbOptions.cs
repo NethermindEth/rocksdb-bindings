@@ -9,8 +9,8 @@ namespace Nethermind.RocksDbBindings;
 public class DbOptions : Options<DbOptions> { }
 
 /// <summary>
-/// Configures a database or column family. Each setter maps to the identically named rocksdb
-/// option, whose meaning, default and tuning advice are documented by rocksdb itself; only
+/// Configures a database or column family. Each setter maps to the identically named RocksDB
+/// option, whose meaning, default and tuning advice are documented by RocksDB itself; only
 /// behaviour specific to these bindings is described here.
 /// </summary>
 /// <remarks>
@@ -152,7 +152,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// The counters collected since <see cref="EnableStatistics"/>, formatted by rocksdb, or null
+    /// The counters collected since <see cref="EnableStatistics"/>, formatted by RocksDB, or null
     /// when statistics are off.
     /// </summary>
     public string? GetStatisticsString() => RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
@@ -177,7 +177,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// A global cache for table-level rows. rocksdb holds its own reference on the cache, so it
+    /// A global cache for table-level rows. RocksDB holds its own reference on the cache, so it
     /// may be disposed once no options wrapper is being configured with it.
     /// </summary>
     public T SetRowCache(Cache cache)
@@ -198,7 +198,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Applies a rocksdb options string of <c>name=value</c> pairs separated by semicolons, as
+    /// Applies a RocksDB options string of <c>name=value</c> pairs separated by semicolons, as
     /// accepted by <c>GetOptionsFromString</c>, on top of the current options.
     /// </summary>
     /// <exception cref="RocksDbNativeException">The string contains an unknown or malformed option.</exception>
@@ -457,7 +457,7 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
-    /// Applies rocksdb's bulk-load preset, which holds compaction back so data can be written
+    /// Applies RocksDB's bulk-load preset, which holds compaction back so data can be written
     /// as fast as possible and organized afterwards.
     /// </summary>
     public T PrepareForBulkLoad()

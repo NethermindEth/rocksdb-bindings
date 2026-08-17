@@ -7,7 +7,7 @@ namespace Nethermind.RocksDbBindings.Tests;
 
 public class MergeOperatorTests
 {
-    /// <summary>What the merge callbacks saw, so a test can assert on the arguments rocksdb passed.</summary>
+    /// <summary>What the merge callbacks saw, so a test can assert on the arguments RocksDB passed.</summary>
     private sealed class MergeLog
     {
         public int FullMergeCalls { get; set; }

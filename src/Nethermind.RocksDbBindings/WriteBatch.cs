@@ -132,7 +132,7 @@ public unsafe sealed class WriteBatch : IDisposable
     /// Replays the batch into <paramref name="put"/> and <paramref name="deleted"/>, each of which
     /// must be a static method marked with
     /// <c>[UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]</c> that catches all managed
-    /// exceptions; an exception cannot unwind through the rocksdb frames that invoked it, so one
+    /// exceptions; an exception cannot unwind through the RocksDB frames that invoked it, so one
     /// that escapes terminates the process.
     /// </summary>
     public WriteBatch Iterate(void* state, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, sbyte*, nuint, void> put, delegate* unmanaged[Cdecl]<void*, sbyte*, nuint, void> deleted)

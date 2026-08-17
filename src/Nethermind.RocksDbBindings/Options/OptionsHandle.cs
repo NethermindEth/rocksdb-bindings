@@ -40,10 +40,12 @@ public abstract class NativeOptions : IDisposable
 
 /// <summary>A <c>rocksdb_options_t</c>: the options a database or column family is opened with.</summary>
 /// <remarks>
-/// Configured by calling methods rather than by assigning properties, for two reasons: the C API
-/// is write-only, so a property could not report what an option is currently set to, and not every
-/// method is a simple assignment — <see cref="Options{T}.OptimizeLevelStyleCompaction"/> and its
-/// like set several options at once.
+/// Configured by calling methods rather than by assigning properties, because not every method is
+/// a simple assignment: <see cref="Options{T}.OptimizeLevelStyleCompaction"/> and its like set
+/// several options at once. Options are also close to write-only here — the C API can read most
+/// of them back, but this type wraps almost none of those getters, and the ones rocksdb takes by
+/// reference (the comparator, the environment, the table and compaction factories) cannot be read
+/// back at all.
 /// </remarks>
 public unsafe abstract class OptionsHandle : NativeOptions
 {

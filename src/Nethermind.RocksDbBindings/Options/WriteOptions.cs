@@ -5,6 +5,12 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
+/// <summary>Controls how a single write reaches the database.</summary>
+/// <remarks>
+/// Every option this type can set, it can also read back: each <c>Set</c> method is paired with a
+/// <c>Get</c> that asks rocksdb rather than reporting a managed copy of the last value set. Only
+/// three of rocksdb's nine write options are wrapped so far.
+/// </remarks>
 public unsafe class WriteOptions : IDisposable
 {
     public WriteOptions()
@@ -33,27 +39,42 @@ public unsafe class WriteOptions : IDisposable
         }
     }
 
-    public WriteOptions SetSync(bool value)
+    /// <summary>
+    /// Flushes the write-ahead log to disk before a write returns, so the write survives losing
+    /// the machine rather than only losing the process. Off by default.
+    /// </summary>
+    public WriteOptions SetSync(bool value = true)
     {
         rocksdb_writeoptions_set_sync(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
-    public WriteOptions DisableWal(int disable)
+    /// <summary>Reports whether <see cref="SetSync"/> is in effect.</summary>
+    public bool GetSync() => rocksdb_writeoptions_get_sync(RocksDbInterop.WriteOptions(Handle)) != 0;
+
+    /// <summary>
+    /// Skips the write-ahead log entirely, so writes live only in the memtable until it is
+    /// flushed and are lost if the process ends before then.
+    /// </summary>
+    public WriteOptions SetDisableWal(bool value = true)
     {
-        rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(Handle), disable);
+        rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(Handle), value ? 1 : 0);
         return this;
     }
+
+    /// <summary>Reports whether <see cref="SetDisableWal"/> is in effect.</summary>
+    public bool GetDisableWal() => rocksdb_writeoptions_get_disable_WAL(RocksDbInterop.WriteOptions(Handle)) != 0;
 
     /// <summary>
     /// Marks writes with these options as low priority: they may be throttled or delayed in
     /// favor of regular writes when compaction falls behind.
     /// </summary>
-    public WriteOptions SetLowPriority(bool value)
+    public WriteOptions SetLowPriority(bool value = true)
     {
         rocksdb_writeoptions_set_low_pri(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
         return this;
     }
 
-
+    /// <summary>Reports whether <see cref="SetLowPriority"/> is in effect.</summary>
+    public bool GetLowPriority() => rocksdb_writeoptions_get_low_pri(RocksDbInterop.WriteOptions(Handle)) != 0;
 }

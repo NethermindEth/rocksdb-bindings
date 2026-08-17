@@ -12,9 +12,6 @@ public class OptionsTests
     private static unsafe byte WaitForFlush(FlushOptions options)
         => RocksDbNative.rocksdb_flushoptions_get_wait((rocksdb_flushoptions_t*)options.Handle);
 
-    private static unsafe byte Sync(WriteOptions options)
-        => RocksDbNative.rocksdb_writeoptions_get_sync((rocksdb_writeoptions_t*)options.Handle);
-
     private static unsafe byte CreateIfMissing(DbOptions options)
         => RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)options.Handle);
 
@@ -130,29 +127,73 @@ public class OptionsTests
         await Assert.That(options.SetWaitForFlush(true)).IsSameReferenceAs(options);
     }
 
+    /// <remarks>
+    /// Keep this test. The round-trip tests below set an option and read it back through the same
+    /// wrapper, so a setter and getter inverted in the same direction cancel out and every one of
+    /// them still passes — verified by inverting both. This test is the only thing that catches
+    /// that, because it compares against rocksdb's own defaults rather than against the wrapper.
+    /// </remarks>
     [Test]
-    public async Task WriteOptions_DefaultsToAnAsynchronousWrite()
-        => await Assert.That(Sync(new WriteOptions())).IsEqualTo((byte)0);
+    public async Task WriteOptions_DefaultToAnAsynchronousLoggedRegularPriorityWrite()
+    {
+        using var options = new WriteOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.GetSync()).IsFalse();
+            await Assert.That(options.GetDisableWal()).IsFalse();
+            await Assert.That(options.GetLowPriority()).IsFalse();
+        }
+    }
 
     [Test]
     public async Task WriteOptions_SetSync_ReachesTheNativeWriteOptions()
     {
-        var options = new WriteOptions();
+        using var options = new WriteOptions();
 
-        options.SetSync(true);
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.SetSync(true).GetSync()).IsTrue();
+            await Assert.That(options.SetSync(false).GetSync()).IsFalse();
+        }
+    }
 
-        await Assert.That(Sync(options)).IsEqualTo((byte)1);
+    [Test]
+    public async Task WriteOptions_SetDisableWal_ReachesTheNativeWriteOptions()
+    {
+        using var options = new WriteOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.SetDisableWal(true).GetDisableWal()).IsTrue();
+            await Assert.That(options.SetDisableWal(false).GetDisableWal()).IsFalse();
+        }
+    }
+
+    /// <remarks>Each setter turns its option on when called without an argument.</remarks>
+    [Test]
+    public async Task WriteOptions_SettersDefaultToTurningTheirOptionOn()
+    {
+        using var options = new WriteOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.SetSync().GetSync()).IsTrue();
+            await Assert.That(options.SetDisableWal().GetDisableWal()).IsTrue();
+            await Assert.That(options.SetLowPriority().GetLowPriority()).IsTrue();
+        }
     }
 
     [Test]
     public async Task WriteOptions_SettersAreFluent()
     {
-        var options = new WriteOptions();
+        using var options = new WriteOptions();
 
         using (Assert.Multiple())
         {
             await Assert.That(options.SetSync(false)).IsSameReferenceAs(options);
-            await Assert.That(options.DisableWal(1)).IsSameReferenceAs(options);
+            await Assert.That(options.SetDisableWal(false)).IsSameReferenceAs(options);
+            await Assert.That(options.SetLowPriority(false)).IsSameReferenceAs(options);
         }
     }
 
@@ -483,9 +524,6 @@ public class OptionsTests
     private static unsafe uint MaxSubcompactions(DbOptions options)
         => RocksDbNative.rocksdb_options_get_max_subcompactions((rocksdb_options_t*)options.Handle);
 
-    private static unsafe byte LowPriority(WriteOptions options)
-        => RocksDbNative.rocksdb_writeoptions_get_low_pri((rocksdb_writeoptions_t*)options.Handle);
-
     [Test]
     public async Task DbOptions_SetMaxSubcompactions_ReachesTheNativeOptions()
     {
@@ -539,11 +577,11 @@ public class OptionsTests
     {
         using var options = new WriteOptions();
 
-        options.SetLowPriority(true);
-        await Assert.That(LowPriority(options)).IsEqualTo((byte)1);
-
-        options.SetLowPriority(false);
-        await Assert.That(LowPriority(options)).IsEqualTo((byte)0);
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.SetLowPriority(true).GetLowPriority()).IsTrue();
+            await Assert.That(options.SetLowPriority(false).GetLowPriority()).IsFalse();
+        }
     }
 
     [Test]

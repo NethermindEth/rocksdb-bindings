@@ -7,46 +7,15 @@ namespace Nethermind.RocksDbBindings;
 
 /// <summary>Controls how a single write reaches the database.</summary>
 /// <remarks>
-/// Every option this type can set, it can also read back: each <c>Set</c> method is paired with a
-/// <c>Get</c> that asks RocksDB rather than reporting a managed copy of the last value set. Only
-/// three of RocksDB's nine write options are wrapped so far.
+/// Each <c>Set</c> method is paired with a <c>Get</c> that asks RocksDB for the option rather than
+/// reporting a managed copy of the last value set. RocksDB has nine write options; three are
+/// wrapped here. Dispose only after every write using these options has returned.
 /// </remarks>
-public unsafe class WriteOptions : IDisposable
+public sealed unsafe class WriteOptions : NativeOptions
 {
-    private nint _handle;
+    public WriteOptions() : base((nint)rocksdb_writeoptions_create()) { }
 
-    public WriteOptions()
-    {
-        _handle = (nint)rocksdb_writeoptions_create();
-    }
-
-    public nint Handle
-    {
-        get => _handle;
-        protected set => _handle = value;
-    }
-
-    ~WriteOptions() => ReleaseHandle();
-
-    /// <summary>Destroys the native options deterministically; the finalizer is only a backstop.</summary>
-    /// <remarks>Dispose only after every write using these options has returned.</remarks>
-    public void Dispose()
-    {
-        ReleaseHandle();
-        GC.SuppressFinalize(this);
-    }
-
-    // The handle is taken away rather than tested and then cleared, so that two callers disposing
-    // at once cannot both reach the destroy: whoever takes it is the one that destroys it, once.
-    private void ReleaseHandle()
-    {
-        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
-
-        if (handle != nint.Zero)
-        {
-            rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(handle));
-        }
-    }
+    protected override void DestroyHandle(nint handle) => rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(handle));
 
     /// <summary>
     /// Flushes the write-ahead log to disk before a write returns, so the write survives losing

@@ -6,7 +6,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <inheritdoc/>
-public class DbOptions : Options<DbOptions>
+public sealed class DbOptions : Options<DbOptions>
 {
     // Read by an opening database, which takes its own reference: this slot can be pointed at
     // another environment afterwards, and that must not unroot the one already in use.
@@ -29,6 +29,14 @@ public class DbOptions : Options<DbOptions>
         env.AttachTo(Handle);
         Env = env;
         return this;
+    }
+
+    protected override void DestroyHandle(nint handle)
+    {
+        base.DestroyHandle(handle);
+
+        // These options no longer carry the environment pointer, so nothing needs to keep it alive.
+        Env = null;
     }
 }
 

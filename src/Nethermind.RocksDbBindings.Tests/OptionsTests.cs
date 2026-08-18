@@ -40,6 +40,10 @@ public class OptionsTests
         return (new WeakReference(first), database);
     }
 
+    // Long enough that a slow machine does not fail the test, short enough that a genuine hang
+    // does not stall the suite.
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
     // A full collection with the finalizers drained in between, so that a weak reference still
     // alive afterwards can only be one that something still refers to.
     private static void Collect()
@@ -156,10 +160,9 @@ public class OptionsTests
     }
 
     /// <remarks>
-    /// Keep this test. The round-trip tests below set an option and read it back through the same
-    /// wrapper, so a setter and getter inverted in the same direction cancel out and every one of
-    /// them still passes — verified by inverting both. This test is the only thing that catches
-    /// that, because it compares against RocksDB's own defaults rather than against the wrapper.
+    /// The round-trip tests below set an option and read it back through the same wrapper, so a
+    /// setter and getter inverted in the same direction cancel out and leave those tests passing.
+    /// This one compares against RocksDB own defaults instead, which is what catches it.
     /// </remarks>
     [Test]
     public async Task WriteOptions_DefaultToAnAsynchronousLoggedRegularPriorityWrite()
@@ -457,9 +460,8 @@ public class OptionsTests
     }
 
     /// <remarks>
-    /// The other side of the same reference: once the native close has run, a database that is
-    /// merely still reachable has no reason to pin the environment it used, which for an
-    /// in-memory one is its whole file system.
+    /// Once the native close has run, a database that is merely still reachable has no reason to
+    /// pin the environment it used, which for an in-memory one is its whole file system.
     /// </remarks>
     [Test]
     public async Task Dispose_LetsGoOfTheEnvironmentTheDatabaseWasOpenedWith()
@@ -472,14 +474,14 @@ public class OptionsTests
 
         await Assert.That(env.IsAlive).IsFalse();
 
-        // The point of the test: the database is reachable throughout, and lets go regardless.
+        // The database stays reachable throughout, so the release is not the collection of the
+        // wrapper.
         GC.KeepAlive(database);
     }
 
     /// <remarks>
     /// An iterator keeps the native database open past <see cref="RocksDb.Dispose"/>, and past
-    /// the collection of the wrapper itself, so the environment has to outlive both. This is what
-    /// a reference held by the managed database rather than by its handle would miss.
+    /// the collection of the wrapper itself, so the environment has to outlive both.
     /// </remarks>
     [Test]
     public async Task SetEnv_KeepsTheEnvironmentAliveUnderAChildThatOutlivesTheDatabase()
@@ -763,5 +765,171 @@ public class OptionsTests
         cache.Dispose();
 
         await Assert.That(cache.Handle).IsEqualTo(nint.Zero);
+    }
+
+    /// <remarks>
+    /// While one caller is inside the destroy, a second one must find the handle already taken and
+    /// destroy nothing.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_DestroysTheHandleOnceWhenTwoCallersRaceIt()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var options = new BlockingOptions(entered, release);
+        var first = Task.Run(options.Dispose);
+
+        try
+        {
+            await Assert.That(entered.Wait(Timeout)).IsTrue();
+
+            options.Dispose();
+
+            await Assert.That(options.Destructions).IsEqualTo(1);
+        }
+        finally
+        {
+            release.Set();
+            await first;
+        }
+    }
+
+    /// <summary>
+    /// Stands in for a real options type. The handle is never dereferenced, only counted, so the
+    /// destroy can be held open long enough for a second caller to reach Dispose behind it.
+    /// </summary>
+    private sealed class BlockingOptions(ManualResetEventSlim entered, ManualResetEventSlim release)
+        : NativeOptions(handle: 1)
+    {
+        private int destructions;
+
+        public int Destructions => Volatile.Read(ref destructions);
+
+        protected override void DestroyHandle(nint handle)
+        {
+            // Only the first caller blocks, so a second one that wrongly gets here is not hidden
+            // behind this wait; it fails the count immediately instead.
+            if (Interlocked.Increment(ref destructions) == 1)
+            {
+                entered.Set();
+                release.Wait(Timeout);
+            }
+        }
+    }
+
+    /// <remarks>
+    /// RocksDB keeps only a bare pointer to the snapshot, and releasing one both frees it and
+    /// drops the lease keeping the database open, so options carrying a snapshot have to hold it.
+    /// </remarks>
+    [Test]
+    public async Task SetSnapshot_KeepsTheSnapshotAliveForAsLongAsTheOptions()
+    {
+        using var database = TestDatabase.Create();
+        using var options = new ReadOptions();
+        var snapshot = AttachSnapshot(database.Db, options);
+
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsTrue();
+
+        // And lets go on request, so a caller can stop pinning the snapshot and its database.
+        options.ClearSnapshot();
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsFalse();
+    }
+
+    [Test]
+    public async Task SetSnapshot_RejectsADisposedSnapshot()
+    {
+        using var database = TestDatabase.Create();
+        using var options = new ReadOptions();
+        var snapshot = database.Db.CreateSnapshot();
+        snapshot.Dispose();
+
+        await Assert.That(() => options.SetSnapshot(snapshot)).Throws<ObjectDisposedException>();
+    }
+
+    /// <remarks>
+    /// Destroyed options no longer carry the snapshot's pointer, so nothing should keep the
+    /// snapshot, or the database lease behind it, alive.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_LetsGoOfTheSnapshotTheOptionsCarried()
+    {
+        using var database = TestDatabase.Create();
+        var options = new ReadOptions();
+        var snapshot = AttachSnapshot(database.Db, options);
+
+        options.Dispose();
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsFalse();
+
+        // The options stay reachable throughout, so the release is not their collection.
+        GC.KeepAlive(options);
+    }
+
+    // Out of line so that no frame of the caller refers to the snapshot either.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference AttachSnapshot(RocksDb database, ReadOptions options)
+    {
+        var snapshot = database.CreateSnapshot();
+        options.SetSnapshot(snapshot);
+        return new WeakReference(snapshot);
+    }
+
+    /// <remarks>
+    /// Nothing but the open call needs the options, since RocksDB copies them, so a closed database
+    /// that is still reachable must not keep the environment alive through them either.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_LetsGoOfTheEnvironmentWhenTheOptionsAreGone()
+    {
+        var (env, database) = OpenAndAbandonOptions();
+
+        Collect();
+
+        await Assert.That(env.IsAlive).IsFalse();
+
+        GC.KeepAlive(database);
+
+        // The options are a temporary here, so the closed database is all that could still be
+        // reaching the environment.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (WeakReference Env, RocksDb Database) OpenAndAbandonOptions()
+        {
+            var env = Env.CreateInMemory();
+            var database = RocksDb.Open(new DbOptions().SetCreateIfMissing().SetEnv(env), InMemoryPath);
+
+            database.Dispose();
+            return (new WeakReference(env), database);
+        }
+    }
+
+    /// <remarks>
+    /// Destroyed options no longer carry the environment pointer, so they stop keeping it alive
+    /// even while the wrapper they were is still reachable.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_LetsGoOfTheEnvironmentTheOptionsCarried()
+    {
+        var options = new DbOptions();
+        var env = AttachEnvironment(options);
+
+        options.Dispose();
+        Collect();
+
+        await Assert.That(env.IsAlive).IsFalse();
+
+        GC.KeepAlive(options);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static WeakReference AttachEnvironment(DbOptions options)
+        {
+            var env = Env.CreateInMemory();
+            options.SetEnv(env);
+            return new WeakReference(env);
+        }
     }
 }

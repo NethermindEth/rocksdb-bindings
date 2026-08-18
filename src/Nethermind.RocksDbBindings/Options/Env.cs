@@ -10,9 +10,9 @@ namespace Nethermind.RocksDbBindings;
 /// An environment must outlive every database opened with it, because RocksDB stores a bare
 /// pointer to it and never takes ownership. <see cref="DbOptions.SetEnv"/> holds the wrapper on
 /// the options, and an opening database takes its own reference that lasts until the native
-/// close, which an iterator or a snapshot can defer well past the database wrapper itself. What
-/// no reference can cover is disposing an environment by hand while it is still in use: for an
-/// in-memory one that frees the storage the database is reading.
+/// close, which an iterator or a snapshot can defer well past the database wrapper itself.
+/// Disposing an environment by hand while it is still in use is not covered by either reference:
+/// for an in-memory one that frees the storage the database is reading.
 /// </remarks>
 public sealed unsafe class Env : IDisposable
 {

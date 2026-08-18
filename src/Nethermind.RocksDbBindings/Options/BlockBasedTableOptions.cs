@@ -5,27 +5,15 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class BlockBasedTableOptions
+public sealed unsafe class BlockBasedTableOptions
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; }
 
-    // Held so the garbage collector cannot finalize them while RocksDB still points at them.
-    private BloomFilterPolicy? FilterPolicy { get; set; }
-    private Cache? BlockCache { get; set; }
+    public BlockBasedTableOptions() => Handle = (nint)rocksdb_block_based_options_create();
 
-    public BlockBasedTableOptions()
-    {
-        Handle = (nint)rocksdb_block_based_options_create();
-    }
-
-    ~BlockBasedTableOptions()
-    {
-        if (Handle != nint.Zero)
-        {
-            rocksdb_block_based_options_destroy(RocksDbInterop.BlockBasedTableOptions(Handle));
-            Handle = nint.Zero;
-        }
-    }
+    // No Dispose and so no second actor: the finalizer runs at most once, and nothing can read
+    // the handle afterwards.
+    ~BlockBasedTableOptions() => rocksdb_block_based_options_destroy(RocksDbInterop.BlockBasedTableOptions(Handle));
 
     public BlockBasedTableOptions SetBlockSize(ulong blockSize)
     {
@@ -53,7 +41,6 @@ public unsafe class BlockBasedTableOptions
 
     public BlockBasedTableOptions SetFilterPolicy(BloomFilterPolicy filterPolicy)
     {
-        FilterPolicy = filterPolicy;
         rocksdb_block_based_options_set_filter_policy(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.FilterPolicy(filterPolicy.Handle));
         return this;
     }
@@ -72,8 +59,10 @@ public unsafe class BlockBasedTableOptions
 
     public BlockBasedTableOptions SetBlockCache(Cache blockCache)
     {
-        BlockCache = blockCache;
         rocksdb_block_based_options_set_block_cache(RocksDbInterop.BlockBasedTableOptions(Handle), RocksDbInterop.Cache(blockCache.Handle));
+        // RocksDB takes its own reference to the cache during the call, so the wrapper has to survive
+        // the call but not outlive it.
+        GC.KeepAlive(blockCache);
         return this;
     }
 

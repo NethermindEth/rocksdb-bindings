@@ -11,7 +11,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <inheritdoc/>
-public class ColumnFamilyOptions : Options<ColumnFamilyOptions> { }
+public sealed class ColumnFamilyOptions : Options<ColumnFamilyOptions> { }
 
 // The callbacks live here rather than on Options<T> because UnmanagedCallersOnly methods
 // cannot be declared in a generic type.
@@ -138,10 +138,15 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <summary>
     /// Configures the block-based format that SST files are written in and read through.
     /// </summary>
+    /// <remarks>
+    /// RocksDB builds a table factory from a copy of <paramref name="tableOptions"/>, so the
+    /// wrapper has to survive this call but not outlive it.
+    /// </remarks>
     public T SetBlockBasedTableFactory(BlockBasedTableOptions tableOptions)
     {
-        BlockBasedTableFactory = tableOptions;
         rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.BlockBasedTableOptions(tableOptions.Handle));
+        // Without this, the finalizer could destroy the table options mid-copy.
+        GC.KeepAlive(tableOptions);
         return (T)this;
     }
 
@@ -352,7 +357,6 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetPrefixExtractor(SliceTransform sliceTransform)
     {
-        PrefixExtractor = sliceTransform;
         rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(Handle), RocksDbInterop.SliceTransform(sliceTransform.Handle));
         return (T)this;
     }

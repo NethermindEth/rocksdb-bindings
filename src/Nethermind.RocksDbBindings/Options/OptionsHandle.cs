@@ -13,11 +13,12 @@ public abstract class NativeOptions : IDisposable
 {
     private nint _handle;
 
-    public nint Handle
+    protected NativeOptions(nint handle)
     {
-        get => _handle;
-        protected set => _handle = value;
+        _handle = handle;
     }
+
+    public nint Handle => _handle;
 
     ~NativeOptions() => ReleaseHandle();
 
@@ -32,8 +33,8 @@ public abstract class NativeOptions : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    // The handle is taken away rather than tested and then cleared, so that two callers disposing
-    // at once cannot both reach the destroy: whoever takes it is the one that destroys it, once.
+    // The handle is exchanged away so that two callers disposing at once cannot both reach the
+    // destroy: whoever takes it is the one that destroys it, once.
     private void ReleaseHandle()
     {
         nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
@@ -58,17 +59,12 @@ public abstract class NativeOptions : IDisposable
 /// </remarks>
 public unsafe abstract class OptionsHandle : NativeOptions
 {
-    // RocksDB uses these in place rather than copying them, so the managed wrappers are held here to
-    // keep the garbage collector from running their finalizers while RocksDB still points at them.
-    internal BlockBasedTableOptions? BlockBasedTableFactory { get; set; }
-    internal SliceTransform? PrefixExtractor { get; set; }
-
     // Not native options: the paths are kept here so an opened database can report where its
     // write-ahead log and its LOG file went.
     internal string? WalPath { get; set; }
     internal string? LogPath { get; set; }
 
-    protected OptionsHandle() => Handle = (nint)rocksdb_options_create();
+    protected OptionsHandle() : base((nint)rocksdb_options_create()) { }
 
     protected override void DestroyHandle(nint handle) => rocksdb_options_destroy(RocksDbInterop.Options(handle));
 }

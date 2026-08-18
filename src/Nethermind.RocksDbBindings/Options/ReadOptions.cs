@@ -7,49 +7,31 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class ReadOptions : IDisposable
+/// <remarks>
+/// Iterators keep reading whatever these options point at — the iterate bounds, and the snapshot
+/// if one is set — for their whole lifetime, so dispose only after every iterator and read using
+/// these options is done.
+/// </remarks>
+public sealed unsafe class ReadOptions : NativeOptions
 {
-    private nint _handle;
     private nint iterateLowerBound;
     private nint iterateUpperBound;
 
-    public ReadOptions()
+    // Held because RocksDB keeps only a bare pointer to it; see SetSnapshot.
+    private Snapshot? Snapshot { get; set; }
+
+    public ReadOptions() : base((nint)rocksdb_readoptions_create()) { }
+
+    protected override void DestroyHandle(nint handle)
     {
-        _handle = (nint)rocksdb_readoptions_create();
-    }
+        rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(handle));
 
-    public nint Handle
-    {
-        get => _handle;
-        protected set => _handle = value;
-    }
-
-    ~ReadOptions() => ReleaseHandle();
-
-    /// <summary>Destroys the native options deterministically; the finalizer is only a backstop.</summary>
-    /// <remarks>
-    /// Iterators read these options and any iterate bounds in place for their whole lifetime, so
-    /// dispose only after every iterator and read using these options is done.
-    /// </remarks>
-    public void Dispose()
-    {
-        ReleaseHandle();
-        GC.SuppressFinalize(this);
-    }
-
-    // The handle is taken away rather than tested and then cleared, so that two callers disposing
-    // at once cannot both reach the destroy. The bounds go with it, freed only by whoever won the
-    // handle, so that a loser cannot free them while the winner is still in the native destroy.
-    private void ReleaseHandle()
-    {
-        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
-
-        if (handle != nint.Zero)
-        {
-            rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(handle));
-            FreeBound(ref iterateLowerBound);
-            FreeBound(ref iterateUpperBound);
-        }
+        // Only after the destroy, and only here, so that a second disposer cannot free what this
+        // one is still handing to RocksDB. The options no longer carry the snapshot's pointer, so
+        // nothing needs to keep the snapshot, or the database lease behind it, alive.
+        FreeBound(ref iterateLowerBound);
+        FreeBound(ref iterateUpperBound);
+        Snapshot = null;
     }
 
     private static void FreeBound(ref nint bound) => NativeMemory.Free((void*)Interlocked.Exchange(ref bound, nint.Zero));
@@ -89,9 +71,32 @@ public unsafe class ReadOptions : IDisposable
         return this;
     }
 
+    /// <summary>Reads from a fixed view of the database rather than from its current state.</summary>
+    /// <remarks>
+    /// RocksDB stores a non-owning pointer to the snapshot, so the wrapper is held here for as
+    /// long as these options carry it — releasing it would leave them pointing at a freed snapshot
+    /// and let the database it kept open close. Stop reading from it with
+    /// <see cref="ClearSnapshot"/> or by setting another snapshot, not by disposing it.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException"><paramref name="snapshot"/> has been disposed.</exception>
     public ReadOptions SetSnapshot(Snapshot snapshot)
     {
-        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(snapshot.Handle));
+        nint snapshotHandle = snapshot.Handle;
+        ObjectDisposedException.ThrowIf(snapshotHandle == nint.Zero, snapshot);
+
+        Snapshot = snapshot;
+        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(snapshotHandle));
+        // The field alone is not enough: it is reachable only through this object, which the
+        // fluent return does not keep alive.
+        GC.KeepAlive(snapshot);
+        return this;
+    }
+
+    /// <summary>Goes back to reading the current state, and lets go of any snapshot set.</summary>
+    public ReadOptions ClearSnapshot()
+    {
+        Snapshot = null;
+        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(nint.Zero));
         return this;
     }
 

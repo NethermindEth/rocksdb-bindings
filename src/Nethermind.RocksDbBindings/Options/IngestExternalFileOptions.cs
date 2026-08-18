@@ -5,23 +5,15 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class IngestExternalFileOptions
+public sealed unsafe class IngestExternalFileOptions
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; }
 
-    public IngestExternalFileOptions()
-    {
-        Handle = (nint)rocksdb_ingestexternalfileoptions_create();
-    }
+    public IngestExternalFileOptions() => Handle = (nint)rocksdb_ingestexternalfileoptions_create();
 
-    ~IngestExternalFileOptions()
-    {
-        if (Handle != nint.Zero)
-        {
-            rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
-            Handle = nint.Zero;
-        }
-    }
+    // No Dispose and so no second actor: the finalizer runs at most once, and nothing can read
+    // the handle afterwards.
+    ~IngestExternalFileOptions() => rocksdb_ingestexternalfileoptions_destroy(RocksDbInterop.IngestExternalFileOptions(Handle));
 
     public IngestExternalFileOptions SetMoveFiles(bool moveFiles)
     {

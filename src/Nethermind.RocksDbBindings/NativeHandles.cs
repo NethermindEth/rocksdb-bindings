@@ -29,8 +29,8 @@ internal sealed unsafe class RocksDbHandle : SafeHandle
 
     // The environment the database was opened with, if any. RocksDB keeps a bare pointer to it,
     // and a child can defer the close long past the collection of the RocksDb wrapper, so the
-    // reference belongs here rather than there — and is the environment of that one open call,
-    // which the options it came from are free to replace afterwards.
+    // reference is held here. It is the environment of one open call; the options it came from
+    // are free to be pointed at another afterwards.
     internal Env? Env { get; set; }
 
     protected override bool ReleaseHandle()

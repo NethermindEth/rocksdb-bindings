@@ -5,21 +5,13 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe class EnvOptions
+public sealed unsafe class EnvOptions
 {
-    public nint Handle { get; protected set; }
+    public nint Handle { get; }
 
-    public EnvOptions()
-    {
-        Handle = (nint)rocksdb_envoptions_create();
-    }
+    public EnvOptions() => Handle = (nint)rocksdb_envoptions_create();
 
-    ~EnvOptions()
-    {
-        if (Handle != nint.Zero)
-        {
-            rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
-            Handle = nint.Zero;
-        }
-    }
+    // No Dispose and so no second actor: the finalizer runs at most once, and nothing can read
+    // the handle afterwards.
+    ~EnvOptions() => rocksdb_envoptions_destroy(RocksDbInterop.EnvOptions(Handle));
 }

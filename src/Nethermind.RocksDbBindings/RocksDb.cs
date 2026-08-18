@@ -29,10 +29,6 @@ public unsafe sealed class RocksDb : IDisposable
     // so logical disposal is tracked separately to make later calls throw immediately.
     private volatile bool _disposed;
 
-    // Held so the garbage collector cannot finalize them while the db is still open.
-    private DbOptions? Options { get; }
-    private ColumnFamilyOptions[]? ColumnFamilyOptions { get; }
-
     public nint Handle => _disposed || _handle.IsClosed ? nint.Zero : _handle.DangerousGetHandle();
 
     // Used under an acquired lease, where the raw pointer is valid by construction; the public
@@ -44,14 +40,13 @@ public unsafe sealed class RocksDb : IDisposable
     public string? WalPath { get; internal set; }
     public string? LogPath { get; internal set; }
 
-    private RocksDb(nint handle, DbOptions? options, ColumnFamilyOptions[]? columnFamilyOptions, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
+    private RocksDb(nint handle, DbOptions? options, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
     {
         _handle = new RocksDbHandle(handle);
-        // Snapshotted, not read through Options later: SetEnv can be pointed elsewhere once this
-        // database is open, and the environment RocksDB holds a pointer to is this one.
+        // Snapshotted rather than reached through the options later: those can be pointed at another
+        // environment once this database is open, and RocksDB holds a pointer to this one. Nothing
+        // else about the options has to outlive the open, because RocksDB copies them.
         _handle.Env = options?.Env;
-        Options = options;
-        ColumnFamilyOptions = columnFamilyOptions;
         this.columnFamilies = columnFamilies;
 
         // The handle owns and destroys every column family handle right before the native close,
@@ -113,7 +108,7 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         nint db = (nint)rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
-        return new RocksDb(db, options, columnFamilyOptions: null)
+        return new RocksDb(db, options)
         {
             Path = path,
             LogPath = options.LogPath,
@@ -127,7 +122,7 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
-        return new RocksDb(db, options, columnFamilyOptions: null)
+        return new RocksDb(db, options)
         {
             Path = path,
             LogPath = options.LogPath,
@@ -142,7 +137,7 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
-        return new RocksDb(db, options, columnFamilyOptions: null)
+        return new RocksDb(db, options)
         {
             Path = path,
             LogPath = options.LogPath,
@@ -156,7 +151,7 @@ public unsafe sealed class RocksDb : IDisposable
         sbyte* errptr = null;
         nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
-        return new RocksDb(db, options, columnFamilyOptions: null)
+        return new RocksDb(db, options)
         {
             Path = path,
             LogPath = options.LogPath,
@@ -190,10 +185,7 @@ public unsafe sealed class RocksDb : IDisposable
                 cfHandleMap.Add(pair.Name, pair.Handle);
             }
 
-            return new RocksDb(db,
-                options,
-                [.. columnFamilies.Select(cfd => cfd.Options)],
-                columnFamilies: cfHandleMap)
+            return new RocksDb(db, options, cfHandleMap)
             {
                 Path = path,
                 LogPath = options.LogPath,
@@ -229,10 +221,7 @@ public unsafe sealed class RocksDb : IDisposable
                 cfHandleMap.Add(pair.Name, pair.Handle);
             }
 
-            return new RocksDb(db,
-                options,
-                [.. columnFamilies.Select(cfd => cfd.Options)],
-                columnFamilies: cfHandleMap)
+            return new RocksDb(db, options, cfHandleMap)
             {
                 Path = path,
                 LogPath = options.LogPath,
@@ -268,10 +257,7 @@ public unsafe sealed class RocksDb : IDisposable
             {
                 cfHandleMap.Add(pair.Name, pair.Handle);
             }
-            return new RocksDb(db,
-                options,
-                [.. columnFamilies.Select(cfd => cfd.Options)],
-                columnFamilies: cfHandleMap)
+            return new RocksDb(db, options, cfHandleMap)
             {
                 Path = path,
                 LogPath = options.LogPath,

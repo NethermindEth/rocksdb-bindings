@@ -6,6 +6,8 @@ using System.Runtime.CompilerServices;
 
 using Nethermind.RocksDbBindings.Native;
 
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+
 namespace Nethermind.RocksDbBindings.Tests;
 
 public class OptionsTests
@@ -14,28 +16,28 @@ public class OptionsTests
     {
         using var lease = options.Lease(out nint handle);
 
-        return RocksDbNative.rocksdb_flushoptions_get_wait((rocksdb_flushoptions_t*)handle);
+        return rocksdb_flushoptions_get_wait((rocksdb_flushoptions_t*)handle);
     }
 
     private static unsafe byte CreateIfMissing(DbOptions options)
     {
         using var lease = options.Lease(out nint handle);
 
-        return RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)handle);
+        return rocksdb_options_get_create_if_missing((rocksdb_options_t*)handle);
     }
 
     private static unsafe byte ReportBgIoStats(ColumnFamilyOptions options)
     {
         using var lease = options.Lease(out nint handle);
 
-        return RocksDbNative.rocksdb_options_get_report_bg_io_stats((rocksdb_options_t*)handle);
+        return rocksdb_options_get_report_bg_io_stats((rocksdb_options_t*)handle);
     }
 
     private static unsafe byte SkipStatsUpdateOnOpen(DbOptions options)
     {
         using var lease = options.Lease(out nint handle);
 
-        return RocksDbNative.rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)handle);
+        return rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)handle);
     }
 
     // An in-memory environment normalizes paths itself and answers GetAbsolutePath with
@@ -174,7 +176,7 @@ public class OptionsTests
     /// <remarks>
     /// The round-trip tests below set an option and read it back through the same wrapper, so a
     /// setter and getter inverted in the same direction cancel out and leave those tests passing.
-    /// This one compares against RocksDB own defaults instead, which is what catches it.
+    /// This one compares against RocksDB's own defaults instead, which is what catches it.
     /// </remarks>
     [Test]
     public async Task WriteOptions_DefaultToAnAsynchronousLoggedRegularPriorityWrite()
@@ -297,20 +299,34 @@ public class OptionsTests
         }
     }
 
+    /// <remarks>
+    /// RocksDB builds a table factory from a copy of the table options, so the wrapper does not
+    /// have to outlive the call that installs it, and the database opens with what it configured.
+    /// </remarks>
     [Test]
-    public async Task BlockBasedTableFactory_IsHeldByTheOptionsThatUseIt()
+    public async Task SetBlockBasedTableFactory_DoesNotNeedTheTableOptionsAfterwards()
     {
-        var tableOptions = new BlockBasedTableOptions().SetBlockSize(4096);
-        var options = new ColumnFamilyOptions();
+        // Declared first so that the database below is disposed before the options it was opened with.
+        using var options = new DbOptions().SetCreateIfMissing();
+        var tableOptions = Install(options);
 
-        // The reference has to be kept on the managed side: RocksDB reads the table options in
-        // place, so a collected wrapper would destroy a handle RocksDB is still using.
-        await Assert.That(options.SetBlockBasedTableFactory(tableOptions)).IsSameReferenceAs(options);
+        Collect();
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        await Assert.That(tableOptions.IsAlive).IsFalse();
 
-        await Assert.That(tableOptions.Handle).IsNotEqualTo(nint.Zero);
+        using var database = TestDatabase.Create(options);
+        database.Db.Put("key", "value");
+
+        await Assert.That(database.Db.Get("key")).IsEqualTo("value");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static WeakReference Install(DbOptions options)
+        {
+            var tableOptions = new BlockBasedTableOptions().SetBlockSize(4096);
+
+            options.SetBlockBasedTableFactory(tableOptions);
+            return new WeakReference(tableOptions);
+        }
     }
 
     [Test]
@@ -687,7 +703,7 @@ public class OptionsTests
     {
         using var lease = options.Lease(out nint handle);
 
-        return RocksDbNative.rocksdb_options_get_max_subcompactions((rocksdb_options_t*)handle);
+        return rocksdb_options_get_max_subcompactions((rocksdb_options_t*)handle);
     }
 
     [Test]

@@ -72,10 +72,10 @@ public sealed unsafe class ReadOptions : NativeOptions
         nint snapshotHandle = snapshot.Handle;
         ObjectDisposedException.ThrowIf(snapshotHandle == nint.Zero, snapshot);
 
+        // Stored before the call, so the lease on the handle is what keeps the snapshot reachable
+        // through it.
         _handle.Snapshot = snapshot;
         rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Snapshot(snapshotHandle));
-        // The handle keeps the snapshot reachable, but only the lease keeps the handle itself so.
-        GC.KeepAlive(snapshot);
         return this;
     }
 

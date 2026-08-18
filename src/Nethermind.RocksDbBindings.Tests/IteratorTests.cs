@@ -5,6 +5,8 @@ using System.Text;
 
 using Nethermind.RocksDbBindings.Native;
 
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+
 namespace Nethermind.RocksDbBindings.Tests;
 
 public class IteratorTests
@@ -52,7 +54,7 @@ public class IteratorTests
     private static byte[] ValueSpan(Iterator iterator) => iterator.GetValueSpan().ToArray();
 
     private static unsafe void Destroy(nint iteratorHandle)
-        => RocksDbNative.rocksdb_iter_destroy((rocksdb_iterator_t*)iteratorHandle);
+        => rocksdb_iter_destroy((rocksdb_iterator_t*)iteratorHandle);
 
     [Test]
     public async Task SeekToFirst_ThenNext_WalksTheKeysInOrder()

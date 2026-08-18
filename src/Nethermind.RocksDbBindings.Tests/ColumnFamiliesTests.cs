@@ -5,7 +5,7 @@ namespace Nethermind.RocksDbBindings.Tests;
 
 public class ColumnFamiliesTests
 {
-    // The native pointer is reachable only through a lease, which is all this needs it for.
+    // The native pointer is reachable only through a lease.
     private static nint Handle(ColumnFamilyOptions options)
     {
         using var lease = options.Lease(out nint handle);

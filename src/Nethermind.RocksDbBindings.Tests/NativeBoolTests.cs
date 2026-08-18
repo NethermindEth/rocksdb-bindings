@@ -5,6 +5,8 @@ using System.Runtime.CompilerServices;
 
 using Nethermind.RocksDbBindings.Native;
 
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+
 namespace Nethermind.RocksDbBindings.Tests;
 
 /// <remarks>
@@ -21,15 +23,15 @@ public class NativeBoolTests
 {
     private static unsafe bool Enabled(nuint bufferSize)
     {
-        var wbm = RocksDbNative.rocksdb_write_buffer_manager_create(bufferSize, allow_stall: false);
+        var wbm = rocksdb_write_buffer_manager_create(bufferSize, allow_stall: false);
 
         try
         {
-            return RocksDbNative.rocksdb_write_buffer_manager_enabled(wbm);
+            return rocksdb_write_buffer_manager_enabled(wbm);
         }
         finally
         {
-            RocksDbNative.rocksdb_write_buffer_manager_destroy(wbm);
+            rocksdb_write_buffer_manager_destroy(wbm);
         }
     }
 

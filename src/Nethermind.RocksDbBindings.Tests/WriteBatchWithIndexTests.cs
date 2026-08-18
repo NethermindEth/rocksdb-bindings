@@ -194,7 +194,7 @@ public class WriteBatchWithIndexTests
     }
 
     /// <remarks>
-    /// The overlay takes its own reference to the base iterator native read options, which is
+    /// The overlay takes its own reference to the base iterator's native read options, which is
     /// what keeps the iterate-bound buffers alive. Nothing holds the managed wrapper, so it may
     /// be collected while the overlay goes on reading through them.
     /// </remarks>
@@ -216,7 +216,7 @@ public class WriteBatchWithIndexTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        // The wrapper going away is the point: the overlay holds the native options, not it.
+        // The overlay holds the native options, not the wrapper.
         await Assert.That(weakOptions.TryGetTarget(out _)).IsFalse();
 
         var keys = new List<string>();

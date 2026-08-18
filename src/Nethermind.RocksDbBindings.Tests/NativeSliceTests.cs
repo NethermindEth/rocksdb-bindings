@@ -3,6 +3,8 @@
 
 using Nethermind.RocksDbBindings.Native;
 
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+
 namespace Nethermind.RocksDbBindings.Tests;
 
 /// <remarks>
@@ -22,14 +24,14 @@ public class NativeSliceTests
 
     private static unsafe byte[] KeySlice(Iterator iterator)
     {
-        var slice = RocksDbNative.rocksdb_iter_key_slice((rocksdb_iterator_t*)iterator.Handle);
+        var slice = rocksdb_iter_key_slice((rocksdb_iterator_t*)iterator.Handle);
 
         return new ReadOnlySpan<byte>(slice.data, checked((int)slice.size)).ToArray();
     }
 
     private static unsafe byte[] ValueSlice(Iterator iterator)
     {
-        var slice = RocksDbNative.rocksdb_iter_value_slice((rocksdb_iterator_t*)iterator.Handle);
+        var slice = rocksdb_iter_value_slice((rocksdb_iterator_t*)iterator.Handle);
 
         return new ReadOnlySpan<byte>(slice.data, checked((int)slice.size)).ToArray();
     }

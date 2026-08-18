@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 using Nethermind.RocksDbBindings.Native;
 
@@ -20,6 +21,33 @@ public class OptionsTests
 
     private static unsafe byte SkipStatsUpdateOnOpen(DbOptions options)
         => RocksDbNative.rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)options.Handle);
+
+    // An in-memory environment normalizes paths itself and answers GetAbsolutePath with
+    // NotSupported for anything not rooted at a slash, so a database on one is opened at a
+    // POSIX-style path even on Windows. Nothing reaches the disk either way.
+    private const string InMemoryPath = "/db";
+
+    // Opens a database on a fresh in-memory environment and then points the options at a second
+    // one, so that the database is all that can still be keeping the first alive. Out of line so
+    // that no frame of the caller refers to it either.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Env, RocksDb Database) OpenThenRepoint(DbOptions options)
+    {
+        var first = Env.CreateInMemory();
+        var database = RocksDb.Open(options.SetEnv(first), InMemoryPath);
+
+        options.SetEnv(Env.CreateInMemory());
+        return (new WeakReference(first), database);
+    }
+
+    // A full collection with the finalizers drained in between, so that a weak reference still
+    // alive afterwards can only be one that something still refers to.
+    private static void Collect()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
 
     [Test]
     public async Task SetReportBgIoStats_TurnsTheStatsOnRatherThanOff()
@@ -350,22 +378,142 @@ public class OptionsTests
     [Test]
     public async Task Env_CreatesDistinctEnvironments()
     {
-        var mem = Env.CreateMemEnv();
-        var def = Env.CreateDefaultEnv();
+        using var mem = Env.CreateInMemory();
+        using var def = Env.CreateDefault();
 
         await Assert.That(mem.Handle).IsNotEqualTo(def.Handle);
     }
 
-    [Test]
-    public async Task Env_SettersAreFluent()
+    /// <remarks>
+    /// Both pools in one test, and not in parallel with anything else, because every wrapper
+    /// shares the one process-wide default environment: another test writing these would change
+    /// what this one reads back. The sizes are put back for the same reason.
+    /// </remarks>
+    [Test, NotInParallel]
+    public async Task Env_SizesBothThreadPoolsAndReadsThemBack()
     {
-        var env = Env.CreateDefaultEnv();
+        using var env = Env.CreateDefault();
+        var background = env.GetBackgroundThreads();
+        var highPriority = env.GetHighPriorityBackgroundThreads();
 
-        using (Assert.Multiple())
+        try
         {
-            await Assert.That(env.SetBackgroundThreads(2)).IsSameReferenceAs(env);
-            await Assert.That(env.SetHighPriorityBackgroundThreads(1)).IsSameReferenceAs(env);
+            using (Assert.Multiple())
+            {
+                await Assert.That(env.SetBackgroundThreads(2)).IsSameReferenceAs(env);
+                await Assert.That(env.SetHighPriorityBackgroundThreads(1)).IsSameReferenceAs(env);
+                await Assert.That(env.GetBackgroundThreads()).IsEqualTo(2);
+                await Assert.That(env.GetHighPriorityBackgroundThreads()).IsEqualTo(1);
+            }
         }
+        finally
+        {
+            env.SetBackgroundThreads(background).SetHighPriorityBackgroundThreads(highPriority);
+        }
+    }
+
+    /// <remarks>
+    /// RocksDB stores a bare pointer to the environment and never takes ownership, so the
+    /// reference the options keep is the only thing standing between an attached environment and
+    /// its finalizer. Without it an in-memory environment is freed while the database is still
+    /// reading from it, which is why this asserts reachability rather than any native state.
+    /// </remarks>
+    [Test]
+    public async Task SetEnv_KeepsTheEnvironmentAliveForAsLongAsTheOptions()
+    {
+        using var options = new DbOptions();
+        var env = Attach(options);
+
+        Collect();
+
+        await Assert.That(env.IsAlive).IsTrue();
+
+        // Out of line so that nothing in this frame refers to the environment once it returns.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static WeakReference Attach(DbOptions options)
+        {
+            var env = Env.CreateInMemory();
+            options.SetEnv(env);
+            return new WeakReference(env);
+        }
+    }
+
+    /// <remarks>
+    /// The database holds the environment it was opened with, not whatever the options point at
+    /// now: RocksDB copied the pointer, so pointing the options elsewhere afterwards leaves the
+    /// open database reading through the first environment and nothing else referring to it.
+    /// </remarks>
+    [Test]
+    public async Task SetEnv_KeepsTheEnvironmentADatabaseWasOpenedWithAfterTheOptionsMoveOn()
+    {
+        using var options = new DbOptions().SetCreateIfMissing();
+        var (env, database) = OpenThenRepoint(options);
+
+        Collect();
+
+        await Assert.That(env.IsAlive).IsTrue();
+
+        database.Dispose();
+    }
+
+    /// <remarks>
+    /// The other side of the same reference: once the native close has run, a database that is
+    /// merely still reachable has no reason to pin the environment it used, which for an
+    /// in-memory one is its whole file system.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_LetsGoOfTheEnvironmentTheDatabaseWasOpenedWith()
+    {
+        using var options = new DbOptions().SetCreateIfMissing();
+        var (env, database) = OpenThenRepoint(options);
+
+        database.Dispose();
+        Collect();
+
+        await Assert.That(env.IsAlive).IsFalse();
+
+        // The point of the test: the database is reachable throughout, and lets go regardless.
+        GC.KeepAlive(database);
+    }
+
+    /// <remarks>
+    /// An iterator keeps the native database open past <see cref="RocksDb.Dispose"/>, and past
+    /// the collection of the wrapper itself, so the environment has to outlive both. This is what
+    /// a reference held by the managed database rather than by its handle would miss.
+    /// </remarks>
+    [Test]
+    public async Task SetEnv_KeepsTheEnvironmentAliveUnderAChildThatOutlivesTheDatabase()
+    {
+        var (env, iterator) = OpenAndAbandon();
+
+        Collect();
+
+        await Assert.That(env.IsAlive).IsTrue();
+
+        iterator.Dispose();
+
+        // Neither the database nor its options leave this frame; only the iterator does.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (WeakReference Env, Iterator Iterator) OpenAndAbandon()
+        {
+            var env = Env.CreateInMemory();
+            var options = new DbOptions().SetCreateIfMissing().SetEnv(env);
+            var database = RocksDb.Open(options, InMemoryPath);
+            var iterator = database.NewIterator();
+
+            database.Dispose();
+            return (new WeakReference(env), iterator);
+        }
+    }
+
+    [Test]
+    public async Task SetEnv_RejectsADisposedEnvironment()
+    {
+        using var options = new DbOptions();
+        var env = Env.CreateInMemory();
+        env.Dispose();
+
+        await Assert.That(() => options.SetEnv(env)).Throws<ObjectDisposedException>();
     }
 
     [Test]

@@ -47,6 +47,9 @@ public unsafe sealed class RocksDb : IDisposable
     private RocksDb(nint handle, DbOptions? options, ColumnFamilyOptions[]? columnFamilyOptions, Dictionary<string, ColumnFamilyHandleInternal>? columnFamilies = null)
     {
         _handle = new RocksDbHandle(handle);
+        // Snapshotted, not read through Options later: SetEnv can be pointed elsewhere once this
+        // database is open, and the environment RocksDB holds a pointer to is this one.
+        _handle.Env = options?.Env;
         Options = options;
         ColumnFamilyOptions = columnFamilyOptions;
         this.columnFamilies = columnFamilies;

@@ -27,6 +27,12 @@ internal sealed unsafe class RocksDbHandle : SafeHandle
 
     internal void RegisterOwnedColumnFamily(ColumnFamilyHandleInternal cfh) => _ownedColumnFamilies.Add(cfh);
 
+    // The environment the database was opened with, if any. RocksDB keeps a bare pointer to it,
+    // and a child can defer the close long past the collection of the RocksDb wrapper, so the
+    // reference belongs here rather than there — and is the environment of that one open call,
+    // which the options it came from are free to replace afterwards.
+    internal Env? Env { get; set; }
+
     protected override bool ReleaseHandle()
     {
         foreach (ColumnFamilyHandleInternal cfh in _ownedColumnFamilies)
@@ -36,6 +42,9 @@ internal sealed unsafe class RocksDbHandle : SafeHandle
         _ownedColumnFamilies.Clear();
 
         rocksdb_close(RocksDbInterop.Db(handle));
+        // The environment outlives the close only if something else refers to it; a disposed but
+        // still reachable database has no reason to pin one, least of all an in-memory file system.
+        Env = null;
         return true;
     }
 }
@@ -50,6 +59,23 @@ internal sealed unsafe class CacheHandle : SafeHandle
     protected override bool ReleaseHandle()
     {
         rocksdb_cache_destroy(RocksDbInterop.Cache(handle));
+        return true;
+    }
+}
+
+/// <summary>
+/// Owns a native environment wrapper. Destroying it frees the environment as well, unless it is
+/// the process-wide default one, which RocksDB owns and keeps.
+/// </summary>
+internal sealed unsafe class EnvHandle : SafeHandle
+{
+    public EnvHandle(nint handle) : base(nint.Zero, ownsHandle: true) => SetHandle(handle);
+
+    public override bool IsInvalid => handle == nint.Zero;
+
+    protected override bool ReleaseHandle()
+    {
+        rocksdb_env_destroy(RocksDbInterop.Env(handle));
         return true;
     }
 }

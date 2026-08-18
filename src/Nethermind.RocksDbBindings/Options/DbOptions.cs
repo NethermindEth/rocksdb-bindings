@@ -6,7 +6,31 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <inheritdoc/>
-public class DbOptions : Options<DbOptions> { }
+public class DbOptions : Options<DbOptions>
+{
+    // Read by an opening database, which takes its own reference: this slot can be pointed at
+    // another environment afterwards, and that must not unroot the one already in use.
+    internal Env? Env { get; private set; }
+
+    /// <summary>
+    /// Sets the environment the database runs its file and thread operations through.
+    /// </summary>
+    /// <remarks>
+    /// Only a database's own options carry one: RocksDB builds its <c>DBOptions</c> from these
+    /// alone and drops the field from every column family's options, which is why this setter is
+    /// here rather than on <see cref="Options{T}"/>. It is also the one option a database does
+    /// not copy — RocksDB keeps a bare pointer to the environment — so the wrapper is held here,
+    /// and held again by any database opened from these options. See
+    /// <see cref="Nethermind.RocksDbBindings.Env"/> for what that still leaves to the caller.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException"><paramref name="env"/> has been disposed.</exception>
+    public DbOptions SetEnv(Env env)
+    {
+        env.AttachTo(Handle);
+        Env = env;
+        return this;
+    }
+}
 
 /// <summary>
 /// Configures a database or column family. Each setter maps to the identically named RocksDB
@@ -66,15 +90,6 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     public T SetParanoidChecks(bool value = true)
     {
         rocksdb_options_set_paranoid_checks(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
-        return (T)this;
-    }
-
-    /// <summary>
-    /// Sets the environment the database runs its file and thread operations through.
-    /// </summary>
-    public T SetEnv(nint env)
-    {
-        rocksdb_options_set_env(RocksDbInterop.Options(Handle), RocksDbInterop.Env(env));
         return (T)this;
     }
 

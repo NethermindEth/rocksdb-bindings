@@ -9,15 +9,20 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe class ReadOptions : IDisposable
 {
+    private nint _handle;
     private nint iterateLowerBound;
     private nint iterateUpperBound;
 
     public ReadOptions()
     {
-        Handle = (nint)rocksdb_readoptions_create();
+        _handle = (nint)rocksdb_readoptions_create();
     }
 
-    public nint Handle { get; protected set; }
+    public nint Handle
+    {
+        get => _handle;
+        protected set => _handle = value;
+    }
 
     ~ReadOptions() => ReleaseHandle();
 
@@ -32,24 +37,22 @@ public unsafe class ReadOptions : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    // The handle is taken away rather than tested and then cleared, so that two callers disposing
+    // at once cannot both reach the destroy. The bounds go with it, freed only by whoever won the
+    // handle, so that a loser cannot free them while the winner is still in the native destroy.
     private void ReleaseHandle()
     {
-        if (Handle != nint.Zero)
+        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
+
+        if (handle != nint.Zero)
         {
-            rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(Handle));
-            Handle = nint.Zero;
+            rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(handle));
+            FreeBound(ref iterateLowerBound);
+            FreeBound(ref iterateUpperBound);
         }
-
-        FreeBound(ref iterateLowerBound);
-        FreeBound(ref iterateUpperBound);
     }
 
-    private static void FreeBound(ref nint bound)
-    {
-        var buffer = bound;
-        bound = nint.Zero;
-        NativeMemory.Free((void*)buffer);
-    }
+    private static void FreeBound(ref nint bound) => NativeMemory.Free((void*)Interlocked.Exchange(ref bound, nint.Zero));
 
     private static nint AllocateCopy(ReadOnlySpan<byte> key)
     {

@@ -170,7 +170,13 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// The counters collected since <see cref="EnableStatistics"/>, formatted by RocksDB, or null
     /// when statistics are off.
     /// </summary>
-    public string? GetStatisticsString() => RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
+    public string? GetStatisticsString()
+    {
+        var statistics = RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
+        // Without this, the finalizer could destroy the options mid-call.
+        GC.KeepAlive(this);
+        return statistics;
+    }
 
     /// <summary>
     /// Threads available to run compactions in the background.

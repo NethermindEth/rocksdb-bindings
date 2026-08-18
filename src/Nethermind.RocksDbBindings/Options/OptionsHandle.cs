@@ -11,7 +11,13 @@ namespace Nethermind.RocksDbBindings;
 /// </summary>
 public abstract class NativeOptions : IDisposable
 {
-    public nint Handle { get; protected set; }
+    private nint _handle;
+
+    public nint Handle
+    {
+        get => _handle;
+        protected set => _handle = value;
+    }
 
     ~NativeOptions() => ReleaseHandle();
 
@@ -26,16 +32,19 @@ public abstract class NativeOptions : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    // The handle is taken away rather than tested and then cleared, so that two callers disposing
+    // at once cannot both reach the destroy: whoever takes it is the one that destroys it, once.
     private void ReleaseHandle()
     {
-        if (Handle != nint.Zero)
+        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
+
+        if (handle != nint.Zero)
         {
-            DestroyHandle();
-            Handle = nint.Zero;
+            DestroyHandle(handle);
         }
     }
 
-    protected abstract void DestroyHandle();
+    protected abstract void DestroyHandle(nint handle);
 }
 
 /// <summary>A <c>rocksdb_options_t</c>: the options a database or column family is opened with.</summary>
@@ -61,5 +70,5 @@ public unsafe abstract class OptionsHandle : NativeOptions
 
     protected OptionsHandle() => Handle = (nint)rocksdb_options_create();
 
-    protected override void DestroyHandle() => rocksdb_options_destroy(RocksDbInterop.Options(Handle));
+    protected override void DestroyHandle(nint handle) => rocksdb_options_destroy(RocksDbInterop.Options(handle));
 }

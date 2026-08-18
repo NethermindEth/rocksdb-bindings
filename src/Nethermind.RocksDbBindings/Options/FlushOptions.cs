@@ -19,5 +19,5 @@ public unsafe class FlushOptions : NativeOptions
         return this;
     }
 
-    protected override void DestroyHandle() => rocksdb_flushoptions_destroy(RocksDbInterop.FlushOptions(Handle));
+    protected override void DestroyHandle(nint handle) => rocksdb_flushoptions_destroy(RocksDbInterop.FlushOptions(handle));
 }

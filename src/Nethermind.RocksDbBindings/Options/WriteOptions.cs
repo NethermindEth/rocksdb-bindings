@@ -13,12 +13,18 @@ namespace Nethermind.RocksDbBindings;
 /// </remarks>
 public unsafe class WriteOptions : IDisposable
 {
+    private nint _handle;
+
     public WriteOptions()
     {
-        Handle = (nint)rocksdb_writeoptions_create();
+        _handle = (nint)rocksdb_writeoptions_create();
     }
 
-    public nint Handle { get; protected set; }
+    public nint Handle
+    {
+        get => _handle;
+        protected set => _handle = value;
+    }
 
     ~WriteOptions() => ReleaseHandle();
 
@@ -30,12 +36,15 @@ public unsafe class WriteOptions : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    // The handle is taken away rather than tested and then cleared, so that two callers disposing
+    // at once cannot both reach the destroy: whoever takes it is the one that destroys it, once.
     private void ReleaseHandle()
     {
-        if (Handle != nint.Zero)
+        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
+
+        if (handle != nint.Zero)
         {
-            rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(Handle));
-            Handle = nint.Zero;
+            rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(handle));
         }
     }
 
@@ -50,7 +59,13 @@ public unsafe class WriteOptions : IDisposable
     }
 
     /// <summary>Reports whether <see cref="SetSync"/> is in effect.</summary>
-    public bool GetSync() => rocksdb_writeoptions_get_sync(RocksDbInterop.WriteOptions(Handle)) != 0;
+    public bool GetSync()
+    {
+        var value = rocksdb_writeoptions_get_sync(RocksDbInterop.WriteOptions(Handle));
+        // Without this, the finalizer could destroy the options mid-call.
+        GC.KeepAlive(this);
+        return value != 0;
+    }
 
     /// <summary>
     /// Skips the write-ahead log entirely, so writes live only in the memtable until it is
@@ -63,7 +78,13 @@ public unsafe class WriteOptions : IDisposable
     }
 
     /// <summary>Reports whether <see cref="SetDisableWal"/> is in effect.</summary>
-    public bool GetDisableWal() => rocksdb_writeoptions_get_disable_WAL(RocksDbInterop.WriteOptions(Handle)) != 0;
+    public bool GetDisableWal()
+    {
+        var value = rocksdb_writeoptions_get_disable_WAL(RocksDbInterop.WriteOptions(Handle));
+        // Without this, the finalizer could destroy the options mid-call.
+        GC.KeepAlive(this);
+        return value != 0;
+    }
 
     /// <summary>
     /// Marks writes with these options as low priority: they may be throttled or delayed in
@@ -76,5 +97,11 @@ public unsafe class WriteOptions : IDisposable
     }
 
     /// <summary>Reports whether <see cref="SetLowPriority"/> is in effect.</summary>
-    public bool GetLowPriority() => rocksdb_writeoptions_get_low_pri(RocksDbInterop.WriteOptions(Handle)) != 0;
+    public bool GetLowPriority()
+    {
+        var value = rocksdb_writeoptions_get_low_pri(RocksDbInterop.WriteOptions(Handle));
+        // Without this, the finalizer could destroy the options mid-call.
+        GC.KeepAlive(this);
+        return value != 0;
+    }
 }

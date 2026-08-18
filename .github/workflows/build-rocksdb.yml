@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: facebook/rocksdb
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref }}
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -203,7 +203,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: facebook/rocksdb
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref }}
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -310,7 +310,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: facebook/rocksdb
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref }}
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -428,7 +428,7 @@ jobs:
 
       - name: Generate
         env:
-          REF: ${{ github.event.inputs.ref }}
+          REF: ${{ inputs.ref }}
         run: bash generation/run.sh "$REF"
 
       - name: Upload artifact
@@ -442,7 +442,7 @@ jobs:
   create-pr:
     name: Create a pull request
     needs: [build-linux, build-macos, build-windows, generate-bindings]
-    if: github.event.inputs.create-pr == 'true'
+    if: inputs.create-pr
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -475,7 +475,7 @@ jobs:
 
       - name: Update version
         env:
-          REF: ${{ github.event.inputs.ref }}
+          REF: ${{ inputs.ref }}
         run: |
           version=${REF#v}
           if [[ $version =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
@@ -486,7 +486,7 @@ jobs:
       - name: Create a pull request
         env:
           GH_TOKEN: ${{ github.token }}
-          REF: ${{ github.event.inputs.ref }}
+          REF: ${{ inputs.ref }}
         run: |
           head_branch=feature/rocksdb-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           title="chore(deps): update RocksDB binaries and bindings to ${REF#v}"

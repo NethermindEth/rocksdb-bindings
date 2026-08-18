@@ -104,9 +104,10 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb Open(DbOptions options, string path)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
-        nint db = (nint)rocksdb_open(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
+        nint db = (nint)rocksdb_open(RocksDbInterop.Options(optionsHandle), (sbyte*)pathSafe.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new RocksDb(db, options)
         {
@@ -118,9 +119,10 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb OpenReadOnly(DbOptions options, string path, bool errorIfLogFileExists)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
-        nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
+        nint db = (nint)rocksdb_open_for_read_only(RocksDbInterop.Options(optionsHandle), (sbyte*)pathSafe.Handle, RocksDbInterop.Bool(errorIfLogFileExists), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new RocksDb(db, options)
         {
@@ -132,10 +134,11 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         using var secondaryPathSafe = new TransientUtf8String(secondaryPath);
         sbyte* errptr = null;
-        nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
+        nint db = (nint)rocksdb_open_as_secondary(RocksDbInterop.Options(optionsHandle), (sbyte*)pathSafe.Handle, (sbyte*)secondaryPathSafe.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new RocksDb(db, options)
         {
@@ -147,9 +150,10 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb OpenWithTtl(DbOptions options, string path, int ttlSeconds)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
-        nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
+        nint db = (nint)rocksdb_open_with_ttl(RocksDbInterop.Options(optionsHandle), (sbyte*)pathSafe.Handle, ttlSeconds, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return new RocksDb(db, options)
         {
@@ -161,9 +165,11 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb Open(DbOptions options, string path, ColumnFamilies columnFamilies)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         string[] cfnames = [.. columnFamilies.Names];
-        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        using var cfOptionsLease = columnFamilies.LeaseOptions();
+        nint[] cfoptions = cfOptionsLease.Handles;
         nint[] cfhandles = new nint[cfnames.Length];
         using var cfNameArray = new NativeUtf8StringArray(cfnames);
         fixed (nint* cfOptionsPtr = cfoptions)
@@ -171,7 +177,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             sbyte* errptr = null;
             nint db = (nint)rocksdb_open_column_families(
-                RocksDbInterop.Options(options.Handle),
+                RocksDbInterop.Options(optionsHandle),
                 (sbyte*)pathSafe.Handle,
                 cfnames.Length,
                 cfNameArray.Pointer,
@@ -196,9 +202,11 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb OpenReadOnly(DbOptions options, string path, ColumnFamilies columnFamilies, bool errIfLogFileExists)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         string[] cfnames = [.. columnFamilies.Names];
-        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        using var cfOptionsLease = columnFamilies.LeaseOptions();
+        nint[] cfoptions = cfOptionsLease.Handles;
         nint[] cfhandles = new nint[cfnames.Length];
         using var cfNameArray = new NativeUtf8StringArray(cfnames);
         fixed (nint* cfOptionsPtr = cfoptions)
@@ -206,7 +214,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             sbyte* errptr = null;
             nint db = (nint)rocksdb_open_for_read_only_column_families(
-                RocksDbInterop.Options(options.Handle),
+                RocksDbInterop.Options(optionsHandle),
                 (sbyte*)pathSafe.Handle,
                 cfnames.Length,
                 cfNameArray.Pointer,
@@ -232,10 +240,12 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath, ColumnFamilies columnFamilies)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         using var secondaryPathSafe = new TransientUtf8String(secondaryPath);
         string[] cfnames = [.. columnFamilies.Names];
-        nint[] cfoptions = [.. columnFamilies.OptionHandles];
+        using var cfOptionsLease = columnFamilies.LeaseOptions();
+        nint[] cfoptions = cfOptionsLease.Handles;
         nint[] cfhandles = new nint[cfnames.Length];
         using var cfNameArray = new NativeUtf8StringArray(cfnames);
         fixed (nint* cfOptionsPtr = cfoptions)
@@ -243,7 +253,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             sbyte* errptr = null;
             var db = (nint)rocksdb_open_as_secondary_column_families(
-                RocksDbInterop.Options(options.Handle),
+                RocksDbInterop.Options(optionsHandle),
                 (sbyte*)pathSafe.Handle,
                 (sbyte*)secondaryPathSafe.Handle,
                 cfnames.Length,
@@ -402,16 +412,16 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         nuint valueLength;
         sbyte* errptr = null;
         sbyte* valuePtr;
         fixed (byte* keyPtr = key)
         {
             valuePtr = cf is null
-                ? rocksdb_get(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(options.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_get_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+                ? rocksdb_get(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_get_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
         }
-        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
 
         if (valuePtr is null)
@@ -505,6 +515,7 @@ public unsafe sealed class RocksDb : IDisposable
             throw new ArgumentException("Column family handle count must match key count.", nameof(cf));
 
         var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         var result = new KeyValuePair<byte[], byte[]?>[count];
         var keyHandles = new PinnedGCHandle<byte[]>[count];
         var keyPtrs = new sbyte*[count];
@@ -539,7 +550,7 @@ public unsafe sealed class RocksDb : IDisposable
                 {
                     rocksdb_multi_get(
                         RocksDbInterop.Db(NativeHandle),
-                        RocksDbInterop.ReadOptions(options.Handle),
+                        RocksDbInterop.ReadOptions(optionsHandle),
                         (nuint)count,
                         keyPtrsPtr,
                         keyLengthsPtr,
@@ -553,7 +564,7 @@ public unsafe sealed class RocksDb : IDisposable
                     {
                         rocksdb_multi_get_cf(
                             RocksDbInterop.Db(NativeHandle),
-                            RocksDbInterop.ReadOptions(options.Handle),
+                            RocksDbInterop.ReadOptions(optionsHandle),
                             cfHandlesPtr,
                             (nuint)count,
                             keyPtrsPtr,
@@ -565,8 +576,6 @@ public unsafe sealed class RocksDb : IDisposable
                 }
             }
 
-            // Without this, the read options' finalizer could destroy them mid-call.
-            GC.KeepAlive(options);
 
             sbyte* firstError = null;
             for (var i = 0; i < count; i++)
@@ -595,12 +604,11 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         sbyte* errptr = null;
         var pinned = cf is null
-            ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(options.Handle), (sbyte*)key, keyLength, &errptr)
-            : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
-        // Without this, the read options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
+            ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return pinned;
     }
@@ -643,17 +651,16 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = writeOptions ?? DefaultWriteOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_delete(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), (sbyte*)key, keyLength, &errptr);
         }
         else
         {
-            rocksdb_delete_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            rocksdb_delete_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         }
-        // Without this, the write options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -661,17 +668,16 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = writeOptions ?? DefaultWriteOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_put(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            rocksdb_put_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_put_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
-        // Without this, the write options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -679,17 +685,16 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = writeOptions ?? DefaultWriteOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         sbyte* errptr = null;
         if (cf is null)
         {
-            rocksdb_merge(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
         else
         {
-            rocksdb_merge_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
+            rocksdb_merge_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)value, valueLength, &errptr);
         }
-        // Without this, the write options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -698,9 +703,8 @@ public unsafe sealed class RocksDb : IDisposable
         using var lease = Lease();
         sbyte* errptr = null;
         var options = writeOptions ?? DefaultWriteOptions;
-        rocksdb_write(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
-        // Without this, the write options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
+        using var optionsLease = options.Lease(out nint optionsHandle);
+        rocksdb_write(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), RocksDbInterop.WriteBatch(writeBatch.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -709,9 +713,8 @@ public unsafe sealed class RocksDb : IDisposable
         using var lease = Lease();
         sbyte* errptr = null;
         var options = writeOptions ?? DefaultWriteOptions;
-        rocksdb_write_writebatch_wi(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(options.Handle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
-        // Without this, the write options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
+        using var optionsLease = options.Lease(out nint optionsHandle);
+        rocksdb_write_writebatch_wi(RocksDbInterop.Db(NativeHandle), RocksDbInterop.WriteOptions(optionsHandle), RocksDbInterop.WriteBatchWithIndex(writeBatch.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -744,23 +747,24 @@ public unsafe sealed class RocksDb : IDisposable
     public Iterator NewIterator(IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
         using var lease = Lease();
+        var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         nint iteratorHandle = cf is null
-            ? (nint)rocksdb_create_iterator(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle))
-            : (nint)rocksdb_create_iterator_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions((readOptions ?? DefaultReadOptions).Handle), RocksDbInterop.ColumnFamily(cf.Handle));
-        // Note: passing in read options here only to ensure that it is not collected before the iterator
-        return new Iterator(iteratorHandle, readOptions, AcquireChildLease());
+            ? (nint)rocksdb_create_iterator(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle))
+            : (nint)rocksdb_create_iterator_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle));
+        return new Iterator(iteratorHandle, options, AcquireChildLease());
     }
 
     /// <remarks>
     /// The returned iterators read from a single consistent view of the database, which is what
     /// separate <see cref="NewIterator" /> calls do not give you. They share one
-    /// <paramref name="readOptions" />, because that is all the C API accepts, and every one of
-    /// them must be disposed before the database is closed.
+    /// <paramref name="readOptions" />, because that is all the C API accepts.
     /// </remarks>
     public Iterator[] NewIterators(IColumnFamilyHandle[] cfs, ReadOptions? readOptions = null)
     {
         using var lease = Lease();
         ReadOptions options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         var cfHandles = new nint[cfs.Length];
         var iteratorHandles = new nint[cfs.Length];
 
@@ -773,7 +777,7 @@ public unsafe sealed class RocksDb : IDisposable
             sbyte* errptr = null;
             rocksdb_create_iterators(
                 RocksDbInterop.Db(NativeHandle),
-                RocksDbInterop.ReadOptions(options.Handle),
+                RocksDbInterop.ReadOptions(optionsHandle),
                 (rocksdb_column_family_handle_t**)cfHandlesPtr,
                 (rocksdb_iterator_t**)iteratorHandlesPtr,
                 (nuint)cfs.Length,
@@ -802,12 +806,11 @@ public unsafe sealed class RocksDb : IDisposable
 
     public static bool TryListColumnFamilies(DbOptions options, string name, out string[] columnFamilies)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var path = new TransientUtf8String(name);
         nuint lencf;
         sbyte* errptr = null;
-        var result = rocksdb_list_column_families(RocksDbInterop.Options(options.Handle), (sbyte*)path.Handle, &lencf, &errptr);
-        // Without this, the options' finalizer could destroy them mid-call.
-        GC.KeepAlive(options);
+        var result = rocksdb_list_column_families(RocksDbInterop.Options(optionsHandle), (sbyte*)path.Handle, &lencf, &errptr);
         if (errptr != null)
         {
             columnFamilies = [];
@@ -828,6 +831,7 @@ public unsafe sealed class RocksDb : IDisposable
 
     public IColumnFamilyHandle CreateColumnFamily(ColumnFamilyOptions cfOptions, string name)
     {
+        using var cfOptionsLease = cfOptions.Lease(out nint cfOptionsHandle);
         using var lease = Lease();
         // The lock spans the native call and the bookkeeping: interleaving a same-name drop and
         // create would otherwise let the create observe the dropped entry still in the lookup.
@@ -835,9 +839,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             using var nativeName = new TransientUtf8String(name);
             sbyte* errptr = null;
-            var cfh = (nint)rocksdb_create_column_family(RocksDbInterop.Db(NativeHandle), RocksDbInterop.Options(cfOptions.Handle), (sbyte*)nativeName.Handle, &errptr);
-            // Without this, the family options' finalizer could destroy them mid-call.
-            GC.KeepAlive(cfOptions);
+            var cfh = (nint)rocksdb_create_column_family(RocksDbInterop.Db(NativeHandle), RocksDbInterop.Options(cfOptionsHandle), (sbyte*)nativeName.Handle, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             var cfhw = new ColumnFamilyHandleInternal(cfh);
             // Ownership before lookup, so a failed dictionary insert cannot leak the handle.
@@ -934,7 +936,7 @@ public unsafe sealed class RocksDb : IDisposable
         {
             rocksdb_ingest_external_file_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle), nativeFiles.Pointer, (nuint)files.GetLongLength(0), RocksDbInterop.IngestExternalFileOptions(ingestOptions.Handle), &errptr);
         }
-        // Without this, the ingest options' finalizer could destroy them mid-call.
+        // The ingest options are not leased, so keep them from being finalized mid-call.
         GC.KeepAlive(ingestOptions);
         RocksDbInterop.ThrowIfError(errptr);
     }
@@ -998,20 +1000,20 @@ public unsafe sealed class RocksDb : IDisposable
 
     public void Flush(FlushOptions flushOptions)
     {
+        using var flushOptionsLease = flushOptions.Lease(out nint flushOptionsHandle);
         using var lease = Lease();
         sbyte* errptr = null;
-        rocksdb_flush(RocksDbInterop.Db(NativeHandle), RocksDbInterop.FlushOptions(flushOptions.Handle), &errptr);
-        GC.KeepAlive(flushOptions);
+        rocksdb_flush(RocksDbInterop.Db(NativeHandle), RocksDbInterop.FlushOptions(flushOptionsHandle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
     /// <summary>Flushes the memtable of a single column family into SST files.</summary>
     public void Flush(FlushOptions flushOptions, IColumnFamilyHandle cf)
     {
+        using var flushOptionsLease = flushOptions.Lease(out nint flushOptionsHandle);
         using var lease = Lease();
         sbyte* errptr = null;
-        rocksdb_flush_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.FlushOptions(flushOptions.Handle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
-        GC.KeepAlive(flushOptions);
+        rocksdb_flush_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.FlushOptions(flushOptionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 
@@ -1056,10 +1058,10 @@ public unsafe sealed class RocksDb : IDisposable
     /// </summary>
     public static void Repair(DbOptions options, string path)
     {
+        using var optionsLease = options.Lease(out nint optionsHandle);
         using var pathSafe = new TransientUtf8String(path);
         sbyte* errptr = null;
-        rocksdb_repair_db(RocksDbInterop.Options(options.Handle), (sbyte*)pathSafe.Handle, &errptr);
-        GC.KeepAlive(options);
+        rocksdb_repair_db(RocksDbInterop.Options(optionsHandle), (sbyte*)pathSafe.Handle, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
     }
 

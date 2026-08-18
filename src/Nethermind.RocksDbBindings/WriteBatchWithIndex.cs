@@ -46,15 +46,14 @@ public unsafe sealed class WriteBatchWithIndex : IDisposable
     public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, DbOptions? options = null)
     {
         var dbOptions = options ?? RocksDb.DefaultOptions;
+        using var dbOptionsLease = dbOptions.Lease(out nint dbOptionsHandle);
         fixed (byte* keyPtr = key)
         {
             nuint valueLength;
             sbyte* errptr = null;
             var valuePtr = cf is null
-                ? rocksdb_writebatch_wi_get_from_batch(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options(dbOptions.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_writebatch_wi_get_from_batch_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options(dbOptions.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
-            // Without this, the options' finalizer could destroy them mid-call.
-            GC.KeepAlive(dbOptions);
+                ? rocksdb_writebatch_wi_get_from_batch(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options(dbOptionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_writebatch_wi_get_from_batch_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Options(dbOptionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
         }
@@ -66,16 +65,14 @@ public unsafe sealed class WriteBatchWithIndex : IDisposable
     {
         using var dbLease = db.LeaseHandle(out nint dbHandle);
         var readOptions = options ?? RocksDb.DefaultReadOptions;
+        using var readOptionsLease = readOptions.Lease(out nint readOptionsHandle);
         fixed (byte* keyPtr = key)
         {
             nuint valueLength;
             sbyte* errptr = null;
             var valuePtr = cf is null
-                ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(readOptions.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(readOptions.Handle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
-            // The lease keeps the database open; the read options need the same protection from
-            // their own finalizer.
-            GC.KeepAlive(readOptions);
+                ? rocksdb_writebatch_wi_get_from_batch_and_db(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(readOptionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_writebatch_wi_get_from_batch_and_db_cf(RocksDbInterop.WriteBatchWithIndex(Handle), RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(readOptionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
             RocksDbInterop.ThrowIfError(errptr);
             return RocksDbInterop.BytesAndFree(valuePtr, valueLength);
         }
@@ -100,8 +97,15 @@ public unsafe sealed class WriteBatchWithIndex : IDisposable
         // while the overlay is alive. The lease is taken before detaching, as detaching disarms
         // the base handle's release path.
         var dbLease = baseIterator.TakeDbLease();
+        var readOptions = baseIterator.TakeReadOptions();
+        var snapshot = baseIterator.TakeSnapshot();
         baseIterator.Detach();
-        return new Iterator(iteratorHandle, baseIterator.ReadOptions, dbLease);
+
+        // The overlay takes its own reference to the read options before the base one is released,
+        // so their bound buffers are never left unheld in between.
+        var iterator = new Iterator(iteratorHandle, readOptions, snapshot, dbLease);
+        readOptions?.DangerousRelease();
+        return iterator;
     }
 
     public WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null)

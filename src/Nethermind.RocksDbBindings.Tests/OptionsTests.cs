@@ -11,16 +11,32 @@ namespace Nethermind.RocksDbBindings.Tests;
 public class OptionsTests
 {
     private static unsafe byte WaitForFlush(FlushOptions options)
-        => RocksDbNative.rocksdb_flushoptions_get_wait((rocksdb_flushoptions_t*)options.Handle);
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return RocksDbNative.rocksdb_flushoptions_get_wait((rocksdb_flushoptions_t*)handle);
+    }
 
     private static unsafe byte CreateIfMissing(DbOptions options)
-        => RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)options.Handle);
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return RocksDbNative.rocksdb_options_get_create_if_missing((rocksdb_options_t*)handle);
+    }
 
     private static unsafe byte ReportBgIoStats(ColumnFamilyOptions options)
-        => RocksDbNative.rocksdb_options_get_report_bg_io_stats((rocksdb_options_t*)options.Handle);
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return RocksDbNative.rocksdb_options_get_report_bg_io_stats((rocksdb_options_t*)handle);
+    }
 
     private static unsafe byte SkipStatsUpdateOnOpen(DbOptions options)
-        => RocksDbNative.rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)options.Handle);
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return RocksDbNative.rocksdb_options_get_skip_stats_update_on_db_open((rocksdb_options_t*)handle);
+    }
 
     // An in-memory environment normalizes paths itself and answers GetAbsolutePath with
     // NotSupported for anything not rooted at a slash, so a database on one is opened at a
@@ -39,10 +55,6 @@ public class OptionsTests
         options.SetEnv(Env.CreateInMemory());
         return (new WeakReference(first), database);
     }
-
-    // Long enough that a slow machine does not fail the test, short enough that a genuine hang
-    // does not stall the suite.
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     // A full collection with the finalizers drained in between, so that a weak reference still
     // alive afterwards can only be one that something still refers to.
@@ -623,7 +635,7 @@ public class OptionsTests
         options.Dispose();
         options.Dispose();
 
-        await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+        await Assert.That(() => options.Lease(out _).Dispose()).Throws<ObjectDisposedException>();
     }
 
     [Test]
@@ -638,7 +650,7 @@ public class OptionsTests
 
         using (Assert.Multiple())
         {
-            await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+            await Assert.That(() => options.Lease(out _).Dispose()).Throws<ObjectDisposedException>();
             await Assert.That(database.Db.Get("key")).IsEqualTo("value");
         }
     }
@@ -651,7 +663,7 @@ public class OptionsTests
         options.Dispose();
         options.Dispose();
 
-        await Assert.That(options.Handle).IsEqualTo(nint.Zero);
+        await Assert.That(() => options.Lease(out _).Dispose()).Throws<ObjectDisposedException>();
     }
 
     /// <remarks>
@@ -672,7 +684,11 @@ public class OptionsTests
     }
 
     private static unsafe uint MaxSubcompactions(DbOptions options)
-        => RocksDbNative.rocksdb_options_get_max_subcompactions((rocksdb_options_t*)options.Handle);
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return RocksDbNative.rocksdb_options_get_max_subcompactions((rocksdb_options_t*)handle);
+    }
 
     [Test]
     public async Task DbOptions_SetMaxSubcompactions_ReachesTheNativeOptions()
@@ -766,57 +782,6 @@ public class OptionsTests
 
         await Assert.That(cache.Handle).IsEqualTo(nint.Zero);
     }
-
-    /// <remarks>
-    /// While one caller is inside the destroy, a second one must find the handle already taken and
-    /// destroy nothing.
-    /// </remarks>
-    [Test]
-    public async Task Dispose_DestroysTheHandleOnceWhenTwoCallersRaceIt()
-    {
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        var options = new BlockingOptions(entered, release);
-        var first = Task.Run(options.Dispose);
-
-        try
-        {
-            await Assert.That(entered.Wait(Timeout)).IsTrue();
-
-            options.Dispose();
-
-            await Assert.That(options.Destructions).IsEqualTo(1);
-        }
-        finally
-        {
-            release.Set();
-            await first;
-        }
-    }
-
-    /// <summary>
-    /// Stands in for a real options type. The handle is never dereferenced, only counted, so the
-    /// destroy can be held open long enough for a second caller to reach Dispose behind it.
-    /// </summary>
-    private sealed class BlockingOptions(ManualResetEventSlim entered, ManualResetEventSlim release)
-        : NativeOptions(handle: 1)
-    {
-        private int destructions;
-
-        public int Destructions => Volatile.Read(ref destructions);
-
-        protected override void DestroyHandle(nint handle)
-        {
-            // Only the first caller blocks, so a second one that wrongly gets here is not hidden
-            // behind this wait; it fails the count immediately instead.
-            if (Interlocked.Increment(ref destructions) == 1)
-            {
-                entered.Set();
-                release.Wait(Timeout);
-            }
-        }
-    }
-
     /// <remarks>
     /// RocksDB keeps only a bare pointer to the snapshot, and releasing one both frees it and
     /// drops the lease keeping the database open, so options carrying a snapshot have to hold it.
@@ -930,6 +895,99 @@ public class OptionsTests
             var env = Env.CreateInMemory();
             options.SetEnv(env);
             return new WeakReference(env);
+        }
+    }
+
+    /// <remarks>
+    /// An iterator reads through the snapshot its options carried when it was created, and those
+    /// options are free to be pointed elsewhere afterwards, so the iterator holds that one itself.
+    /// </remarks>
+    [Test]
+    public async Task NewIterator_KeepsTheSnapshotItWasCreatedWithWhenTheOptionsMoveOn()
+    {
+        using var database = TestDatabase.Create();
+        using var options = new ReadOptions();
+        var (snapshot, iterator) = CreateThenClear(database.Db, options);
+
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsTrue();
+
+        iterator.Dispose();
+        Collect();
+
+        // And lets go of it once the iterator that captured it is done.
+        await Assert.That(snapshot.IsAlive).IsFalse();
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (WeakReference Snapshot, Iterator Iterator) CreateThenClear(RocksDb database, ReadOptions options)
+        {
+            var snapshot = database.CreateSnapshot();
+            var iterator = database.NewIterator(readOptions: options.SetSnapshot(snapshot));
+
+            options.ClearSnapshot();
+            return (new WeakReference(snapshot), iterator);
+        }
+    }
+
+    /// <remarks>
+    /// The native iterator reads the bound buffers these options own, so disposing them under it
+    /// defers the release until the iterator is done rather than freeing them underneath it.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_OfReadOptionsUnderAnIterator_LeavesTheIteratorReadable()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put("a", "1");
+        database.Db.Put("b", "2");
+        database.Db.Put("c", "3");
+
+        var options = new ReadOptions().SetIterateBounds("a"u8, "c"u8);
+        using var iterator = database.Db.NewIterator(readOptions: options);
+
+        options.Dispose();
+
+        var keys = new List<string>();
+        for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
+        {
+            keys.Add(iterator.StringKey());
+        }
+
+        await Assert.That(keys).IsEquivalentTo(new[] { "a", "b" }, CollectionOrdering.Matching);
+    }
+
+    /// <remarks>
+    /// The reference an iterator holds is released when the iterator is, and not before: the
+    /// options are destroyed on the last release, which is what finally lets go of the snapshot
+    /// they carried. Setting the snapshot after the iterator exists leaves the options holding it
+    /// alone, so what survives here is theirs and not a copy the iterator captured.
+    /// </remarks>
+    [Test]
+    public async Task Dispose_OfAnIteratorReleasesTheReadOptionsItHeld()
+    {
+        using var database = TestDatabase.Create();
+        var (snapshot, iterator) = AttachAfterCreating(database.Db);
+
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsTrue();
+
+        iterator.Dispose();
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsFalse();
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (WeakReference Snapshot, Iterator Iterator) AttachAfterCreating(RocksDb database)
+        {
+            var options = new ReadOptions();
+            var iterator = database.NewIterator(readOptions: options);
+            var snapshot = database.CreateSnapshot();
+
+            // After the iterator exists, so only the options hold it.
+            options.SetSnapshot(snapshot);
+            options.Dispose();
+            return (new WeakReference(snapshot), iterator);
         }
     }
 }

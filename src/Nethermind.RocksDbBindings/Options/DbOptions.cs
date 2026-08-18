@@ -10,7 +10,7 @@ public sealed class DbOptions : Options<DbOptions>
 {
     // Read by an opening database, which takes its own reference: this slot can be pointed at
     // another environment afterwards, and that must not unroot the one already in use.
-    internal Env? Env { get; private set; }
+    internal Env? Env => NativeHandle.Env;
 
     /// <summary>
     /// Sets the environment the database runs its file and thread operations through.
@@ -26,17 +26,11 @@ public sealed class DbOptions : Options<DbOptions>
     /// <exception cref="ObjectDisposedException"><paramref name="env"/> has been disposed.</exception>
     public DbOptions SetEnv(Env env)
     {
-        env.AttachTo(Handle);
-        Env = env;
+        using var lease = Lease(out nint handle);
+
+        env.AttachTo(handle);
+        NativeHandle.Env = env;
         return this;
-    }
-
-    protected override void DestroyHandle(nint handle)
-    {
-        base.DestroyHandle(handle);
-
-        // These options no longer carry the environment pointer, so nothing needs to keep it alive.
-        Env = null;
     }
 }
 
@@ -59,7 +53,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T IncreaseParallelism(int totalThreads)
     {
-        rocksdb_options_increase_parallelism(RocksDbInterop.Options(Handle), totalThreads);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_increase_parallelism(RocksDbInterop.Options(handle), totalThreads);
         return (T)this;
     }
 
@@ -68,9 +64,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCreateIfMissing(bool value = true)
     {
+        using var lease = Lease(out nint handle);
+
         // Remembered so that opening can create the column families too.
         CreateIfMissing = value;
-        rocksdb_options_set_create_if_missing(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        rocksdb_options_set_create_if_missing(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -79,7 +77,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCreateMissingColumnFamilies(bool value = true)
     {
-        rocksdb_options_set_create_missing_column_families(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_create_missing_column_families(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -88,7 +88,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetErrorIfExists(bool value = true)
     {
-        rocksdb_options_set_error_if_exists(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_error_if_exists(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -97,7 +99,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetParanoidChecks(bool value = true)
     {
-        rocksdb_options_set_paranoid_checks(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_paranoid_checks(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -106,7 +110,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetInfoLog(nint logger)
     {
-        rocksdb_options_set_info_log(RocksDbInterop.Options(Handle), RocksDbInterop.Logger(logger));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_info_log(RocksDbInterop.Options(handle), RocksDbInterop.Logger(logger));
         return (T)this;
     }
 
@@ -115,7 +121,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxOpenFiles(int value)
     {
-        rocksdb_options_set_max_open_files(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_open_files(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -124,7 +132,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxFileOpeningThreads(int value)
     {
-        rocksdb_options_set_max_file_opening_threads(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_file_opening_threads(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -134,7 +144,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxTotalWalSize(ulong n)
     {
-        rocksdb_options_set_max_total_wal_size(RocksDbInterop.Options(Handle), (nuint)n);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_total_wal_size(RocksDbInterop.Options(handle), (nuint)n);
         return (T)this;
     }
 
@@ -143,7 +155,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalRecoveryMode(Recovery mode)
     {
-        rocksdb_options_set_wal_recovery_mode(RocksDbInterop.Options(Handle), (int)mode);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_wal_recovery_mode(RocksDbInterop.Options(handle), (int)mode);
         return (T)this;
     }
 
@@ -152,7 +166,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalCompression(Compression compression)
     {
-        rocksdb_options_set_wal_compression(RocksDbInterop.Options(Handle), (int)compression);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_wal_compression(RocksDbInterop.Options(handle), (int)compression);
         return (T)this;
     }
 
@@ -161,7 +177,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T EnableStatistics()
     {
-        rocksdb_options_enable_statistics(RocksDbInterop.Options(Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_enable_statistics(RocksDbInterop.Options(handle));
         return (T)this;
     }
 
@@ -170,7 +188,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SkipStatsUpdateOnOpen(bool value = true)
     {
-        rocksdb_options_set_skip_stats_update_on_db_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_skip_stats_update_on_db_open(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -180,10 +200,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public string? GetStatisticsString()
     {
-        var statistics = RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(Handle)));
-        // Without this, the finalizer could destroy the options mid-call.
-        GC.KeepAlive(this);
-        return statistics;
+        using var lease = Lease(out nint handle);
+
+        return RocksDbInterop.NullTerminatedStringAndFree(rocksdb_options_statistics_get_string(RocksDbInterop.Options(handle)));
     }
 
     /// <summary>
@@ -191,7 +210,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBackgroundCompactions(int value)
     {
-        rocksdb_options_set_max_background_compactions(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_background_compactions(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -201,7 +222,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxSubcompactions(uint value)
     {
-        rocksdb_options_set_max_subcompactions(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_subcompactions(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -211,7 +234,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetRowCache(Cache cache)
     {
-        rocksdb_options_set_row_cache(RocksDbInterop.Options(Handle), RocksDbInterop.Cache(cache.Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_row_cache(RocksDbInterop.Options(handle), RocksDbInterop.Cache(cache.Handle));
         // Without this, the cache's finalizer could destroy the handle mid-call.
         GC.KeepAlive(cache);
         return (T)this;
@@ -220,10 +245,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <summary>The number of levels in the LSM tree.</summary>
     public int GetNumLevels()
     {
-        var levels = rocksdb_options_get_num_levels(RocksDbInterop.Options(Handle));
-        // Without this, the finalizer could destroy the options mid-call.
-        GC.KeepAlive(this);
-        return levels;
+        using var lease = Lease(out nint handle);
+
+        return rocksdb_options_get_num_levels(RocksDbInterop.Options(handle));
     }
 
     /// <summary>
@@ -233,9 +257,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// <exception cref="RocksDbNativeException">The string contains an unknown or malformed option.</exception>
     public T ApplyFromString(string optionsString)
     {
+        using var lease = Lease(out nint handle);
+
         using var nativeString = new TransientUtf8String(optionsString);
         sbyte* errptr = null;
-        rocksdb_get_options_from_string(RocksDbInterop.Options(Handle), (sbyte*)nativeString.Handle, RocksDbInterop.Options(Handle), &errptr);
+        rocksdb_get_options_from_string(RocksDbInterop.Options(handle), (sbyte*)nativeString.Handle, RocksDbInterop.Options(handle), &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return (T)this;
     }
@@ -245,7 +271,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBackgroundFlushes(int value)
     {
-        rocksdb_options_set_max_background_flushes(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_background_flushes(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -254,7 +282,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxLogFileSize(ulong value)
     {
-        rocksdb_options_set_max_log_file_size(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_log_file_size(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -263,7 +293,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLogFileTimeToRoll(ulong value)
     {
-        rocksdb_options_set_log_file_time_to_roll(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_log_file_time_to_roll(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -272,7 +304,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetKeepLogFileNum(ulong value)
     {
-        rocksdb_options_set_keep_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_keep_log_file_num(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -281,7 +315,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetRecycleLogFileNum(ulong value)
     {
-        rocksdb_options_set_recycle_log_file_num(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_recycle_log_file_num(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -290,7 +326,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxManifestFileSize(ulong value)
     {
-        rocksdb_options_set_max_manifest_file_size(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_manifest_file_size(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -299,7 +337,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetTableCacheNumShardbits(int value)
     {
-        rocksdb_options_set_table_cache_numshardbits(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_table_cache_numshardbits(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -308,7 +348,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseFsync(int value)
     {
-        rocksdb_options_set_use_fsync(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_use_fsync(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -317,9 +359,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDbLogDir(string value)
     {
+        using var lease = Lease(out nint handle);
+
         using (var safePath = new TransientUtf8String(value))
         {
-            rocksdb_options_set_db_log_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
+            rocksdb_options_set_db_log_dir(RocksDbInterop.Options(handle), (sbyte*)safePath.Handle);
         }
         LogPath = value;
         return (T)this;
@@ -330,9 +374,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalDir(string value)
     {
+        using var lease = Lease(out nint handle);
+
         using (var safePath = new TransientUtf8String(value))
         {
-            rocksdb_options_set_wal_dir(RocksDbInterop.Options(Handle), (sbyte*)safePath.Handle);
+            rocksdb_options_set_wal_dir(RocksDbInterop.Options(handle), (sbyte*)safePath.Handle);
         }
         WalPath = value;
         return (T)this;
@@ -343,7 +389,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalTtlSeconds(ulong value)
     {
-        rocksdb_options_set_WAL_ttl_seconds(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_WAL_ttl_seconds(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -352,7 +400,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWalSizeLimitMB(ulong value)
     {
-        rocksdb_options_set_WAL_size_limit_MB(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_WAL_size_limit_MB(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -361,7 +411,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetManifestPreallocationSize(ulong value)
     {
-        rocksdb_options_set_manifest_preallocation_size(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_manifest_preallocation_size(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -370,7 +422,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAllowMmapReads(bool value)
     {
-        rocksdb_options_set_allow_mmap_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_allow_mmap_reads(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -379,7 +433,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAllowMmapWrites(bool value)
     {
-        rocksdb_options_set_allow_mmap_writes(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_allow_mmap_writes(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -388,7 +444,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseDirectReads(bool value)
     {
-        rocksdb_options_set_use_direct_reads(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_use_direct_reads(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -397,7 +455,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseDirectIoForFlushAndCompaction(bool value)
     {
-        rocksdb_options_set_use_direct_io_for_flush_and_compaction(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_use_direct_io_for_flush_and_compaction(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -406,7 +466,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetIsFdCloseOnExec(bool value)
     {
-        rocksdb_options_set_is_fd_close_on_exec(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_is_fd_close_on_exec(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -415,7 +477,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetStatsDumpPeriodSec(uint value)
     {
-        rocksdb_options_set_stats_dump_period_sec(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_stats_dump_period_sec(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -424,7 +488,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAdviseRandomOnOpen(bool value)
     {
-        rocksdb_options_set_advise_random_on_open(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_advise_random_on_open(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -433,7 +499,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDbWriteBufferSize(ulong size)
     {
-        rocksdb_options_set_db_write_buffer_size(RocksDbInterop.Options(Handle), (nuint)size);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_db_write_buffer_size(RocksDbInterop.Options(handle), (nuint)size);
         return (T)this;
     }
 
@@ -443,7 +511,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUseAdaptiveMutex(bool value)
     {
-        rocksdb_options_set_use_adaptive_mutex(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_use_adaptive_mutex(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -453,7 +523,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetBytesPerSync(ulong value)
     {
-        rocksdb_options_set_bytes_per_sync(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_bytes_per_sync(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -463,7 +535,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetAllowConcurrentMemtableWrite(bool value)
     {
-        rocksdb_options_set_allow_concurrent_memtable_write(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_allow_concurrent_memtable_write(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -472,7 +546,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetEnableWriteThreadAdaptiveYield(bool value)
     {
-        rocksdb_options_set_enable_write_thread_adaptive_yield(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_enable_write_thread_adaptive_yield(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -481,7 +557,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDeleteObsoleteFilesPeriodMicros(ulong value)
     {
-        rocksdb_options_set_delete_obsolete_files_period_micros(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_delete_obsolete_files_period_micros(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -491,7 +569,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T PrepareForBulkLoad()
     {
-        rocksdb_options_prepare_for_bulk_load(RocksDbInterop.Options(Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_prepare_for_bulk_load(RocksDbInterop.Options(handle));
         return (T)this;
     }
 

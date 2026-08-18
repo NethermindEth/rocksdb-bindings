@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.InteropServices;
+
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
@@ -9,43 +11,44 @@ namespace Nethermind.RocksDbBindings;
 /// Owns a native options struct of some kind. Derived types decide which one they create and
 /// destroy, so that no two unrelated option structs become assignable to each other.
 /// </summary>
+/// <remarks>
+/// The native pointer is reachable only through <see cref="Lease"/>, which holds the handle open
+/// for the duration of the call it is passed to. A call already under way therefore completes even
+/// if another thread disposes these options, and one started afterwards throws instead of handing
+/// RocksDB a freed pointer.
+/// </remarks>
 public abstract class NativeOptions : IDisposable
 {
-    private nint _handle;
+    private readonly SafeHandle _handle;
 
-    protected NativeOptions(nint handle)
+    private protected NativeOptions(SafeHandle handle)
     {
         _handle = handle;
     }
 
-    public nint Handle => _handle;
-
-    ~NativeOptions() => ReleaseHandle();
-
-    /// <summary>Destroys the native options deterministically; the finalizer is only a backstop.</summary>
+    /// <summary>Releases the native options once no leased call is still using them.</summary>
     /// <remarks>
-    /// Dispose only after every native call using these options has returned. See the derived
-    /// types for their specific lifetime rules.
+    /// See the derived types for what else they keep alive, and for how long that has to outlive
+    /// the options themselves.
     /// </remarks>
     public void Dispose()
     {
-        ReleaseHandle();
+        _handle.Dispose();
         GC.SuppressFinalize(this);
     }
 
-    // The handle is exchanged away so that two callers disposing at once cannot both reach the
-    // destroy: whoever takes it is the one that destroys it, once.
-    private void ReleaseHandle()
+    /// <summary>Holds the options open and hands out the pointer to use for one native call.</summary>
+    /// <exception cref="ObjectDisposedException">The options have been disposed.</exception>
+    internal HandleLease Lease(out nint handle)
     {
-        nint handle = Interlocked.Exchange(ref _handle, nint.Zero);
+        var lease = new HandleLease(_handle);
 
-        if (handle != nint.Zero)
-        {
-            DestroyHandle(handle);
-        }
+        handle = _handle.DangerousGetHandle();
+        return lease;
     }
 
-    protected abstract void DestroyHandle(nint handle);
+    /// <summary>The handle itself, for holding a reference that outlives a single call.</summary>
+    internal SafeHandle SafeHandle => _handle;
 }
 
 /// <summary>A <c>rocksdb_options_t</c>: the options a database or column family is opened with.</summary>
@@ -64,7 +67,9 @@ public unsafe abstract class OptionsHandle : NativeOptions
     internal string? WalPath { get; set; }
     internal string? LogPath { get; set; }
 
-    protected OptionsHandle() : base((nint)rocksdb_options_create()) { }
+    private protected readonly OptionsSafeHandle NativeHandle;
 
-    protected override void DestroyHandle(nint handle) => rocksdb_options_destroy(RocksDbInterop.Options(handle));
+    private protected OptionsHandle() : this(new OptionsSafeHandle((nint)rocksdb_options_create())) { }
+
+    private OptionsHandle(OptionsSafeHandle handle) : base(handle) => NativeHandle = handle;
 }

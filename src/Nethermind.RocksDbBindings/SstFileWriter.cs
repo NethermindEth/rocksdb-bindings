@@ -19,7 +19,11 @@ public sealed unsafe class SstFileWriter : IDisposable
     {
         EnvOptions = envOptions ?? new EnvOptions();
         IoOptions = ioOptions ?? new ColumnFamilyOptions();
-        Handle = (nint)rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(EnvOptions.Handle), RocksDbInterop.Options(IoOptions.Handle));
+        using var ioLease = IoOptions.Lease(out nint ioHandle);
+
+        Handle = (nint)rocksdb_sstfilewriter_create(RocksDbInterop.EnvOptions(EnvOptions.Handle), RocksDbInterop.Options(ioHandle));
+        // The environment options are not leased, so keep them from being finalized mid-call.
+        GC.KeepAlive(EnvOptions);
     }
 
     public void Dispose()

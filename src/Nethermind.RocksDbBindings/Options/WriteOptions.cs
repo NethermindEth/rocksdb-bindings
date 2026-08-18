@@ -13,9 +13,7 @@ namespace Nethermind.RocksDbBindings;
 /// </remarks>
 public sealed unsafe class WriteOptions : NativeOptions
 {
-    public WriteOptions() : base((nint)rocksdb_writeoptions_create()) { }
-
-    protected override void DestroyHandle(nint handle) => rocksdb_writeoptions_destroy(RocksDbInterop.WriteOptions(handle));
+    public WriteOptions() : base(new WriteOptionsHandle((nint)rocksdb_writeoptions_create())) { }
 
     /// <summary>
     /// Flushes the write-ahead log to disk before a write returns, so the write survives losing
@@ -23,17 +21,18 @@ public sealed unsafe class WriteOptions : NativeOptions
     /// </summary>
     public WriteOptions SetSync(bool value = true)
     {
-        rocksdb_writeoptions_set_sync(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_writeoptions_set_sync(RocksDbInterop.WriteOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     /// <summary>Reports whether <see cref="SetSync"/> is in effect.</summary>
     public bool GetSync()
     {
-        var value = rocksdb_writeoptions_get_sync(RocksDbInterop.WriteOptions(Handle));
-        // Without this, the finalizer could destroy the options mid-call.
-        GC.KeepAlive(this);
-        return value != 0;
+        using var lease = Lease(out nint handle);
+
+        return rocksdb_writeoptions_get_sync(RocksDbInterop.WriteOptions(handle)) != 0;
     }
 
     /// <summary>
@@ -42,17 +41,18 @@ public sealed unsafe class WriteOptions : NativeOptions
     /// </summary>
     public WriteOptions SetDisableWal(bool value = true)
     {
-        rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(Handle), value ? 1 : 0);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_writeoptions_disable_WAL(RocksDbInterop.WriteOptions(handle), value ? 1 : 0);
         return this;
     }
 
     /// <summary>Reports whether <see cref="SetDisableWal"/> is in effect.</summary>
     public bool GetDisableWal()
     {
-        var value = rocksdb_writeoptions_get_disable_WAL(RocksDbInterop.WriteOptions(Handle));
-        // Without this, the finalizer could destroy the options mid-call.
-        GC.KeepAlive(this);
-        return value != 0;
+        using var lease = Lease(out nint handle);
+
+        return rocksdb_writeoptions_get_disable_WAL(RocksDbInterop.WriteOptions(handle)) != 0;
     }
 
     /// <summary>
@@ -61,16 +61,17 @@ public sealed unsafe class WriteOptions : NativeOptions
     /// </summary>
     public WriteOptions SetLowPriority(bool value = true)
     {
-        rocksdb_writeoptions_set_low_pri(RocksDbInterop.WriteOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_writeoptions_set_low_pri(RocksDbInterop.WriteOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     /// <summary>Reports whether <see cref="SetLowPriority"/> is in effect.</summary>
     public bool GetLowPriority()
     {
-        var value = rocksdb_writeoptions_get_low_pri(RocksDbInterop.WriteOptions(Handle));
-        // Without this, the finalizer could destroy the options mid-call.
-        GC.KeepAlive(this);
-        return value != 0;
+        using var lease = Lease(out nint handle);
+
+        return rocksdb_writeoptions_get_low_pri(RocksDbInterop.WriteOptions(handle)) != 0;
     }
 }

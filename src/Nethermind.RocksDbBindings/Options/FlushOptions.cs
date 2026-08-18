@@ -11,13 +11,13 @@ namespace Nethermind.RocksDbBindings;
 /// </remarks>
 public sealed unsafe class FlushOptions : NativeOptions
 {
-    public FlushOptions() : base((nint)rocksdb_flushoptions_create()) { }
+    public FlushOptions() : base(new FlushOptionsHandle((nint)rocksdb_flushoptions_create())) { }
 
     public FlushOptions SetWaitForFlush(bool waitForFlush)
     {
-        rocksdb_flushoptions_set_wait(RocksDbInterop.FlushOptions(Handle), RocksDbInterop.Bool(waitForFlush));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_flushoptions_set_wait(RocksDbInterop.FlushOptions(handle), RocksDbInterop.Bool(waitForFlush));
         return this;
     }
-
-    protected override void DestroyHandle(nint handle) => rocksdb_flushoptions_destroy(RocksDbInterop.FlushOptions(handle));
 }

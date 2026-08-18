@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.InteropServices;
+
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
@@ -8,10 +10,6 @@ namespace Nethermind.RocksDbBindings;
 public sealed unsafe class Iterator : IDisposable
 {
     private readonly IteratorHandle _handle;
-
-    // The native iterator reads from the read options directly, so they are held here to keep the
-    // garbage collector from finalizing them while the iterator is still alive.
-    internal ReadOptions? ReadOptions { get; }
 
     internal Iterator(nint handle) : this(handle, readOptions: null)
     {
@@ -25,10 +23,14 @@ public sealed unsafe class Iterator : IDisposable
     // close is deferred, and if the iterator is abandoned the handle's critical finalizer both
     // destroys it and releases the lease.
     internal Iterator(nint handle, ReadOptions? readOptions, RocksDbHandle? dbLease)
+        : this(handle, readOptions?.SafeHandle, readOptions?.Snapshot, dbLease)
     {
-        _handle = new IteratorHandle(handle, dbLease);
-        ReadOptions = readOptions;
     }
+
+    // No managed ReadOptions wrapper is held: the handle takes a reference to the native options
+    // instead, so a wrapper the caller has let go of stays collectible while the iterator works.
+    internal Iterator(nint handle, SafeHandle? readOptions, Snapshot? snapshot, RocksDbHandle? dbLease)
+        => _handle = new IteratorHandle(handle, dbLease, readOptions, snapshot);
 
     public nint Handle => _handle.IsClosed ? nint.Zero : _handle.DangerousGetHandle();
 
@@ -51,6 +53,12 @@ public sealed unsafe class Iterator : IDisposable
 
     /// <summary>Transfers the database lease to the caller, who must release it exactly once.</summary>
     internal RocksDbHandle? TakeDbLease() => _handle.TakeDbLease();
+
+    /// <summary>Transfers the read options reference to the caller, who must release it once.</summary>
+    internal SafeHandle? TakeReadOptions() => _handle.TakeReadOptions();
+
+    /// <summary>Transfers the snapshot to the caller, leaving this iterator holding nothing.</summary>
+    internal Snapshot? TakeSnapshot() => _handle.TakeSnapshot();
 
     public bool Valid() => rocksdb_iter_valid(RocksDbInterop.Iterator(NativeHandle)) != 0;
 

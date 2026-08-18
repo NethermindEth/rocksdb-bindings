@@ -26,7 +26,54 @@ public class ColumnFamilies : IEnumerable<ColumnFamilies.Descriptor>
 
     public IEnumerable<string> Names => _descriptors.Select(descriptor => descriptor.Name);
 
-    public IEnumerable<nint> OptionHandles => _descriptors.Select(descriptor => descriptor.Options.Handle);
+    /// <summary>
+    /// Holds every family's options open for one native call and hands out their pointers, so
+    /// that none of them can be disposed while RocksDB is reading through it.
+    /// </summary>
+    internal OptionsLease LeaseOptions() => new(_descriptors);
+
+    /// <inheritdoc cref="LeaseOptions"/>
+    internal readonly struct OptionsLease : IDisposable
+    {
+        private readonly HandleLease[] _leases;
+
+        public OptionsLease(List<Descriptor> descriptors)
+        {
+            _leases = new HandleLease[descriptors.Count];
+            Handles = new nint[descriptors.Count];
+
+            var taken = 0;
+            try
+            {
+                for (; taken < descriptors.Count; taken++)
+                {
+                    _leases[taken] = descriptors[taken].Options.Lease(out nint handle);
+                    Handles[taken] = handle;
+                }
+            }
+            catch
+            {
+                // Release whatever was taken before the failure, so a disposed family's options
+                // do not leave the rest held open.
+                for (var i = 0; i < taken; i++)
+                {
+                    _leases[i].Dispose();
+                }
+                throw;
+            }
+        }
+
+        /// <summary>The native options pointers, in the order the families were added.</summary>
+        public nint[] Handles { get; }
+
+        public void Dispose()
+        {
+            foreach (var lease in _leases)
+            {
+                lease.Dispose();
+            }
+        }
+    }
 
     /// <summary>
     /// Adds a family, or replaces the options of one already named. Repeating

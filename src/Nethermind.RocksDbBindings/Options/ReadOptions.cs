@@ -8,33 +8,23 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 namespace Nethermind.RocksDbBindings;
 
 /// <remarks>
-/// Iterators keep reading whatever these options point at — the iterate bounds, and the snapshot
-/// if one is set — for their whole lifetime, so dispose only after every iterator and read using
-/// these options is done.
+/// An iterator takes its own reference to these options, so disposing them under a live iterator
+/// defers the release until the iterator is done rather than taking it away. It also captures
+/// the snapshot they carried when it was created, so a later <see cref="SetSnapshot"/> or
+/// <see cref="ClearSnapshot"/> leaves it reading the one it started with. The iterate bounds are
+/// the exception: an iterator reads the buffers these options own, and the setters overwrite them
+/// in place, so bounds must not be changed while an iterator created from them is alive.
 /// </remarks>
 public sealed unsafe class ReadOptions : NativeOptions
 {
-    private nint iterateLowerBound;
-    private nint iterateUpperBound;
+    private readonly ReadOptionsHandle _handle;
 
-    // Held because RocksDB keeps only a bare pointer to it; see SetSnapshot.
-    private Snapshot? Snapshot { get; set; }
+    public ReadOptions() : this(new ReadOptionsHandle((nint)rocksdb_readoptions_create())) { }
 
-    public ReadOptions() : base((nint)rocksdb_readoptions_create()) { }
+    private ReadOptions(ReadOptionsHandle handle) : base(handle) => _handle = handle;
 
-    protected override void DestroyHandle(nint handle)
-    {
-        rocksdb_readoptions_destroy(RocksDbInterop.ReadOptions(handle));
-
-        // Only after the destroy, and only here, so that a second disposer cannot free what this
-        // one is still handing to RocksDB. The options no longer carry the snapshot's pointer, so
-        // nothing needs to keep the snapshot, or the database lease behind it, alive.
-        FreeBound(ref iterateLowerBound);
-        FreeBound(ref iterateUpperBound);
-        Snapshot = null;
-    }
-
-    private static void FreeBound(ref nint bound) => NativeMemory.Free((void*)Interlocked.Exchange(ref bound, nint.Zero));
+    // The snapshot these options currently point at, captured by an iterator when it is created.
+    internal Snapshot? Snapshot => _handle.Snapshot;
 
     private static nint AllocateCopy(ReadOnlySpan<byte> key)
     {
@@ -43,31 +33,27 @@ public sealed unsafe class ReadOptions : NativeOptions
         return (nint)buffer;
     }
 
-    // The native setter stores the pointer without copying, so the old buffer must stay alive
-    // until the new one is installed: allocate, point RocksDB at it, then free the old one. A
-    // failed allocation thus leaves both the field and RocksDB on the still-valid old buffer.
-    private static void InstallBound(ref nint bound, nint buffer)
-    {
-        var previous = bound;
-        bound = buffer;
-        NativeMemory.Free((void*)previous);
-    }
-
     public ReadOptions SetBackgroundPurgeOnIteratorCleanup(bool value)
     {
-        rocksdb_readoptions_set_background_purge_on_iterator_cleanup(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_background_purge_on_iterator_cleanup(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetVerifyChecksums(bool value)
     {
-        rocksdb_readoptions_set_verify_checksums(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_verify_checksums(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetFillCache(bool value)
     {
-        rocksdb_readoptions_set_fill_cache(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_fill_cache(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
@@ -81,13 +67,14 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// <exception cref="ObjectDisposedException"><paramref name="snapshot"/> has been disposed.</exception>
     public ReadOptions SetSnapshot(Snapshot snapshot)
     {
+        using var lease = Lease(out nint handle);
+
         nint snapshotHandle = snapshot.Handle;
         ObjectDisposedException.ThrowIf(snapshotHandle == nint.Zero, snapshot);
 
-        Snapshot = snapshot;
-        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(snapshotHandle));
-        // The field alone is not enough: it is reachable only through this object, which the
-        // fluent return does not keep alive.
+        _handle.Snapshot = snapshot;
+        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Snapshot(snapshotHandle));
+        // The handle keeps the snapshot reachable, but only the lease keeps the handle itself so.
         GC.KeepAlive(snapshot);
         return this;
     }
@@ -95,8 +82,10 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// <summary>Goes back to reading the current state, and lets go of any snapshot set.</summary>
     public ReadOptions ClearSnapshot()
     {
-        Snapshot = null;
-        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Snapshot(nint.Zero));
+        using var lease = Lease(out nint handle);
+
+        _handle.Snapshot = null;
+        rocksdb_readoptions_set_snapshot(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Snapshot(nint.Zero));
         return this;
     }
 
@@ -106,7 +95,9 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// </summary>
     public ReadOptions SetPrefixSameAsStart(bool prefixSameAsStart)
     {
-        rocksdb_readoptions_set_prefix_same_as_start(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(prefixSameAsStart));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_prefix_same_as_start(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(prefixSameAsStart));
         return this;
     }
 
@@ -117,9 +108,11 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
     public ReadOptions SetIterateLowerBound(ReadOnlySpan<byte> key)
     {
+        using var lease = Lease(out nint handle);
+
         var buffer = AllocateCopy(key);
-        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)buffer, (nuint)key.Length);
-        InstallBound(ref iterateLowerBound, buffer);
+        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)buffer, (nuint)key.Length);
+        _handle.InstallLowerBound(buffer);
         return this;
     }
 
@@ -130,9 +123,11 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
     public ReadOptions SetIterateUpperBound(ReadOnlySpan<byte> key)
     {
+        using var lease = Lease(out nint handle);
+
         var buffer = AllocateCopy(key);
-        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(Handle), (sbyte*)buffer, (nuint)key.Length);
-        InstallBound(ref iterateUpperBound, buffer);
+        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)buffer, (nuint)key.Length);
+        _handle.InstallUpperBound(buffer);
         return this;
     }
 
@@ -146,42 +141,56 @@ public sealed unsafe class ReadOptions : NativeOptions
 
     public ReadOptions SetReadTier(int value)
     {
-        rocksdb_readoptions_set_read_tier(RocksDbInterop.ReadOptions(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_read_tier(RocksDbInterop.ReadOptions(handle), value);
         return this;
     }
 
     public ReadOptions SetTailing(bool value)
     {
-        rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetReadaheadSize(ulong size)
     {
+        using var lease = Lease(out nint handle);
+
         nuint readaheadSize = (nuint)size;
-        rocksdb_readoptions_set_readahead_size(RocksDbInterop.ReadOptions(Handle), readaheadSize);
+        rocksdb_readoptions_set_readahead_size(RocksDbInterop.ReadOptions(handle), readaheadSize);
         return this;
     }
     public ReadOptions SetAutoReadaheadSize(bool value)
     {
-        rocksdb_readoptions_set_auto_readahead_size(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_auto_readahead_size(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
     public ReadOptions SetAsyncIO(bool value)
     {
-        rocksdb_readoptions_set_async_io(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_async_io(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
         return this;
     }
 
     public ReadOptions SetPinData(bool enable)
     {
-        rocksdb_readoptions_set_pin_data(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_pin_data(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(enable));
         return this;
     }
 
     public ReadOptions SetTotalOrderSeek(bool enable)
     {
-        rocksdb_readoptions_set_total_order_seek(RocksDbInterop.ReadOptions(Handle), RocksDbInterop.Bool(enable));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_total_order_seek(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(enable));
         return this;
     }
 }

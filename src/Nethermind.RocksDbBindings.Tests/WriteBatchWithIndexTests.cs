@@ -194,12 +194,12 @@ public class WriteBatchWithIndexTests
     }
 
     /// <remarks>
-    /// The overlay must root the base iterator's read options: the native base iterator keeps
-    /// reading the iterate-bound buffers those options own, so if only the discarded base
-    /// wrapper held them, finalization would free memory still in use.
+    /// The overlay takes its own reference to the base iterator native read options, which is
+    /// what keeps the iterate-bound buffers alive. Nothing holds the managed wrapper, so it may
+    /// be collected while the overlay goes on reading through them.
     /// </remarks>
     [Test]
-    public async Task NewIterator_KeepsTheBaseReadOptionsAliveForTheOverlay()
+    public async Task NewIterator_KeepsTheBaseReadOptionsUsableWithoutHoldingTheirWrapper()
     {
         using var database = TestDatabase.Create();
         database.Db.Put("a", "1");
@@ -211,15 +211,13 @@ public class WriteBatchWithIndexTests
         var (overlay, weakOptions) = CreateBoundedOverlay(database.Db, batch);
         using var overlayLifetime = overlay;
 
-        // The bounded ReadOptions wrapper is now unreachable except through the overlay.
+        // Nothing refers to the bounded ReadOptions wrapper any more.
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        // The weak reference is the deterministic proof, and it must come before touching the
-        // iterator: on a regression the bounds are already freed, and a collected wrapper cannot
-        // resolve, whereas freed native memory could still happen to hold the old bound bytes.
-        await Assert.That(weakOptions.TryGetTarget(out _)).IsTrue();
+        // The wrapper going away is the point: the overlay holds the native options, not it.
+        await Assert.That(weakOptions.TryGetTarget(out _)).IsFalse();
 
         var keys = new List<string>();
         for (overlay.SeekToFirst(); overlay.Valid(); overlay.Next())
@@ -227,8 +225,8 @@ public class WriteBatchWithIndexTests
 
         await Assert.That(keys).IsEquivalentTo(new[] { "b", "c" }, CollectionOrdering.Matching);
 
-        // Not inlined so the caller never roots the base wrapper or its read options; the options
-        // are deliberately not disposed because their finalization is what is being exercised.
+        // Not inlined so the caller never roots the base wrapper or its read options, which are
+        // deliberately left undisposed so that only the overlay is keeping them usable.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static (Iterator Overlay, WeakReference<ReadOptions> Options) CreateBoundedOverlay(RocksDb db, WriteBatchWithIndex batch)
         {
@@ -329,5 +327,51 @@ public class WriteBatchWithIndexTests
         batch.Dispose();
 
         await Assert.That(batch.Dispose).ThrowsNothing();
+    }
+
+    /// <remarks>
+    /// The transfer leaves the consumed base iterator holding nothing, so disposing the overlay is
+    /// what releases the snapshot even while the base wrapper is still reachable. Detaching the
+    /// base stops its handle from ever running, so anything left on it would be held for good.
+    /// </remarks>
+    [Test]
+    public async Task NewIterator_TakesTheSnapshotOffTheConsumedBaseIterator()
+    {
+        using var database = TestDatabase.Create();
+        using var batch = new WriteBatchWithIndex();
+        var (snapshot, baseIterator, overlay) = CreateOverlay(database.Db, batch);
+
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsTrue();
+
+        overlay.Dispose();
+        Collect();
+
+        await Assert.That(snapshot.IsAlive).IsFalse();
+
+        // Reachable throughout, so the release is the transfer's doing and not its collection.
+        GC.KeepAlive(baseIterator);
+
+        static void Collect()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        // The read options are disposed here so that only the transferred reference keeps the
+        // snapshot they carry alive.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (WeakReference Snapshot, Iterator Base, Iterator Overlay) CreateOverlay(RocksDb database, WriteBatchWithIndex batch)
+        {
+            var snapshot = database.CreateSnapshot();
+            var options = new ReadOptions().SetSnapshot(snapshot);
+            var baseIterator = database.NewIterator(readOptions: options);
+            var overlay = batch.NewIterator(baseIterator);
+
+            options.Dispose();
+            return (new WeakReference(snapshot), baseIterator, overlay);
+        }
     }
 }

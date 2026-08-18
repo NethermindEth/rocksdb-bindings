@@ -144,7 +144,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </remarks>
     public T SetBlockBasedTableFactory(BlockBasedTableOptions tableOptions)
     {
-        rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(Handle), RocksDbInterop.BlockBasedTableOptions(tableOptions.Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_block_based_table_factory(RocksDbInterop.Options(handle), RocksDbInterop.BlockBasedTableOptions(tableOptions.Handle));
         // Without this, the finalizer could destroy the table options mid-copy.
         GC.KeepAlive(tableOptions);
         return (T)this;
@@ -155,7 +157,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T OptimizeForPointLookup(ulong blockCacheSizeMb)
     {
-        rocksdb_options_optimize_for_point_lookup(RocksDbInterop.Options(Handle), (nuint)blockCacheSizeMb);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_optimize_for_point_lookup(RocksDbInterop.Options(handle), (nuint)blockCacheSizeMb);
         return (T)this;
     }
 
@@ -164,7 +168,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T OptimizeLevelStyleCompaction(ulong memtableMemoryBudget)
     {
-        rocksdb_options_optimize_level_style_compaction(RocksDbInterop.Options(Handle), (nuint)memtableMemoryBudget);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_optimize_level_style_compaction(RocksDbInterop.Options(handle), (nuint)memtableMemoryBudget);
         return (T)this;
     }
 
@@ -174,7 +180,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T OptimizeUniversalStyleCompaction(ulong memtableMemoryBudget)
     {
-        rocksdb_options_optimize_universal_style_compaction(RocksDbInterop.Options(Handle), (nuint)memtableMemoryBudget);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_optimize_universal_style_compaction(RocksDbInterop.Options(handle), (nuint)memtableMemoryBudget);
         return (T)this;
     }
 
@@ -184,7 +192,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompactionFilter(nint compactionFilter)
     {
-        rocksdb_options_set_compaction_filter(RocksDbInterop.Options(Handle), RocksDbInterop.CompactionFilter(compactionFilter));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_compaction_filter(RocksDbInterop.Options(handle), RocksDbInterop.CompactionFilter(compactionFilter));
         return (T)this;
     }
 
@@ -194,7 +204,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompactionFilterFactory(nint compactionFilterFactory)
     {
-        rocksdb_options_set_compaction_filter_factory(RocksDbInterop.Options(Handle), RocksDbInterop.CompactionFilterFactory(compactionFilterFactory));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_compaction_filter_factory(RocksDbInterop.Options(handle), RocksDbInterop.CompactionFilterFactory(compactionFilterFactory));
         return (T)this;
     }
 
@@ -203,7 +215,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompactionReadaheadSize(ulong size)
     {
-        rocksdb_options_compaction_readahead_size(RocksDbInterop.Options(Handle), (nuint)size);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_compaction_readahead_size(RocksDbInterop.Options(handle), (nuint)size);
         return (T)this;
     }
 
@@ -213,7 +227,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetComparator(nint comparator)
     {
-        rocksdb_options_set_comparator(RocksDbInterop.Options(Handle), RocksDbInterop.Comparator(comparator));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_comparator(RocksDbInterop.Options(handle), RocksDbInterop.Comparator(comparator));
         return (T)this;
     }
 
@@ -285,7 +301,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMergeOperator(nint mergeOperator)
     {
-        rocksdb_options_set_merge_operator(RocksDbInterop.Options(Handle), RocksDbInterop.MergeOperator(mergeOperator));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_merge_operator(RocksDbInterop.Options(handle), RocksDbInterop.MergeOperator(mergeOperator));
         return (T)this;
     }
 
@@ -295,7 +313,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUint64addMergeOperator()
     {
-        rocksdb_options_set_uint64add_merge_operator(RocksDbInterop.Options(Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_uint64add_merge_operator(RocksDbInterop.Options(handle));
         return (T)this;
     }
 
@@ -306,9 +326,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompressionPerLevel(params ReadOnlySpan<Compression> levelValues)
     {
+        using var lease = Lease(out nint handle);
+
         fixed (int* valuesPtr = MemoryMarshal.Cast<Compression, int>(levelValues))
         {
-            rocksdb_options_set_compression_per_level(RocksDbInterop.Options(Handle), valuesPtr, (nuint)levelValues.Length);
+            rocksdb_options_set_compression_per_level(RocksDbInterop.Options(handle), valuesPtr, (nuint)levelValues.Length);
         }
         return (T)this;
     }
@@ -318,7 +340,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetInfoLogLevel(InfoLogLevel value)
     {
-        rocksdb_options_set_info_log_level(RocksDbInterop.Options(Handle), (int)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_info_log_level(RocksDbInterop.Options(handle), (int)value);
         return (T)this;
     }
 
@@ -328,7 +352,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetWriteBufferSize(ulong value)
     {
-        rocksdb_options_set_write_buffer_size(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_write_buffer_size(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -337,7 +363,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompressionOptions(int p1, int p2, int p3, int p4)
     {
-        rocksdb_options_set_compression_options(RocksDbInterop.Options(Handle), p1, p2, p3, p4);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_compression_options(RocksDbInterop.Options(handle), p1, p2, p3, p4);
         return (T)this;
     }
 
@@ -347,7 +375,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetPrefixExtractor(nint sliceTransform)
     {
-        rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(Handle), RocksDbInterop.SliceTransform(sliceTransform));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(handle), RocksDbInterop.SliceTransform(sliceTransform));
         return (T)this;
     }
 
@@ -357,7 +387,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetPrefixExtractor(SliceTransform sliceTransform)
     {
-        rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(Handle), RocksDbInterop.SliceTransform(sliceTransform.Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_prefix_extractor(RocksDbInterop.Options(handle), RocksDbInterop.SliceTransform(sliceTransform.Handle));
         return (T)this;
     }
 
@@ -366,7 +398,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetNumLevels(int value)
     {
-        rocksdb_options_set_num_levels(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_num_levels(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -375,7 +409,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLevel0FileNumCompactionTrigger(int value)
     {
-        rocksdb_options_set_level0_file_num_compaction_trigger(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_level0_file_num_compaction_trigger(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -384,7 +420,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLevel0SlowdownWritesTrigger(int value)
     {
-        rocksdb_options_set_level0_slowdown_writes_trigger(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_level0_slowdown_writes_trigger(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -393,7 +431,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLevel0StopWritesTrigger(int value)
     {
-        rocksdb_options_set_level0_stop_writes_trigger(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_level0_stop_writes_trigger(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -403,7 +443,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetTargetFileSizeBase(ulong value)
     {
-        rocksdb_options_set_target_file_size_base(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_target_file_size_base(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -412,7 +454,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetTargetFileSizeMultiplier(int value)
     {
-        rocksdb_options_set_target_file_size_multiplier(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_target_file_size_multiplier(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -422,7 +466,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBytesForLevelBase(ulong value)
     {
-        rocksdb_options_set_max_bytes_for_level_base(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_bytes_for_level_base(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -431,7 +477,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetLevelCompactionDynamicLevelBytes(bool value)
     {
-        rocksdb_options_set_level_compaction_dynamic_level_bytes(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_level_compaction_dynamic_level_bytes(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -440,7 +488,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBytesForLevelMultiplier(double value)
     {
-        rocksdb_options_set_max_bytes_for_level_multiplier(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_bytes_for_level_multiplier(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -450,9 +500,11 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxBytesForLevelMultiplierAdditional(params ReadOnlySpan<int> levelValues)
     {
+        using var lease = Lease(out nint handle);
+
         fixed (int* valuesPtr = levelValues)
         {
-            rocksdb_options_set_max_bytes_for_level_multiplier_additional(RocksDbInterop.Options(Handle), valuesPtr, (nuint)levelValues.Length);
+            rocksdb_options_set_max_bytes_for_level_multiplier_additional(RocksDbInterop.Options(handle), valuesPtr, (nuint)levelValues.Length);
         }
         return (T)this;
     }
@@ -462,7 +514,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxWriteBufferNumber(int value)
     {
-        rocksdb_options_set_max_write_buffer_number(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_write_buffer_number(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -471,7 +525,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMinWriteBufferNumberToMerge(int value)
     {
-        rocksdb_options_set_min_write_buffer_number_to_merge(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_min_write_buffer_number_to_merge(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -480,7 +536,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxWriteBufferSizeToMaintain(int value)
     {
-        rocksdb_options_set_max_write_buffer_size_to_maintain(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_write_buffer_size_to_maintain(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -489,7 +547,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetSoftPendingCompactionBytesLimit(ulong value)
     {
-        rocksdb_options_set_soft_pending_compaction_bytes_limit(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_soft_pending_compaction_bytes_limit(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -498,7 +558,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetHardPendingCompactionBytesLimit(ulong value)
     {
-        rocksdb_options_set_hard_pending_compaction_bytes_limit(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_hard_pending_compaction_bytes_limit(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -507,7 +569,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetArenaBlockSize(ulong value)
     {
-        rocksdb_options_set_arena_block_size(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_arena_block_size(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -516,7 +580,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxSequentialSkipInIterations(ulong value)
     {
-        rocksdb_options_set_max_sequential_skip_in_iterations(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_sequential_skip_in_iterations(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -525,7 +591,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetDisableAutoCompactions(int value)
     {
-        rocksdb_options_set_disable_auto_compactions(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_disable_auto_compactions(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -534,7 +602,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetOptimizeFiltersForHits(int value)
     {
-        rocksdb_options_set_optimize_filters_for_hits(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_optimize_filters_for_hits(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -543,7 +613,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMemtableVectorRep()
     {
-        rocksdb_options_set_memtable_vector_rep(RocksDbInterop.Options(Handle));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_memtable_vector_rep(RocksDbInterop.Options(handle));
         return (T)this;
     }
 
@@ -552,7 +624,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMemtablePrefixBloomSizeRatio(double ratio)
     {
-        rocksdb_options_set_memtable_prefix_bloom_size_ratio(RocksDbInterop.Options(Handle), ratio);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_memtable_prefix_bloom_size_ratio(RocksDbInterop.Options(handle), ratio);
         return (T)this;
     }
 
@@ -561,7 +635,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxCompactionBytes(ulong bytes)
     {
-        rocksdb_options_set_max_compaction_bytes(RocksDbInterop.Options(Handle), (nuint)bytes);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_compaction_bytes(RocksDbInterop.Options(handle), (nuint)bytes);
         return (T)this;
     }
 
@@ -570,7 +646,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetHashSkipListRep(ulong bucketCount, int skipListHeight, int skipListBranchingFactor)
     {
-        rocksdb_options_set_hash_skip_list_rep(RocksDbInterop.Options(Handle), (nuint)bucketCount, skipListHeight, skipListBranchingFactor);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_hash_skip_list_rep(RocksDbInterop.Options(handle), (nuint)bucketCount, skipListHeight, skipListBranchingFactor);
         return (T)this;
     }
 
@@ -579,7 +657,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetHashLinkListRep(ulong value)
     {
-        rocksdb_options_set_hash_link_list_rep(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_hash_link_list_rep(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -596,7 +676,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
         bool fullScanMode,
         bool storeIndexInFile)
     {
-        rocksdb_options_set_plain_table_factory(RocksDbInterop.Options(Handle), userKeyLength, bloomBitsPerKey, hashTableRatio, (nuint)indexSparseness, (nuint)hugePageTlbSize, (sbyte)encodingType, RocksDbInterop.Bool(fullScanMode), RocksDbInterop.Bool(storeIndexInFile));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_plain_table_factory(RocksDbInterop.Options(handle), userKeyLength, bloomBitsPerKey, hashTableRatio, (nuint)indexSparseness, (nuint)hugePageTlbSize, (sbyte)encodingType, RocksDbInterop.Bool(fullScanMode), RocksDbInterop.Bool(storeIndexInFile));
         return (T)this;
     }
 
@@ -610,7 +692,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </remarks>
     public T SetMinLevelToCompress(int level)
     {
-        rocksdb_options_set_min_level_to_compress(RocksDbInterop.Options(Handle), level);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_min_level_to_compress(RocksDbInterop.Options(handle), level);
         return (T)this;
     }
 
@@ -620,7 +704,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMaxSuccessiveMerges(ulong value)
     {
-        rocksdb_options_set_max_successive_merges(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_max_successive_merges(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -630,7 +716,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetBloomLocality(uint value)
     {
-        rocksdb_options_set_bloom_locality(RocksDbInterop.Options(Handle), value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_bloom_locality(RocksDbInterop.Options(handle), value);
         return (T)this;
     }
 
@@ -645,7 +733,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </remarks>
     public T SetInplaceUpdateSupport(bool value)
     {
-        rocksdb_options_set_inplace_update_support(RocksDbInterop.Options(Handle), RocksDbInterop.Bool(value));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_inplace_update_support(RocksDbInterop.Options(handle), RocksDbInterop.Bool(value));
         return (T)this;
     }
 
@@ -654,7 +744,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetInplaceUpdateNumLocks(ulong value)
     {
-        rocksdb_options_set_inplace_update_num_locks(RocksDbInterop.Options(Handle), (nuint)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_inplace_update_num_locks(RocksDbInterop.Options(handle), (nuint)value);
         return (T)this;
     }
 
@@ -663,7 +755,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetReportBgIoStats(bool value)
     {
-        rocksdb_options_set_report_bg_io_stats(RocksDbInterop.Options(Handle), value ? 1 : 0);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_report_bg_io_stats(RocksDbInterop.Options(handle), value ? 1 : 0);
         return (T)this;
     }
 
@@ -672,7 +766,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompression(Compression value)
     {
-        rocksdb_options_set_compression(RocksDbInterop.Options(Handle), (int)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_compression(RocksDbInterop.Options(handle), (int)value);
         return (T)this;
     }
 
@@ -681,7 +777,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetCompactionStyle(Compaction value)
     {
-        rocksdb_options_set_compaction_style(RocksDbInterop.Options(Handle), (int)value);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_compaction_style(RocksDbInterop.Options(handle), (int)value);
         return (T)this;
     }
 
@@ -690,7 +788,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetUniversalCompactionOptions(nint universalCompactionOptions)
     {
-        rocksdb_options_set_universal_compaction_options(RocksDbInterop.Options(Handle), RocksDbInterop.UniversalCompactionOptions(universalCompactionOptions));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_universal_compaction_options(RocksDbInterop.Options(handle), RocksDbInterop.UniversalCompactionOptions(universalCompactionOptions));
         return (T)this;
     }
 
@@ -699,7 +799,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetFifoCompactionOptions(nint fifoCompactionOptions)
     {
-        rocksdb_options_set_fifo_compaction_options(RocksDbInterop.Options(Handle), RocksDbInterop.FifoCompactionOptions(fifoCompactionOptions));
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_fifo_compaction_options(RocksDbInterop.Options(handle), RocksDbInterop.FifoCompactionOptions(fifoCompactionOptions));
         return (T)this;
     }
 
@@ -709,7 +811,9 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     /// </summary>
     public T SetMemtableHugePageSize(ulong size)
     {
-        rocksdb_options_set_memtable_huge_page_size(RocksDbInterop.Options(Handle), (nuint)size);
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_set_memtable_huge_page_size(RocksDbInterop.Options(handle), (nuint)size);
         return (T)this;
     }
 

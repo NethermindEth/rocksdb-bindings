@@ -5,6 +5,14 @@ namespace Nethermind.RocksDbBindings.Tests;
 
 public class ColumnFamiliesTests
 {
+    // The native pointer is reachable only through a lease, which is all this needs it for.
+    private static nint Handle(ColumnFamilyOptions options)
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return handle;
+    }
+
     [Test]
     public async Task NewCollection_ContainsOnlyTheDefaultFamily()
         => await Assert.That(new ColumnFamilies().Names).IsEquivalentTo(new[] { ColumnFamilies.DefaultName }, CollectionOrdering.Matching);
@@ -21,7 +29,11 @@ public class ColumnFamiliesTests
 
     [Test]
     public async Task NewCollection_WithoutOptions_StillGivesTheDefaultFamilyAHandle()
-        => await Assert.That(new ColumnFamilies().OptionHandles.Single()).IsNotEqualTo(nint.Zero);
+    {
+        using var lease = new ColumnFamilies().LeaseOptions();
+
+        await Assert.That(lease.Handles.Single()).IsNotEqualTo(nint.Zero);
+    }
 
     [Test]
     public async Task Add_AppendsAFamilyAfterTheDefaultOne()
@@ -80,18 +92,22 @@ public class ColumnFamiliesTests
         using (Assert.Multiple())
         {
             await Assert.That(families.Names).IsEquivalentTo(new[] { ColumnFamilies.DefaultName, "blocks" }, CollectionOrdering.Matching);
-            await Assert.That(families.OptionHandles.Last()).IsEqualTo(replacement.Handle);
+            using var lease = families.LeaseOptions();
+
+            await Assert.That(lease.Handles.Last()).IsEqualTo(Handle(replacement));
         }
     }
 
     [Test]
-    public async Task OptionHandles_LineUpWithNames()
+    public async Task LeasedOptionHandles_LineUpWithNames()
     {
         var blocks = new ColumnFamilyOptions();
         var families = new ColumnFamilies();
         families.Add("blocks", blocks);
 
-        await Assert.That(families.OptionHandles.Last()).IsEqualTo(blocks.Handle);
+        using var lease = families.LeaseOptions();
+
+        await Assert.That(lease.Handles.Last()).IsEqualTo(Handle(blocks));
     }
 
     /// <remarks>

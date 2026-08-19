@@ -982,6 +982,7 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("unsigned char")]
+    [SuppressGCTransition]
     public static extern byte rocksdb_iter_valid([NativeTypeName("const rocksdb_iterator_t *")] rocksdb_iterator_t* param0);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -1004,10 +1005,12 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("const char *")]
+    [SuppressGCTransition]
     public static extern sbyte* rocksdb_iter_key([NativeTypeName("const rocksdb_iterator_t *")] rocksdb_iterator_t* param0, [NativeTypeName("size_t *")] nuint* klen);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("const char *")]
+    [SuppressGCTransition]
     public static extern sbyte* rocksdb_iter_value([NativeTypeName("const rocksdb_iterator_t *")] rocksdb_iterator_t* param0, [NativeTypeName("size_t *")] nuint* vlen);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -1138,6 +1141,7 @@ public static unsafe partial class RocksDbNative
     public static extern void rocksdb_writebatch_verify_checksum(rocksdb_writebatch_t* b, [NativeTypeName("char **")] sbyte** errptr);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [SuppressGCTransition]
     public static extern int rocksdb_writebatch_count(rocksdb_writebatch_t* param0);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -1208,6 +1212,7 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("const char *")]
+    [SuppressGCTransition]
     public static extern sbyte* rocksdb_writebatch_data(rocksdb_writebatch_t* param0, [NativeTypeName("size_t *")] nuint* size);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -4700,6 +4705,7 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("const char *")]
+    [SuppressGCTransition]
     public static extern sbyte* rocksdb_pinnableslice_value([NativeTypeName("const rocksdb_pinnableslice_t *")] rocksdb_pinnableslice_t* t, [NativeTypeName("size_t *")] nuint* vlen);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -6588,7 +6594,10 @@ internal sealed partial class NativeTypeNameAttribute : Attribute
 
     /// <summary>Initializes a new instance of the <see cref="NativeTypeNameAttribute" /> class.</summary>
     /// <param name="name">The name of the type that was used in the native signature.</param>
-    public NativeTypeNameAttribute(string name) => _name = name;
+    public NativeTypeNameAttribute(string name)
+    {
+        _name = name;
+    }
 
     /// <summary>Gets the name of the type that was used in the native signature.</summary>
     public string Name => _name;
@@ -6603,7 +6612,10 @@ internal sealed partial class NativeAnnotationAttribute : Attribute
 
     /// <summary>Initializes a new instance of the <see cref="NativeAnnotationAttribute" /> class.</summary>
     /// <param name="annotation">The annotation that was used in the native declaration.</param>
-    public NativeAnnotationAttribute(string annotation) => _annotation = annotation;
+    public NativeAnnotationAttribute(string annotation)
+    {
+        _annotation = annotation;
+    }
 
     /// <summary>Gets the annotation that was used in the native declaration.</summary>
     public string Annotation => _annotation;

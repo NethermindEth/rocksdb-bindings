@@ -20,3 +20,15 @@ helper-types
 exclusions
 --generate
 disable-runtime-marshalling
+--with-suppressgctransition
+rocksdb_iter_valid
+--with-suppressgctransition
+rocksdb_iter_key
+--with-suppressgctransition
+rocksdb_iter_value
+--with-suppressgctransition
+rocksdb_writebatch_count
+--with-suppressgctransition
+rocksdb_writebatch_data
+--with-suppressgctransition
+rocksdb_pinnableslice_value

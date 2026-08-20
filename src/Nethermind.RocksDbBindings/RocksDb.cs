@@ -412,7 +412,10 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        // MEASUREMENT BUILD, DO NOT MERGE: reads the pointer without taking a lease, so the
+        // per-call ref-count pair on the shared read options is gone. Nothing then keeps a
+        // concurrent Dispose from freeing the options under this call.
+        nint optionsHandle = options.SafeHandle.DangerousGetHandle();
         nuint valueLength;
         sbyte* errptr = null;
         sbyte* valuePtr;
@@ -604,7 +607,10 @@ public unsafe sealed class RocksDb : IDisposable
     {
         using var lease = Lease();
         var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        // MEASUREMENT BUILD, DO NOT MERGE: reads the pointer without taking a lease, so the
+        // per-call ref-count pair on the shared read options is gone. Nothing then keeps a
+        // concurrent Dispose from freeing the options under this call.
+        nint optionsHandle = options.SafeHandle.DangerousGetHandle();
         sbyte* errptr = null;
         var pinned = cf is null
             ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)

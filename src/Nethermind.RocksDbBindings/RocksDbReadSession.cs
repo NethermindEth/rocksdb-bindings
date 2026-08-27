@@ -61,14 +61,9 @@ public sealed class RocksDbReadSession : IDisposable
     public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        try
-        {
-            return _database.GetLeased(key, cf, _databaseHandle, _readOptionsHandle);
-        }
-        finally
-        {
-            GC.KeepAlive(this);
-        }
+        byte[]? result = _database.GetLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        GC.KeepAlive(this);
+        return result;
     }
 
     /// <inheritdoc cref="RocksDb.GetFixedSizeValue(ReadOnlySpan{byte}, Span{byte}, IColumnFamilyHandle?, ReadOptions?)"/>
@@ -88,7 +83,6 @@ public sealed class RocksDbReadSession : IDisposable
         finally
         {
             slice.Dispose();
-            GC.KeepAlive(this);
         }
     }
 
@@ -100,28 +94,18 @@ public sealed class RocksDbReadSession : IDisposable
     public bool TryGetPinned(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        try
-        {
-            return _database.TryGetPinnedLeased(key, out slice, cf, _databaseHandle, _readOptionsHandle);
-        }
-        finally
-        {
-            GC.KeepAlive(this);
-        }
+        bool result = _database.TryGetPinnedLeased(key, out slice, cf, _databaseHandle, _readOptionsHandle);
+        GC.KeepAlive(this);
+        return result;
     }
 
     /// <inheritdoc cref="RocksDb.GetSpan(ReadOnlySpan{byte}, IColumnFamilyHandle?, ReadOptions?)"/>
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        try
-        {
-            return _database.GetSpanLeased(key, cf, _databaseHandle, _readOptionsHandle);
-        }
-        finally
-        {
-            GC.KeepAlive(this);
-        }
+        Span<byte> result = _database.GetSpanLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        GC.KeepAlive(this);
+        return result;
     }
 
     /// <inheritdoc cref="RocksDb.DangerousReleaseMemory(in ReadOnlySpan{byte})"/>
@@ -145,7 +129,6 @@ public sealed class RocksDbReadSession : IDisposable
         finally
         {
             slice.Dispose();
-            GC.KeepAlive(this);
         }
     }
 
@@ -153,14 +136,9 @@ public sealed class RocksDbReadSession : IDisposable
     public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        try
-        {
-            return _database.HasKeyLeased(key, cf, _databaseHandle, _readOptionsHandle);
-        }
-        finally
-        {
-            GC.KeepAlive(this);
-        }
+        bool result = _database.HasKeyLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        GC.KeepAlive(this);
+        return result;
     }
 
     /// <inheritdoc cref="RocksDb.Get{T}(ReadOnlySpan{byte}, ISpanDeserializer{T}, IColumnFamilyHandle?, ReadOptions?)"/>
@@ -176,7 +154,6 @@ public sealed class RocksDbReadSession : IDisposable
         finally
         {
             slice.Dispose();
-            GC.KeepAlive(this);
         }
     }
 

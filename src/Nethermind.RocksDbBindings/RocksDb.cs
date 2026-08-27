@@ -36,6 +36,14 @@ public unsafe sealed class RocksDb : IDisposable
     // Dispose even while the lease keeps the native handle alive.
     private nint NativeHandle => _handle.DangerousGetHandle();
 
+    /// <summary>Returns the native pointer without extending its lifetime.</summary>
+    /// <remarks>The caller must keep this wrapper alive and must not dispose it during native use.</remarks>
+    private nint DangerousGetHandle()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _handle.DangerousGetHandle();
+    }
+
     public string Path { get; internal set; } = null!;
     public string? WalPath { get; internal set; }
     public string? LogPath { get; internal set; }
@@ -410,18 +418,20 @@ public unsafe sealed class RocksDb : IDisposable
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = Lease();
+        nint dbHandle = DangerousGetHandle();
         var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        nint optionsHandle = options.DangerousGetHandle();
         nuint valueLength;
         sbyte* errptr = null;
         sbyte* valuePtr;
         fixed (byte* keyPtr = key)
         {
             valuePtr = cf is null
-                ? rocksdb_get(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_get_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+                ? rocksdb_get(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_get_cf(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
         }
+        GC.KeepAlive(options);
+        GC.KeepAlive(this);
         RocksDbInterop.ThrowIfError(errptr);
 
         if (valuePtr is null)
@@ -602,13 +612,15 @@ public unsafe sealed class RocksDb : IDisposable
 
     private rocksdb_pinnableslice_t* GetPinned(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        using var lease = Lease();
+        nint dbHandle = DangerousGetHandle();
         var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        nint optionsHandle = options.DangerousGetHandle();
         sbyte* errptr = null;
         var pinned = cf is null
-            ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
-            : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            ? rocksdb_get_pinned(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+        GC.KeepAlive(options);
+        GC.KeepAlive(this);
         RocksDbInterop.ThrowIfError(errptr);
         return pinned;
     }

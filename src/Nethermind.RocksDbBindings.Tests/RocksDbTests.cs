@@ -578,6 +578,7 @@ public class RocksDbTests
         using (Assert.Multiple())
         {
             await Assert.That(() => db.Get(Key)).Throws<ObjectDisposedException>();
+            await Assert.That(() => db.GetSpan(Key).Length).Throws<ObjectDisposedException>();
             await Assert.That(() => db.Put(Key, Value)).Throws<ObjectDisposedException>();
             await Assert.That(() => db.FlushWal(sync: false)).Throws<ObjectDisposedException>();
         }

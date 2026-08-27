@@ -47,6 +47,14 @@ public abstract class NativeOptions : IDisposable
         return lease;
     }
 
+    /// <summary>Returns the native pointer without extending its lifetime.</summary>
+    /// <remarks>The caller must keep this wrapper alive and must not dispose it during native use.</remarks>
+    internal nint DangerousGetHandle()
+    {
+        ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+        return _handle.DangerousGetHandle();
+    }
+
     /// <summary>The handle itself, for holding a reference that outlives a single call.</summary>
     internal SafeHandle SafeHandle => _handle;
 }

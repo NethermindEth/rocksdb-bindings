@@ -655,6 +655,20 @@ public class OptionsTests
     }
 
     [Test]
+    public async Task DisposedReadOptions_AreRejectedByBorrowedHotReads()
+    {
+        using var database = TestDatabase.Create();
+        var options = new ReadOptions();
+        options.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => database.Db.Get("key"u8, readOptions: options)).Throws<ObjectDisposedException>();
+            await Assert.That(() => database.Db.GetSpan("key"u8, readOptions: options).Length).Throws<ObjectDisposedException>();
+        }
+    }
+
+    [Test]
     public async Task WriteOptions_CanBeDisposedOnceItsWritesHaveReturned()
     {
         using var database = TestDatabase.Create();

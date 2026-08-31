@@ -86,33 +86,48 @@ public class RocksDbReadSessionTests
     }
 
     [Test]
-    public async Task DisposeOfDatabaseAndReadOptions_IsDeferredUntilSessionDispose()
+    public async Task DisposeOfReadOptions_IsDeferredUntilSessionDispose()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, Value);
+        var readOptions = new ReadOptions();
+        var session = database.Db.CreateReadSession(readOptions);
+
+        readOptions.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(session.Get(Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+            await Assert.That(readOptions.SafeHandle.IsClosed).IsFalse();
+        }
+
+        session.Dispose();
+
+        await Assert.That(readOptions.SafeHandle.IsClosed).IsTrue();
+    }
+
+    [Test]
+    public async Task DisposeOfDatabase_ClosesImmediatelyAndMakesSessionReadsThrow()
     {
         using var directory = new TempDirectory();
         string path = directory.Reserve("db");
         using var creatingOptions = new DbOptions().SetCreateIfMissing();
         var database = RocksDb.Open(creatingOptions, path);
         database.Put(Key, Value);
-        var readOptions = new ReadOptions();
-        var session = database.CreateReadSession(readOptions);
+        using var session = database.CreateReadSession();
 
-        readOptions.Dispose();
         database.Dispose();
 
         using var reopenOptions = new DbOptions();
         using (Assert.Multiple())
         {
-            await Assert.That(session.Get(Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
-            await Assert.That(() => database.Get(Key)).Throws<ObjectDisposedException>();
-            await Assert.That(readOptions.SafeHandle.IsClosed).IsFalse();
-            await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).Throws<RocksDbException>();
-        }
-
-        session.Dispose();
-
-        using (Assert.Multiple())
-        {
-            await Assert.That(readOptions.SafeHandle.IsClosed).IsTrue();
+            await Assert.That(() => session.Get(Key)).Throws<ObjectDisposedException>();
+            await Assert.That(() => session.HasKey(Key)).Throws<ObjectDisposedException>();
+            await Assert.That(() => session.GetSpan(Key).Length).Throws<ObjectDisposedException>();
+            await Assert.That(() => TryGetPinnedAndDispose(session)).Throws<ObjectDisposedException>();
+            await Assert.That(() => session.GetFixedSizeValue(Key, new byte[Value.Length])).Throws<ObjectDisposedException>();
+            await Assert.That(() => session.Get(Key, new byte[Value.Length])).Throws<ObjectDisposedException>();
+            await Assert.That(() => session.Get(Key, new Int32Deserializer())).Throws<ObjectDisposedException>();
             await Assert.That(() => RocksDb.Open(reopenOptions, path).Dispose()).ThrowsNothing();
         }
     }
@@ -163,7 +178,7 @@ public class RocksDbReadSessionTests
     }
 
     [Test]
-    public async Task Finalizer_ReleasesAnAbandonedSessionsLeases()
+    public async Task Finalizer_ReleasesAnAbandonedOptionsLease()
     {
         using var directory = new TempDirectory();
         string path = directory.Reserve("db");

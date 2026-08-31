@@ -6,31 +6,29 @@ using System.Runtime.InteropServices;
 namespace Nethermind.RocksDbBindings;
 
 /// <summary>
-/// Reuses one database lease and one read-options lease across a sequence of reads.
+/// Reuses one read-options lease across a sequence of reads.
 /// </summary>
 /// <remarks>
-/// Disposing the database or read options while this session is alive is safe: their native
-/// handles stay open until the session is disposed. Do not dispose the session concurrently with
-/// its own reads, and do not mutate its read options while reads are in progress.
+/// The read options stay open until the session is disposed. The database is leased for each read,
+/// so disposing it makes later session reads throw without interrupting one already in progress.
+/// Do not dispose the session concurrently with its own reads, and do not mutate its read options
+/// while reads are in progress.
 /// </remarks>
 public sealed class RocksDbReadSession : IDisposable
 {
     private readonly RocksDb _database;
-    private readonly nint _databaseHandle;
     private readonly nint _readOptionsHandle;
-    private RocksDbHandle? _databaseLease;
     private SafeHandle? _readOptionsLease;
     private int _disposed;
 
     internal RocksDbReadSession(RocksDb database, ReadOptions readOptions)
     {
-        RocksDbHandle? databaseLease = null;
+        using HandleLease databaseLease = database.LeaseHandle(out _);
         SafeHandle? readOptionsLease = null;
         var readOptionsLeaseAdded = false;
 
         try
         {
-            databaseLease = database.AcquireLifetimeLease(out _databaseHandle);
             readOptionsLease = readOptions.SafeHandle;
             readOptionsLease.DangerousAddRef(ref readOptionsLeaseAdded);
             _readOptionsHandle = readOptionsLease.DangerousGetHandle();
@@ -39,21 +37,19 @@ public sealed class RocksDbReadSession : IDisposable
         {
             if (readOptionsLeaseAdded)
                 readOptionsLease!.DangerousRelease();
-            databaseLease?.DangerousRelease();
             throw;
         }
 
         _database = database;
-        _databaseLease = databaseLease;
         _readOptionsLease = readOptionsLease;
     }
 
-    ~RocksDbReadSession() => ReleaseLeases();
+    ~RocksDbReadSession() => ReleaseLease();
 
-    /// <summary>Releases the database and read-options leases.</summary>
+    /// <summary>Releases the read-options lease.</summary>
     public void Dispose()
     {
-        ReleaseLeases();
+        ReleaseLease();
         GC.SuppressFinalize(this);
     }
 
@@ -61,7 +57,8 @@ public sealed class RocksDbReadSession : IDisposable
     public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        byte[]? result = _database.GetLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        using HandleLease databaseLease = _database.LeaseHandle(out nint databaseHandle);
+        byte[]? result = _database.GetLeased(key, cf, databaseHandle, _readOptionsHandle);
         GC.KeepAlive(this);
         return result;
     }
@@ -94,7 +91,8 @@ public sealed class RocksDbReadSession : IDisposable
     public bool TryGetPinned(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        bool result = _database.TryGetPinnedLeased(key, out slice, cf, _databaseHandle, _readOptionsHandle);
+        using HandleLease databaseLease = _database.LeaseHandle(out nint databaseHandle);
+        bool result = _database.TryGetPinnedLeased(key, out slice, cf, databaseHandle, _readOptionsHandle);
         GC.KeepAlive(this);
         return result;
     }
@@ -103,7 +101,8 @@ public sealed class RocksDbReadSession : IDisposable
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        Span<byte> result = _database.GetSpanLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        using HandleLease databaseLease = _database.LeaseHandle(out nint databaseHandle);
+        Span<byte> result = _database.GetSpanLeased(key, cf, databaseHandle, _readOptionsHandle);
         GC.KeepAlive(this);
         return result;
     }
@@ -136,7 +135,8 @@ public sealed class RocksDbReadSession : IDisposable
     public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
     {
         ThrowIfDisposed();
-        bool result = _database.HasKeyLeased(key, cf, _databaseHandle, _readOptionsHandle);
+        using HandleLease databaseLease = _database.LeaseHandle(out nint databaseHandle);
+        bool result = _database.HasKeyLeased(key, cf, databaseHandle, _readOptionsHandle);
         GC.KeepAlive(this);
         return result;
     }
@@ -159,12 +159,11 @@ public sealed class RocksDbReadSession : IDisposable
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-    private void ReleaseLeases()
+    private void ReleaseLease()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
         Interlocked.Exchange(ref _readOptionsLease, null)?.DangerousRelease();
-        Interlocked.Exchange(ref _databaseLease, null)?.DangerousRelease();
     }
 }

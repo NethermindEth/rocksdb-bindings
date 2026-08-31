@@ -102,23 +102,14 @@ public unsafe sealed class RocksDb : IDisposable
         return lease;
     }
 
-    /// <summary>Acquires a database reference that must be released exactly once.</summary>
-    internal RocksDbHandle AcquireLifetimeLease(out nint nativeHandle)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RocksDbHandle lease = AcquireChildLease();
-        nativeHandle = lease.DangerousGetHandle();
-        return lease;
-    }
-
     /// <summary>
-    /// Acquires the database and read-options leases once for a sequence of reads.
+    /// Acquires the read-options lease once for a sequence of reads.
     /// </summary>
     /// <remarks>
-    /// This avoids the SafeHandle ref-count operations performed by each regular read call. The
-    /// returned session keeps both native handles alive if this database or the read options are
-    /// disposed concurrently, and its reads remain usable after this database is logically
-    /// disposed. Dispose the session only after all of its reads have completed.
+    /// This avoids the read-options SafeHandle ref-count operations performed by each regular read
+    /// call. The database remains leased per read, so disposing it makes later session reads throw
+    /// without interrupting one already in progress. The returned session keeps the read options
+    /// alive if they are disposed independently. Dispose the session only after all reads complete.
     /// <see cref="MultiGet"/> already amortizes its leases across its keys, while
     /// <see cref="NewIterator"/> returns an iterator that owns its native lifetime.
     /// </remarks>

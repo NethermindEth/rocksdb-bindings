@@ -23,7 +23,6 @@ public sealed class RocksDbReadSession : IDisposable
 
     internal RocksDbReadSession(RocksDb database, ReadOptions readOptions)
     {
-        using HandleLease databaseLease = database.LeaseHandle(out _);
         SafeHandle? readOptionsLease = null;
         var readOptionsLeaseAdded = false;
 

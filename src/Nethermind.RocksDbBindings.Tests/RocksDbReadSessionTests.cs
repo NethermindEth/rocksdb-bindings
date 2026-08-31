@@ -156,7 +156,7 @@ public class RocksDbReadSessionTests
     }
 
     [Test]
-    public async Task CreateReadSession_RejectsDisposedHandlesWithoutLeakingTheDatabaseLease()
+    public async Task CreateReadSession_RejectsDisposedHandles()
     {
         using var directory = new TempDirectory();
         string path = directory.Reserve("db");

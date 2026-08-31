@@ -114,7 +114,10 @@ public unsafe sealed class RocksDb : IDisposable
     /// <see cref="NewIterator"/> returns an iterator that owns its native lifetime.
     /// </remarks>
     public RocksDbReadSession CreateReadSession(ReadOptions? readOptions = null)
-        => new(this, readOptions ?? DefaultReadOptions);
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new(this, readOptions ?? DefaultReadOptions);
+    }
 
     public static RocksDb Open(DbOptions options, string path)
     {

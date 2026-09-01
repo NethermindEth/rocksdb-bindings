@@ -229,6 +229,34 @@ public unsafe abstract partial class Options<T> : OptionsHandle where T : Option
     }
 
     /// <summary>
+    /// Marks files for compaction when either enough keys in a sliding window are deletions or the
+    /// file-wide deletion ratio reaches <paramref name="deletionRatio"/>. A zero window disables
+    /// the window trigger, and a zero ratio disables the ratio trigger.
+    /// </summary>
+    /// <exception cref="ArgumentException">Both triggers are disabled.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A ratio is invalid or an enabled window has a zero deletion threshold.</exception>
+    public T AddCompactOnDeletionCollectorFactory(
+        nuint windowSize,
+        nuint numDeletionsTrigger,
+        double deletionRatio)
+    {
+        if (windowSize == 0 && deletionRatio == 0)
+            throw new ArgumentException("At least one compaction trigger must be enabled.", nameof(windowSize));
+        if (windowSize != 0)
+            ArgumentOutOfRangeException.ThrowIfZero(numDeletionsTrigger);
+        if (double.IsNaN(deletionRatio))
+            throw new ArgumentOutOfRangeException(nameof(deletionRatio));
+        ArgumentOutOfRangeException.ThrowIfNegative(deletionRatio);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(deletionRatio, 1);
+
+        using var lease = Lease(out nint handle);
+
+        rocksdb_options_add_compact_on_deletion_collector_factory_del_ratio(
+            RocksDbInterop.Options(handle), windowSize, numDeletionsTrigger, deletionRatio);
+        return (T)this;
+    }
+
+    /// <summary>
     /// A global cache for table-level rows. RocksDB holds its own reference on the cache, so it
     /// may be disposed once no options wrapper is being configured with it.
     /// </summary>

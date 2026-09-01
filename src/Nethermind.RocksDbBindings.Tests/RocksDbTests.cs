@@ -537,6 +537,138 @@ public class RocksDbTests
     }
 
     [Test]
+    public async Task CompactRange_CanForceTheBottommostLevel()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put("aaa"u8.ToArray(), Value);
+        database.Db.Put("zzz"u8.ToArray(), Value);
+        database.Db.Flush(new FlushOptions().SetWaitForFlush(true));
+
+        database.Db.CompactRange(null, null, forceBottommost: true);
+        FileMetadata before = database.Db.GetLiveFilesMetadata(populateFileMetadataOnly: true)!.Single().FileMetadata;
+
+        database.Db.CompactRange(null, null, forceBottommost: true);
+        FileMetadata after = database.Db.GetLiveFilesMetadata(populateFileMetadataOnly: true)!.Single().FileMetadata;
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(after.FileLevel).IsEqualTo(before.FileLevel);
+            await Assert.That(after.FileName).IsNotEqualTo(before.FileName);
+        }
+    }
+
+    [Test]
+    public async Task ManualCompactionControls_RejectADisposedDatabase()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.DisableManualCompaction).Throws<ObjectDisposedException>();
+            await Assert.That(database.Db.EnableManualCompaction).Throws<ObjectDisposedException>();
+        }
+    }
+
+    [Test]
+    public async Task ManualCompaction_CanBeDisabledAndReEnabled()
+    {
+        using var database = TestDatabase.Create();
+
+        database.Db.DisableManualCompaction();
+
+        await Assert.That(database.Db.EnableManualCompaction).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task SuggestCompactRange_AcceptsAValidRange()
+    {
+        using var database = TestDatabase.Create();
+
+        await Assert.That(() => database.Db.SuggestCompactRange(Key, "z"u8)).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task RangeFileOperations_RejectADisposedDatabase()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Dispose();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => database.Db.DeleteFilesInRange(Key, "z"u8)).Throws<ObjectDisposedException>();
+            await Assert.That(() => database.Db.SuggestCompactRange(Key, "z"u8)).Throws<ObjectDisposedException>();
+        }
+    }
+
+    [Test]
+    public async Task RangeFileOperations_RejectEmptyBounds()
+    {
+        using var database = TestDatabase.Create();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => database.Db.DeleteFilesInRange([], Key)).ThrowsExactly<ArgumentException>();
+            await Assert.That(() => database.Db.DeleteFilesInRange(Key, [])).ThrowsExactly<ArgumentException>();
+            await Assert.That(() => database.Db.SuggestCompactRange([], Key)).ThrowsExactly<ArgumentException>();
+            await Assert.That(() => database.Db.SuggestCompactRange(Key, [])).ThrowsExactly<ArgumentException>();
+        }
+    }
+
+    [Test]
+    public async Task DeleteFilesInRange_RemovesSettledFilesInsideTheRange()
+    {
+        using var database = TestDatabase.Create();
+        byte[] firstKey = "bbb"u8.ToArray();
+        byte[] secondKey = "ccc"u8.ToArray();
+        database.Db.Put(firstKey, Value);
+        database.Db.Put(secondKey, Value);
+        database.Db.Flush(new FlushOptions().SetWaitForFlush(true));
+        database.Db.CompactRange(null, null, forceBottommost: true);
+
+        await Assert.That(database.Db.GetLiveFileNames()).IsNotEmpty();
+
+        database.Db.DeleteFilesInRange("aaa"u8, "zzz"u8);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.Get(firstKey)).IsNull();
+            await Assert.That(database.Db.Get(secondKey)).IsNull();
+            await Assert.That(database.Db.GetLiveFileNames()).IsEmpty();
+        }
+    }
+
+    [Test]
+    public async Task DeleteFilesInRange_OnlyRemovesFilesFromTheSelectedColumnFamily()
+    {
+        using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using var defaultFamilyOptions = new ColumnFamilyOptions();
+        using var selectedFamilyOptions = new ColumnFamilyOptions();
+        var families = new ColumnFamilies(defaultFamilyOptions);
+        families.Add("selected", selectedFamilyOptions);
+        using var database = TestDatabase.Create(options, families);
+        IColumnFamilyHandle selected = database.Db.GetColumnFamily("selected");
+        database.Db.Put(Key, Value);
+        database.Db.Put(Key, Value, selected);
+        database.Db.Flush(new FlushOptions().SetWaitForFlush(true));
+        database.Db.Flush(new FlushOptions().SetWaitForFlush(true), selected);
+        database.Db.CompactRange(null, null, forceBottommost: true);
+        database.Db.CompactRange(null, null, forceBottommost: true, selected);
+        int filesBefore = database.Db.GetLiveFileNames().Count;
+
+        database.Db.DeleteFilesInRange("aaa"u8, "zzz"u8, selected);
+        int filesAfter = database.Db.GetLiveFileNames().Count;
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(filesBefore).IsEqualTo(2);
+            await Assert.That(filesAfter).IsEqualTo(1);
+            await Assert.That(database.Db.Get(Key, selected)).IsNull();
+            await Assert.That(database.Db.Get(Key)).IsEquivalentTo(Value, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
     public async Task FileDeletions_CanBeDisabledAndReEnabled()
     {
         using var database = TestDatabase.Create();

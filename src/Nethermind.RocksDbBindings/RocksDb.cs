@@ -13,6 +13,8 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe sealed class RocksDb : IDisposable
 {
+    private const byte ForceBottommostLevelCompaction = 2;
+
     internal static ReadOptions DefaultReadOptions { get; } = new ReadOptions();
     internal static DbOptions DefaultOptions { get; } = new DbOptions();
     internal static WriteOptions DefaultWriteOptions { get; } = new WriteOptions();
@@ -956,6 +958,142 @@ public unsafe sealed class RocksDb : IDisposable
                 rocksdb_compact_range_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)startPtr, (nuint)(start?.GetLongLength(0) ?? 0L), (sbyte*)limitPtr, (nuint)(limit?.GetLongLength(0) ?? 0L));
             }
         }
+    }
+
+    /// <summary>
+    /// Compacts a range and optionally forces its bottommost level to be rewritten.
+    /// </summary>
+    public void CompactRange(
+        byte[]? start,
+        byte[]? limit,
+        bool forceBottommost,
+        IColumnFamilyHandle? cf = null)
+    {
+        if (!forceBottommost)
+        {
+            CompactRange(start, limit, cf);
+            return;
+        }
+
+        using var lease = Lease();
+        fixed (byte* startPtr = start)
+        fixed (byte* limitPtr = limit)
+        {
+            rocksdb_compactoptions_t* options = rocksdb_compactoptions_create();
+            try
+            {
+                rocksdb_compactoptions_set_bottommost_level_compaction(options, ForceBottommostLevelCompaction);
+
+                if (cf is null)
+                {
+                    rocksdb_compact_range_opt(
+                        RocksDbInterop.Db(NativeHandle), options,
+                        (sbyte*)startPtr, (nuint)(start?.LongLength ?? 0L),
+                        (sbyte*)limitPtr, (nuint)(limit?.LongLength ?? 0L));
+                }
+                else
+                {
+                    rocksdb_compact_range_cf_opt(
+                        RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle), options,
+                        (sbyte*)startPtr, (nuint)(start?.LongLength ?? 0L),
+                        (sbyte*)limitPtr, (nuint)(limit?.LongLength ?? 0L));
+                }
+            }
+            finally
+            {
+                rocksdb_compactoptions_destroy(options);
+            }
+        }
+    }
+
+    /// <summary>Interrupts manual compactions and prevents new ones from starting.</summary>
+    public void DisableManualCompaction()
+    {
+        using var lease = Lease();
+        rocksdb_disable_manual_compaction(RocksDbInterop.Db(NativeHandle));
+    }
+
+    /// <summary>Allows manual compactions to start.</summary>
+    public void EnableManualCompaction()
+    {
+        using var lease = Lease();
+        rocksdb_enable_manual_compaction(RocksDbInterop.Db(NativeHandle));
+    }
+
+    /// <summary>Deletes table files whose keys are entirely contained in the non-empty range.</summary>
+    /// <exception cref="ArgumentException">A range bound is empty.</exception>
+    public void DeleteFilesInRange(
+        ReadOnlySpan<byte> start,
+        ReadOnlySpan<byte> limit,
+        IColumnFamilyHandle? cf = null)
+    {
+        ThrowIfEmptyRange(start, limit);
+        using var lease = Lease();
+        fixed (byte* startPtr = start)
+        fixed (byte* limitPtr = limit)
+        {
+            sbyte* errptr = null;
+            if (cf is null)
+            {
+                rocksdb_delete_file_in_range(
+                    RocksDbInterop.Db(NativeHandle),
+                    (sbyte*)startPtr, (nuint)start.Length,
+                    (sbyte*)limitPtr, (nuint)limit.Length,
+                    &errptr);
+            }
+            else
+            {
+                rocksdb_delete_file_in_range_cf(
+                    RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle),
+                    (sbyte*)startPtr, (nuint)start.Length,
+                    (sbyte*)limitPtr, (nuint)limit.Length,
+                    &errptr);
+            }
+
+            RocksDbInterop.ThrowIfError(errptr);
+        }
+    }
+
+    /// <summary>Suggests compaction of a non-empty range using RocksDB's experimental API.</summary>
+    /// <exception cref="ArgumentException">A range bound is empty.</exception>
+    public void SuggestCompactRange(
+        ReadOnlySpan<byte> start,
+        ReadOnlySpan<byte> limit,
+        IColumnFamilyHandle? cf = null)
+    {
+        ThrowIfEmptyRange(start, limit);
+        using var lease = Lease();
+        fixed (byte* startPtr = start)
+        fixed (byte* limitPtr = limit)
+        {
+            sbyte* errptr = null;
+            if (cf is null)
+            {
+                rocksdb_suggest_compact_range(
+                    RocksDbInterop.Db(NativeHandle),
+                    (sbyte*)startPtr, (nuint)start.Length,
+                    (sbyte*)limitPtr, (nuint)limit.Length,
+                    &errptr);
+            }
+            else
+            {
+                rocksdb_suggest_compact_range_cf(
+                    RocksDbInterop.Db(NativeHandle), RocksDbInterop.ColumnFamily(cf.Handle),
+                    (sbyte*)startPtr, (nuint)start.Length,
+                    (sbyte*)limitPtr, (nuint)limit.Length,
+                    &errptr);
+            }
+
+            RocksDbInterop.ThrowIfError(errptr);
+        }
+    }
+
+    private static void ThrowIfEmptyRange(ReadOnlySpan<byte> start, ReadOnlySpan<byte> limit)
+    {
+        if (start.IsEmpty)
+            throw new ArgumentException("The range start cannot be empty.", nameof(start));
+        if (limit.IsEmpty)
+            throw new ArgumentException("The range limit cannot be empty.", nameof(limit));
     }
 
     public void TryCatchUpWithPrimary()

@@ -715,6 +715,54 @@ public class OptionsTests
     }
 
     [Test]
+    public async Task DbOptions_AddCompactOnDeletionCollectorFactory_IsFluentAndRejectsDisposedOptions()
+    {
+        var options = new DbOptions();
+
+        await Assert.That(options.AddCompactOnDeletionCollectorFactory(1, 1, 0))
+            .IsSameReferenceAs(options);
+
+        options.Dispose();
+
+        await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(100_000, 50_000, 0.3))
+            .Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task DbOptions_AddCompactOnDeletionCollectorFactory_AcceptsNativeTriggerModes()
+    {
+        using var options = new DbOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(options.AddCompactOnDeletionCollectorFactory(0, 0, 0.3))
+                .IsSameReferenceAs(options);
+            await Assert.That(options.AddCompactOnDeletionCollectorFactory(100, 128, 0.3))
+                .IsSameReferenceAs(options);
+        }
+    }
+
+    [Test]
+    public async Task DbOptions_AddCompactOnDeletionCollectorFactory_RejectsInvalidTriggerModes()
+    {
+        using var options = new DbOptions();
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(0, 1, 0))
+                .ThrowsExactly<ArgumentException>();
+            await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(100, 0, 0.3))
+                .ThrowsExactly<ArgumentOutOfRangeException>();
+            await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(100, 50, -0.1))
+                .ThrowsExactly<ArgumentOutOfRangeException>();
+            await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(100, 50, 1.5))
+                .ThrowsExactly<ArgumentOutOfRangeException>();
+            await Assert.That(() => options.AddCompactOnDeletionCollectorFactory(100, 50, double.NaN))
+                .ThrowsExactly<ArgumentOutOfRangeException>();
+        }
+    }
+
+    [Test]
     public async Task DbOptions_GetNumLevels_ReturnsTheRocksDbDefault()
     {
         using var options = new DbOptions();

@@ -102,29 +102,6 @@ public unsafe sealed class RocksDb : IDisposable
         return lease;
     }
 
-    /// <summary>Acquires a database reference that must be released exactly once.</summary>
-    internal RocksDbHandle AcquireLifetimeLease(out nint nativeHandle)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RocksDbHandle lease = AcquireChildLease();
-        nativeHandle = lease.DangerousGetHandle();
-        return lease;
-    }
-
-    /// <summary>
-    /// Acquires the database and read-options leases once for a sequence of reads.
-    /// </summary>
-    /// <remarks>
-    /// This avoids the SafeHandle ref-count operations performed by each regular read call. The
-    /// returned session keeps both native handles alive if this database or the read options are
-    /// disposed concurrently, and its reads remain usable after this database is logically
-    /// disposed. Dispose the session only after all of its reads have completed.
-    /// <see cref="MultiGet"/> already amortizes its leases across its keys, while
-    /// <see cref="NewIterator"/> returns an iterator that owns its native lifetime.
-    /// </remarks>
-    public RocksDbReadSession CreateReadSession(ReadOptions? readOptions = null)
-        => new(this, readOptions ?? DefaultReadOptions);
-
     public static RocksDb Open(DbOptions options, string path)
     {
         using var optionsLease = options.Lease(out nint optionsHandle);
@@ -350,10 +327,10 @@ public unsafe sealed class RocksDb : IDisposable
 
     public byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = LeaseHandle(out nint dbHandle);
-        ReadOptions options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
-        return GetLeased(key, cf, dbHandle, optionsHandle);
+        fixed (byte* keyPtr = key)
+        {
+            return Get(keyPtr, (nuint)key.Length, cf, readOptions);
+        }
     }
 
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
@@ -384,18 +361,10 @@ public unsafe sealed class RocksDb : IDisposable
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public bool TryGetPinned(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = LeaseHandle(out nint dbHandle);
-        ReadOptions options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
-        return TryGetPinnedLeased(key, out slice, cf, dbHandle, optionsHandle);
-    }
-
-    internal bool TryGetPinnedLeased(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
-    {
         rocksdb_pinnableslice_t* pinned;
         fixed (byte* keyPtr = key)
         {
-            pinned = GetPinned(keyPtr, (nuint)key.Length, cf, dbHandle, optionsHandle);
+            pinned = GetPinned(keyPtr, (nuint)key.Length, cf, readOptions);
         }
 
         if (pinned is null)
@@ -441,22 +410,17 @@ public unsafe sealed class RocksDb : IDisposable
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = LeaseHandle(out nint dbHandle);
-        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using var lease = Lease();
+        var options = readOptions ?? DefaultReadOptions;
         using var optionsLease = options.Lease(out nint optionsHandle);
-        return GetSpanLeased(key, cf, dbHandle, optionsHandle);
-    }
-
-    internal Span<byte> GetSpanLeased(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
-    {
         nuint valueLength;
         sbyte* errptr = null;
         sbyte* valuePtr;
         fixed (byte* keyPtr = key)
         {
             valuePtr = cf is null
-                ? rocksdb_get(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
-                : rocksdb_get_cf(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
+                ? rocksdb_get(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr)
+                : rocksdb_get_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &valueLength, &errptr);
         }
         RocksDbInterop.ThrowIfError(errptr);
 
@@ -519,25 +483,9 @@ public unsafe sealed class RocksDb : IDisposable
 
     public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = LeaseHandle(out nint dbHandle);
-        ReadOptions options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
-        return HasKeyLeased(key, cf, dbHandle, optionsHandle);
-    }
-
-    internal byte[]? GetLeased(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
-    {
         fixed (byte* keyPtr = key)
         {
-            return Get(keyPtr, (nuint)key.Length, cf, dbHandle, optionsHandle);
-        }
-    }
-
-    internal bool HasKeyLeased(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
-    {
-        fixed (byte* keyPtr = key)
-        {
-            return HasKey(keyPtr, (nuint)key.Length, cf, dbHandle, optionsHandle);
+            return HasKey(keyPtr, (nuint)key.Length, cf, readOptions);
         }
     }
 
@@ -652,21 +600,24 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    private static rocksdb_pinnableslice_t* GetPinned(byte* key, nuint keyLength, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
+    private rocksdb_pinnableslice_t* GetPinned(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
+        using var lease = Lease();
+        var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
         sbyte* errptr = null;
         var pinned = cf is null
-            ? rocksdb_get_pinned(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
-            : rocksdb_get_pinned_cf(RocksDbInterop.Db(dbHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return pinned;
     }
 
     // Reads through a pinned slice instead of rocksdb_get: one copy into the managed array
     // rather than a native malloc, a copy, and a free.
-    private static byte[]? Get(byte* key, nuint keyLength, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
+    private byte[]? Get(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        var pinned = GetPinned(key, keyLength, cf, dbHandle, optionsHandle);
+        var pinned = GetPinned(key, keyLength, cf, readOptions);
         if (pinned is null)
             return null;
 
@@ -687,9 +638,9 @@ public unsafe sealed class RocksDb : IDisposable
         }
     }
 
-    private static bool HasKey(byte* key, nuint keyLength, IColumnFamilyHandle? cf, nint dbHandle, nint optionsHandle)
+    private bool HasKey(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        var pinned = GetPinned(key, keyLength, cf, dbHandle, optionsHandle);
+        var pinned = GetPinned(key, keyLength, cf, readOptions);
         if (pinned is null)
             return false;
         rocksdb_pinnableslice_destroy(pinned);

@@ -11,9 +11,10 @@ namespace Nethermind.RocksDbBindings;
 /// </summary>
 /// <remarks>
 /// The span is valid until <see cref="Dispose"/>, which releases the pin so RocksDB can reclaim
-/// the memory. The pin is self-contained and may outlive the <see cref="RocksDb"/> that produced it.
-/// While pinned, it keeps the underlying block or memtable resident, so keep it short-lived; the
-/// ref struct constraint enforces that it cannot be stored on the heap.
+/// the memory. While pinned, the slice holds a reference on the underlying block or memtable, so
+/// keep it short-lived; the ref struct constraint enforces that it cannot be stored on the heap.
+/// Release the slice before closing the <see cref="RocksDb"/> that produced it: the pin can keep a
+/// block resident, but it does not keep the block cache alive.
 /// The native handle is released with an unconditional delete, and copies of the slice alias the
 /// same handle, so release it exactly once: either dispose a single copy, or detach and pass the
 /// handle to <see cref="DangerousDestroy"/>. Obtained from

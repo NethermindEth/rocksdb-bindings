@@ -99,6 +99,48 @@ public class PinnedSliceTests
     }
 
     [Test]
+    public async Task TryGetPinned_FlushedValuePinsBlockCacheUntilDisposed()
+    {
+        using var directory = new TempDirectory();
+        string path = directory.Reserve("db");
+        using var creatingOptions = new DbOptions().SetCreateIfMissing();
+        using var database = RocksDb.Open(creatingOptions, path);
+        byte[] expected = new byte[64 * 1024];
+        new Random(42).NextBytes(expected);
+        database.Put(Key, expected);
+        using (var flushOptions = new FlushOptions().SetWaitForFlush(true))
+            database.Flush(flushOptions);
+
+        byte[]? warmedValue = database.Get(Key);
+        bool readPinnedUsageBefore = database.TryGetIntProperty("rocksdb.block-cache-pinned-usage", out ulong pinnedUsageBefore);
+        bool found = database.TryGetPinned(Key, out var slice);
+        bool readPinnedUsageWhileHeld = database.TryGetIntProperty("rocksdb.block-cache-pinned-usage", out ulong pinnedUsageWhileHeld);
+
+        byte[] value;
+        try
+        {
+            value = slice.Value.ToArray();
+        }
+        finally
+        {
+            slice.Dispose();
+        }
+        bool readPinnedUsageAfter = database.TryGetIntProperty("rocksdb.block-cache-pinned-usage", out ulong pinnedUsageAfter);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(found).IsTrue();
+            await Assert.That(warmedValue).IsEquivalentTo(expected, CollectionOrdering.Matching);
+            await Assert.That(readPinnedUsageBefore).IsTrue();
+            await Assert.That(readPinnedUsageWhileHeld).IsTrue();
+            await Assert.That(readPinnedUsageAfter).IsTrue();
+            await Assert.That(pinnedUsageWhileHeld).IsGreaterThan(pinnedUsageBefore);
+            await Assert.That(pinnedUsageAfter).IsEqualTo(pinnedUsageBefore);
+            await Assert.That(value).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
     public async Task Dispose_IsIdempotentAndSafeOnADefaultedSlice()
     {
         using var database = TestDatabase.Create();

@@ -71,6 +71,22 @@ public class ColumnFamilyTests
     }
 
     [Test]
+    public async Task Get_IntoABuffer_IsScopedToItsFamily()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        var blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put(Key, Value, blocks);
+        var output = new byte[Value.Length];
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(database.Db.Get(Key, output, blocks)).IsEqualTo(Value.Length);
+            await Assert.That(output).IsEquivalentTo(Value, CollectionOrdering.Matching);
+            await Assert.That(database.Db.Get(Key, output)).IsEqualTo(-1);
+        }
+    }
+
+    [Test]
     public async Task HasKey_IsScopedToItsFamily()
     {
         using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));

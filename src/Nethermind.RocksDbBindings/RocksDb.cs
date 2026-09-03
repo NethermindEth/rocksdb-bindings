@@ -460,27 +460,48 @@ public unsafe sealed class RocksDb : IDisposable
     /// <summary>
     /// Copies the value for <paramref name="key"/> into <paramref name="destination"/>.
     /// </summary>
+    /// <remarks>
+    /// RocksDB copies directly into the caller's buffer in a single native call without allocating
+    /// a persistent pinnable handle.
+    /// </remarks>
     /// <returns>The value length, or -1 when the key does not exist.</returns>
     /// <exception cref="ArgumentException">The value does not fit in <paramref name="destination"/>.</exception>
     /// <exception cref="NotSupportedException">The value is larger than <see cref="int.MaxValue"/> bytes.</exception>
     public int Get(ReadOnlySpan<byte> key, Span<byte> destination, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        if (!TryGetPinned(key, out var slice, cf, readOptions))
+        using var lease = Lease();
+        var options = readOptions ?? DefaultReadOptions;
+        using var optionsLease = options.Lease(out nint optionsHandle);
+
+        nuint valueLength;
+        byte found;
+        byte fits;
+        byte emptyDestination = 0;
+        sbyte* errptr = null;
+
+        fixed (byte* keyPtr = key)
+        fixed (byte* destinationPtr = destination)
+        {
+            // An empty span pins as a null pointer, which the native side reads as no buffer at all.
+            var buffer = (sbyte*)(destination.IsEmpty ? &emptyDestination : destinationPtr);
+            fits = cf is null
+                ? rocksdb_get_into_buffer(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)keyPtr, (nuint)key.Length, buffer, (nuint)destination.Length, &valueLength, &found, &errptr)
+                : rocksdb_get_into_buffer_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, buffer, (nuint)destination.Length, &valueLength, &found, &errptr);
+        }
+
+        RocksDbInterop.ThrowIfError(errptr);
+
+        if (found == 0)
             return -1;
 
-        try
-        {
-            var value = slice.Value;
-            if (value.Length > destination.Length)
-                throw new ArgumentException($"The value is {value.Length} bytes but the destination holds {destination.Length}.", nameof(destination));
+        if (valueLength > int.MaxValue)
+            throw new NotSupportedException($"The value is {valueLength} bytes; values over {int.MaxValue} bytes cannot be copied into a span.");
 
-            value.CopyTo(destination);
-            return value.Length;
-        }
-        finally
-        {
-            slice.Dispose();
-        }
+        if (fits == 0)
+            throw new ArgumentException($"The value is {valueLength} bytes but the destination holds {destination.Length}.", nameof(destination));
+
+        // A value that fits is bounded by the destination length, so the cast cannot overflow.
+        return (int)valueLength;
     }
 
     public bool HasKey(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)

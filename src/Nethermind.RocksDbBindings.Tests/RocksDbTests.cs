@@ -290,6 +290,59 @@ public class RocksDbTests
     }
 
     [Test]
+    public async Task Get_IntoABuffer_CopiesTheValueAndLeavesTheRestOfTheDestinationAlone()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, new byte[] { 1, 2, 3 });
+        var output = new byte[] { 9, 9, 9, 9 };
+
+        var length = database.Db.Get(Key, output);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(length).IsEqualTo(3);
+            await Assert.That(output).IsEquivalentTo(new byte[] { 1, 2, 3, 9 }, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    public async Task Get_IntoABuffer_ReturnsMinusOneForAMissingKey()
+    {
+        using var database = TestDatabase.Create();
+
+        await Assert.That(database.Db.Get(Key, new byte[4])).IsEqualTo(-1);
+    }
+
+    [Test]
+    public async Task Get_IntoABuffer_ReadsAnEmptyValueIntoAnEmptyDestination()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, []);
+
+        await Assert.That(database.Db.Get(Key, [])).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Get_IntoABuffer_RejectsADestinationTooSmallForTheValue()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, Value);
+
+        await Assert.That(() => database.Db.Get(Key, new byte[Value.Length - 1])).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task Get_IntoABuffer_LeavesTheDestinationUntouchedWhenTheValueDoesNotFit()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put(Key, new byte[] { 1, 2, 3 });
+        var output = new byte[] { 9, 9 };
+
+        await Assert.That(() => database.Db.Get(Key, output)).Throws<ArgumentException>();
+        await Assert.That(output).IsEquivalentTo(new byte[] { 9, 9 }, CollectionOrdering.Matching);
+    }
+
+    [Test]
     public async Task Get_WithASpanDeserializer_DecodesTheValue()
     {
         using var database = TestDatabase.Create();

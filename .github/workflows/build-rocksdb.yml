@@ -8,6 +8,19 @@ on:
         required: true
         default: main
         type: string
+      jemalloc:
+        description: >-
+          Linux only. 'private' bundles jemalloc for C++ allocations; 'private-tuned' also bakes
+          background purging into it, which a private allocator cannot be told to do at runtime;
+          'none' bundles no allocator, leaving every allocation on the process allocator so that
+          one preloaded allocator serves RocksDB and its host alike.
+        required: false
+        default: private
+        type: choice
+        options:
+          - private
+          - private-tuned
+          - none
       create-pr:
         description: Create a pull request
         default: false
@@ -39,6 +52,7 @@ jobs:
       # Minimum CPU architecture. x86-64-v3 omits the PCLMUL that RocksDB's
       # CRC32C path infers from AVX; 1 keeps its armv8-a+crc+crypto baseline.
       MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
+      JEMALLOC: ${{ inputs.jemalloc }}
     steps:
       - name: Install dependencies
         env:
@@ -72,18 +86,26 @@ jobs:
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Keep libc malloc/free, jemalloc C++ operators, and dlopen-safe TLS.
-          portfile=vcpkg/ports/jemalloc/portfile.cmake
-          grep -Fxq '    OPTIONS ${opts}' $portfile
-          awk '{ print }
-               $0 == "    OPTIONS ${opts}" {
-                 print "        --enable-cxx"
-                 print "        --disable-initial-exec-tls"
-                 print "        --with-jemalloc-prefix=je_"
-               }' $portfile > $portfile.patched
-          mv -f $portfile.patched $portfile
-          ./vcpkg/vcpkg install --clean-after-build \
-            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
+          ports="lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET"
+          if [ "$JEMALLOC" != none ]; then
+            # Keep libc malloc/free, jemalloc C++ operators, and dlopen-safe TLS.
+            conf=
+            if [ "$JEMALLOC" = private-tuned ]; then
+              conf="        --with-malloc-conf=background_thread:true"
+            fi
+            portfile=vcpkg/ports/jemalloc/portfile.cmake
+            grep -Fxq '    OPTIONS ${opts}' $portfile
+            awk -v conf="$conf" '{ print }
+                 $0 == "    OPTIONS ${opts}" {
+                   print "        --enable-cxx"
+                   print "        --disable-initial-exec-tls"
+                   print "        --with-jemalloc-prefix=je_"
+                   if (conf != "") print conf
+                 }' $portfile > $portfile.patched
+            mv -f $portfile.patched $portfile
+            ports="jemalloc:$TRIPLET $ports"
+          fi
+          ./vcpkg/vcpkg install --clean-after-build $ports
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -95,13 +117,21 @@ jobs:
           deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
           # Keep bundled dependencies private and C++ allocations on jemalloc.
           echo '{ global: rocksdb_*; local: *; };' > $GITHUB_WORKSPACE/exports.map
+          # Without a bundled allocator, operator new and malloc both fall through to whichever
+          # allocator the process supplies, keeping the C API boundary on a single heap.
+          allocator=
+          with_jemalloc=OFF
+          if [ "$JEMALLOC" != none ]; then
+            allocator="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive"
+            with_jemalloc=ON
+          fi
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -static-libstdc++ -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
+            -DCMAKE_SHARED_LINKER_FLAGS="$allocator -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -static-libstdc++ -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -114,7 +144,7 @@ jobs:
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
-            -DWITH_JEMALLOC=ON \
+            -DWITH_JEMALLOC=$with_jemalloc \
             -DWITH_LIBURING=OFF \
             -DWITH_LZ4=ON \
             -DWITH_SNAPPY=ON \
@@ -143,25 +173,40 @@ jobs:
             echo "::error::The library has unresolved runtime dependencies"
             exit 1
           fi
-          # Private jemalloc symbols are available only before stripping.
-          jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
-          archive_defined=$(nm -A --defined-only "$jemalloc" |
-            awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
+          # Symbols hidden by the version script are visible only before stripping.
           defined=$(readelf -Ws build/librocksdb.so |
             awk '$7 != "UND" { sub(/@@.*/, "", $8); print $8 }' | sort -u)
-          for symbol in _Znwm _Znam _ZdlPv _ZdaPv; do
-            if ! echo "$archive_defined" | grep -qx "$symbol" ||
-               ! echo "$defined" | grep -qx "$symbol"; then
-              echo "::error::jemalloc C++ operator is missing: $symbol"
+          if [ "$JEMALLOC" != none ]; then
+            jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
+            archive_defined=$(nm -A --defined-only "$jemalloc" |
+              awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
+            for symbol in _Znwm _Znam _ZdlPv _ZdaPv; do
+              if ! echo "$archive_defined" | grep -qx "$symbol" ||
+                 ! echo "$defined" | grep -qx "$symbol"; then
+                echo "::error::jemalloc C++ operator is missing: $symbol"
+                exit 1
+              fi
+            done
+            if ! echo "$defined" | grep -qx je_mallocx; then
+              echo "::error::jemalloc is not linked into RocksDB"
               exit 1
             fi
-          done
-          if ! echo "$defined" | grep -qx je_mallocx; then
-            echo "::error::jemalloc is not linked into RocksDB"
-            exit 1
+          else
+            if echo "$defined" | grep -qx je_mallocx; then
+              echo "::error::jemalloc must not be bundled"
+              exit 1
+            fi
+            # Every allocation has to reach the process allocator for one heap to serve them all.
+            for symbol in malloc free; do
+              if ! readelf -Ws build/librocksdb.so |
+                 awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx "$symbol"; then
+                echo "::error::RocksDB must import $symbol from the process allocator"
+                exit 1
+              fi
+            done
           fi
           if echo "$defined" | grep -qxE 'malloc|free'; then
-            echo "::error::jemalloc must not replace malloc"
+            echo "::error::the bundled allocator must not replace malloc"
             exit 1
           fi
           if readelf -Ws build/librocksdb.so |

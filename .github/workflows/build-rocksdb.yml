@@ -11,6 +11,7 @@ on:
       jemalloc:
         description: >-
           Linux only. 'private' bundles jemalloc for C++ allocations; 'private-tuned' also bakes
+          'private-unprefixed' widens it to every allocation inside the library, still exported to nobody;
           background purging into it, which a private allocator cannot be told to do at runtime;
           'none' bundles no allocator, leaving every allocation on the process allocator so that
           one preloaded allocator serves RocksDB and its host alike.
@@ -20,6 +21,7 @@ on:
         options:
           - private
           - private-tuned
+          - private-unprefixed
           - none
       create-pr:
         description: Create a pull request
@@ -88,18 +90,24 @@ jobs:
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           ports="lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET"
           if [ "$JEMALLOC" != none ]; then
-            # Keep libc malloc/free, jemalloc C++ operators, and dlopen-safe TLS.
+            # jemalloc supplies the C++ operators, and dlopen'd libraries cannot use initial-exec TLS.
             conf=
+            # Unprefixed keeps every allocation in the library on jemalloc, so LTO can bind and
+            # inline it directly; the version script still exports nothing.
+            prefix="        --with-jemalloc-prefix=je_"
+            if [ "$JEMALLOC" = private-unprefixed ]; then
+              prefix=
+            fi
             if [ "$JEMALLOC" = private-tuned ]; then
               conf="        --with-malloc-conf=background_thread:true"
             fi
             portfile=vcpkg/ports/jemalloc/portfile.cmake
             grep -Fxq '    OPTIONS ${opts}' $portfile
-            awk -v conf="$conf" '{ print }
+            awk -v conf="$conf" -v prefix="$prefix" '{ print }
                  $0 == "    OPTIONS ${opts}" {
                    print "        --enable-cxx"
                    print "        --disable-initial-exec-tls"
-                   print "        --with-jemalloc-prefix=je_"
+                   if (prefix != "") print prefix
                    if (conf != "") print conf
                  }' $portfile > $portfile.patched
             mv -f $portfile.patched $portfile
@@ -177,6 +185,8 @@ jobs:
           defined=$(readelf -Ws build/librocksdb.so |
             awk '$7 != "UND" { sub(/@@.*/, "", $8); print $8 }' | sort -u)
           if [ "$JEMALLOC" != none ]; then
+            alloc_symbol=je_mallocx
+            [ "$JEMALLOC" = private-unprefixed ] && alloc_symbol=mallocx
             jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
             archive_defined=$(nm -A --defined-only "$jemalloc" |
               awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
@@ -187,12 +197,12 @@ jobs:
                 exit 1
               fi
             done
-            if ! echo "$defined" | grep -qx je_mallocx; then
-              echo "::error::jemalloc is not linked into RocksDB"
+            if ! echo "$defined" | grep -qx "$alloc_symbol"; then
+              echo "::error::jemalloc is not linked into RocksDB: $alloc_symbol is missing"
               exit 1
             fi
           else
-            if echo "$defined" | grep -qx je_mallocx; then
+            if echo "$defined" | grep -qxE 'je_mallocx|mallocx'; then
               echo "::error::jemalloc must not be bundled"
               exit 1
             fi
@@ -205,7 +215,16 @@ jobs:
               fi
             done
           fi
-          if echo "$defined" | grep -qxE 'malloc|free'; then
+          # Only the unprefixed build may define malloc; the version script keeps it unexported,
+          # which the export check below enforces.
+          if [ "$JEMALLOC" = private-unprefixed ]; then
+            for symbol in malloc free; do
+              if ! echo "$defined" | grep -qx "$symbol"; then
+                echo "::error::the unprefixed build must define $symbol"
+                exit 1
+              fi
+            done
+          elif echo "$defined" | grep -qxE 'malloc|free'; then
             echo "::error::the bundled allocator must not replace malloc"
             exit 1
           fi

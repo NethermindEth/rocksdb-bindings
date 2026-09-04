@@ -23,6 +23,20 @@ on:
           - private-tuned
           - private-unprefixed
           - none
+      perf_context:
+        description: >-
+          RocksDB's per-operation perf_context/iostats_context counters. They are thread-local, and
+          because .NET dlopens the library every access is a general-dynamic __tls_get_addr call:
+          the shipped build has 13 dynamic TLS slots and zero initial-exec relocations, and these
+          counters are ~74% of its 1,969 call sites. 'off' compiles them out. Nethermind never reads
+          them (Db.EnableDbStatistics defaults false), but the rocksdb_perfcontext_* C API stays
+          exported and would report zero.
+        required: false
+        default: "on"
+        type: choice
+        options:
+          - "on"
+          - "off"
       create-pr:
         description: Create a pull request
         default: false
@@ -54,6 +68,7 @@ jobs:
       # Minimum CPU architecture. x86-64-v3 omits the PCLMUL that RocksDB's
       # CRC32C path infers from AVX; 1 keeps its armv8-a+crc+crypto baseline.
       MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
+      PERF_CONTEXT: ${{ inputs.perf_context }}
       JEMALLOC: ${{ inputs.jemalloc }}
     steps:
       - name: Install dependencies
@@ -129,6 +144,11 @@ jobs:
           # allocator the process supplies, keeping the C API boundary on a single heap.
           allocator=
           with_jemalloc=OFF
+          # Compiling the counters out removes the bulk of this library's dynamic-TLS traffic.
+          perf_context=ON
+          if [ "$PERF_CONTEXT" = off ]; then
+            perf_context=OFF
+          fi
           if [ "$JEMALLOC" != none ]; then
             allocator="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive"
             with_jemalloc=ON
@@ -153,6 +173,8 @@ jobs:
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
             -DWITH_JEMALLOC=$with_jemalloc \
+            -DWITH_IOSTATS_CONTEXT=$perf_context \
+            -DWITH_PERF_CONTEXT=$perf_context \
             -DWITH_LIBURING=OFF \
             -DWITH_LZ4=ON \
             -DWITH_SNAPPY=ON \
@@ -234,6 +256,26 @@ jobs:
             echo "::error::RocksDB must not query libc for jemalloc allocation sizes"
             exit 1
           fi
+          # Compiling the counters out must not withdraw published C API surface: these are the
+          # entry points RocksDbSharp binds, and they must keep resolving even when reporting zero.
+          exported=$(readelf --dyn-syms -W $library |
+            awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
+            grep -c '^rocksdb_' || true)
+          echo "Exported rocksdb_* symbols: ${exported}"
+          for symbol in rocksdb_perfcontext_create rocksdb_perfcontext_destroy \
+            rocksdb_perfcontext_metric rocksdb_perfcontext_report rocksdb_perfcontext_reset \
+            rocksdb_set_perf_level; do
+            if ! readelf --dyn-syms -W $library |
+               awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
+               grep -qx "$symbol"; then
+              echo "::error::the published C API lost $symbol"
+              exit 1
+            fi
+          done
+          # Dynamic TLS is a per-access call through __tls_get_addr for a dlopen'd library, so
+          # report the slot count: fewer slots means less of that traffic.
+          tls_slots=$(readelf -r -W $library | grep -c DTPMOD64 || true)
+          echo "General-dynamic TLS slots: ${tls_slots}"
           leaked=$(readelf --dyn-syms -W $library |
             awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
             grep -Ev '^(rocksdb_|_init$|_fini$|_edata$|_end$|__bss_start$|$)' | sort -u || true)

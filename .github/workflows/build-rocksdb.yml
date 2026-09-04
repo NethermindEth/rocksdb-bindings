@@ -10,21 +10,20 @@ on:
         type: string
       jemalloc:
         description: >-
-          Linux only. 'private' bundles jemalloc for C++ allocations; 'private-tuned' also bakes
-          'private-unprefixed' widens it to every allocation inside the library, still exported to nobody;
-          allocator owns every allocation in the library;
-          'complete' additionally routes the three libc calls whose result RocksDB frees itself, so one
-          background purging into it, which a private allocator cannot be told to do at runtime;
-          'none' bundles no allocator, leaving every allocation on the process allocator so that
-          one preloaded allocator serves RocksDB and its host alike.
+          Linux only. 'complete' (default) bundles jemalloc as the allocator for every allocation in
+          the library, C and C++ alike, with the four libc calls whose result RocksDB frees itself
+          (strdup, getcwd, realpath, getline) routed onto it; 'private' keeps jemalloc prefixed and
+          serving only C++ new/delete, leaving C malloc on libc; 'private-tuned' bakes background
+          purging into that; 'private-unprefixed' is 'complete' without the libc routing and crashes
+          (kept as the negative control); 'none' bundles no allocator at all.
         required: false
-        default: private
+        default: complete
         type: choice
         options:
+          - complete
           - private
           - private-tuned
           - private-unprefixed
-          - complete
           - none
       perf_context:
         description: >-

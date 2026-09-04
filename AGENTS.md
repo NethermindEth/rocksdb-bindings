@@ -7,6 +7,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 - [src](./src/): The main codebase. The C# API was originally derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), and has since been substantially rewritten.
 - [generation](./generation/): RocksDB bindings generation with ClangSharp.
 - [build-rocksdb.yml](./.github/workflows/build-rocksdb.yml): Builds RocksDB and generates bindings for the specified version.
+  Its `jemalloc` input selects the bundled allocator; the default `complete` makes jemalloc own every allocation in the library, which is why the build wraps the libc calls whose results RocksDB frees itself.
 - [test-publish.yml](./.github/workflows/test-publish.yml): Runs the tests and optionally publishes on NuGet.
 
 ## Coding guidelines

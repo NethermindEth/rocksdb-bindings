@@ -289,21 +289,21 @@ jobs:
               fi
             done
             if [ "$JEMALLOC" = complete ]; then
-              # The wrap is only sound if it caught every call site: any of these left as an
-              # undefined import means glibc still hands RocksDB memory that jemalloc would free.
-              for symbol in strdup getcwd realpath; do
-                if readelf -Ws build/librocksdb.so |
-                   awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx "$symbol"; then
-                  echo "::error::$symbol is still imported from glibc; the allocator wrap is incomplete"
-                  exit 1
-                fi
-              done
+              # ld redirects every reference on the link line, so the wrap is total by construction;
+              # what has to be checked is that the shim linked at all. getcwd and realpath stay
+              # imported because __real_getcwd/__real_realpath are those imports.
               for symbol in __wrap_strdup __wrap_getcwd __wrap_realpath; do
                 if ! echo "$defined" | grep -qx "$symbol"; then
-                  echo "::error::$symbol was not linked in"
+                  echo "::error::$symbol was not linked in; the allocator wrap is inactive"
                   exit 1
                 fi
               done
+              # Nothing may reach glibc strdup: its wrapper never calls through to the original.
+              if readelf -Ws build/librocksdb.so |
+                 awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx strdup; then
+                echo "::error::strdup is still imported from glibc; the wrap missed a call site"
+                exit 1
+              fi
             fi
           elif echo "$defined" | grep -qxE 'malloc|free'; then
             echo "::error::the bundled allocator must not replace malloc"

@@ -12,6 +12,8 @@ on:
         description: >-
           Linux only. 'private' bundles jemalloc for C++ allocations; 'private-tuned' also bakes
           'private-unprefixed' widens it to every allocation inside the library, still exported to nobody;
+          allocator owns every allocation in the library;
+          'complete' additionally routes the three libc calls whose result RocksDB frees itself, so one
           background purging into it, which a private allocator cannot be told to do at runtime;
           'none' bundles no allocator, leaving every allocation on the process allocator so that
           one preloaded allocator serves RocksDB and its host alike.
@@ -22,6 +24,7 @@ on:
           - private
           - private-tuned
           - private-unprefixed
+          - complete
           - none
       perf_context:
         description: >-
@@ -110,7 +113,7 @@ jobs:
             # Unprefixed keeps every allocation in the library on jemalloc, so LTO can bind and
             # inline it directly; the version script still exports nothing.
             prefix="        --with-jemalloc-prefix=je_"
-            if [ "$JEMALLOC" = private-unprefixed ]; then
+            if [ "$JEMALLOC" = private-unprefixed ] || [ "$JEMALLOC" = complete ]; then
               prefix=
             fi
             if [ "$JEMALLOC" = private-tuned ]; then
@@ -152,6 +155,45 @@ jobs:
           if [ "$JEMALLOC" != none ]; then
             allocator="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive"
             with_jemalloc=ON
+          fi
+          # glibc hands RocksDB heap pointers from these three, and RocksDB releases them with
+          # free(), so they must allocate from the bundled allocator too or the free is mismatched.
+          if [ "$JEMALLOC" = complete ]; then
+            cat > $GITHUB_WORKSPACE/alloc_shims.c <<'SHIM'
+          #define _GNU_SOURCE
+          #include <limits.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <unistd.h>
+          extern char *__real_getcwd(char *buf, size_t size);
+          extern char *__real_realpath(const char *path, char *resolved);
+          char *__wrap_strdup(const char *s)
+          {
+              size_t n = strlen(s) + 1;
+              char *p = malloc(n);
+              return p ? memcpy(p, s, n) : NULL;
+          }
+          char *__wrap_getcwd(char *buf, size_t size)
+          {
+              if (buf) return __real_getcwd(buf, size);
+              char *p = malloc(PATH_MAX);
+              if (!p) return NULL;
+              if (!__real_getcwd(p, PATH_MAX)) { free(p); return NULL; }
+              return p;
+          }
+          char *__wrap_realpath(const char *path, char *resolved)
+          {
+              if (resolved) return __real_realpath(path, resolved);
+              char *p = malloc(PATH_MAX);
+              if (!p) return NULL;
+              if (!__real_realpath(path, p)) { free(p); return NULL; }
+              return p;
+          }
+          SHIM
+            sed -i 's/^          //' $GITHUB_WORKSPACE/alloc_shims.c
+            gcc -c -O2 -fPIC -o $GITHUB_WORKSPACE/alloc_shims.o $GITHUB_WORKSPACE/alloc_shims.c
+            allocator="$allocator $GITHUB_WORKSPACE/alloc_shims.o"
+            allocator="$allocator -Wl,--wrap=strdup,--wrap=getcwd,--wrap=realpath"
           fi
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
@@ -208,7 +250,7 @@ jobs:
             awk '$7 != "UND" { sub(/@@.*/, "", $8); print $8 }' | sort -u)
           if [ "$JEMALLOC" != none ]; then
             alloc_symbol=je_mallocx
-            [ "$JEMALLOC" = private-unprefixed ] && alloc_symbol=mallocx
+            case "$JEMALLOC" in private-unprefixed | complete) alloc_symbol=mallocx ;; esac
             jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
             archive_defined=$(nm -A --defined-only "$jemalloc" |
               awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
@@ -239,13 +281,30 @@ jobs:
           fi
           # Only the unprefixed build may define malloc; the version script keeps it unexported,
           # which the export check below enforces.
-          if [ "$JEMALLOC" = private-unprefixed ]; then
+          if [ "$JEMALLOC" = private-unprefixed ] || [ "$JEMALLOC" = complete ]; then
             for symbol in malloc free; do
               if ! echo "$defined" | grep -qx "$symbol"; then
                 echo "::error::the unprefixed build must define $symbol"
                 exit 1
               fi
             done
+            if [ "$JEMALLOC" = complete ]; then
+              # The wrap is only sound if it caught every call site: any of these left as an
+              # undefined import means glibc still hands RocksDB memory that jemalloc would free.
+              for symbol in strdup getcwd realpath; do
+                if readelf -Ws build/librocksdb.so |
+                   awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx "$symbol"; then
+                  echo "::error::$symbol is still imported from glibc; the allocator wrap is incomplete"
+                  exit 1
+                fi
+              done
+              for symbol in __wrap_strdup __wrap_getcwd __wrap_realpath; do
+                if ! echo "$defined" | grep -qx "$symbol"; then
+                  echo "::error::$symbol was not linked in"
+                  exit 1
+                fi
+              done
+            fi
           elif echo "$defined" | grep -qxE 'malloc|free'; then
             echo "::error::the bundled allocator must not replace malloc"
             exit 1

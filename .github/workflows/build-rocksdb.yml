@@ -231,6 +231,7 @@ jobs:
           mkdir artifact
           cp -L build/librocksdb.so artifact/librocksdb.so
           strip artifact/librocksdb.so
+          mkdir unstripped && cp -L build/librocksdb.so unstripped/librocksdb.so
 
       - name: Verify
         run: |
@@ -352,6 +353,13 @@ jobs:
           path: artifact/librocksdb.so
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
+
+        - name: Upload unstripped library
+          uses: actions/upload-artifact@v7
+          with:
+            name: linux-${{ matrix.arch }}-unstripped
+            path: unstripped/librocksdb.so
+            retention-days: ${{ env.RETENTION }}
 
   build-macos:
     name: macOS build

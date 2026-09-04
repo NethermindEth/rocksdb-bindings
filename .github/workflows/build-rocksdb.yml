@@ -191,7 +191,9 @@ jobs:
           }
           SHIM
             sed -i 's/^          //' $GITHUB_WORKSPACE/alloc_shims.c
-            gcc -c -O2 -fPIC -o $GITHUB_WORKSPACE/alloc_shims.o $GITHUB_WORKSPACE/alloc_shims.c
+            # -fno-builtin: the compiler would otherwise fold malloc+memcpy back into strdup, which
+            # --wrap then routes to __wrap_strdup again - unbounded recursion on the first call.
+            gcc -c -O2 -fno-builtin -fPIC -o $GITHUB_WORKSPACE/alloc_shims.o $GITHUB_WORKSPACE/alloc_shims.c
             allocator="$allocator $GITHUB_WORKSPACE/alloc_shims.o"
             allocator="$allocator -Wl,--wrap=strdup,--wrap=getcwd,--wrap=realpath"
           fi

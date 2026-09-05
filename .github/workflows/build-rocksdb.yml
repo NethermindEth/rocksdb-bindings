@@ -8,6 +8,37 @@ on:
         required: true
         default: main
         type: string
+      jemalloc:
+        description: >-
+          Linux only. 'complete' (default) bundles jemalloc as the allocator for every allocation in
+          the library, C and C++ alike, with the four libc calls whose result RocksDB frees itself
+          (strdup, getcwd, realpath, getline) routed onto it; 'private' keeps jemalloc prefixed and
+          serving only C++ new/delete, leaving C malloc on libc; 'private-tuned' bakes background
+          purging into that; 'private-unprefixed' is 'complete' without the libc routing and crashes
+          (kept as the negative control); 'none' bundles no allocator at all.
+        required: false
+        default: complete
+        type: choice
+        options:
+          - complete
+          - private
+          - private-tuned
+          - private-unprefixed
+          - none
+      perf_context:
+        description: >-
+          RocksDB's per-operation perf_context/iostats_context counters. They are thread-local, and
+          because .NET dlopens the library every access is a general-dynamic __tls_get_addr call:
+          the shipped build has 13 dynamic TLS slots and zero initial-exec relocations, and these
+          counters are ~74% of its 1,969 call sites. 'off' compiles them out. Nethermind never reads
+          them (Db.EnableDbStatistics defaults false), but the rocksdb_perfcontext_* C API stays
+          exported and would report zero.
+        required: false
+        default: "on"
+        type: choice
+        options:
+          - "on"
+          - "off"
       create-pr:
         description: Create a pull request
         default: false
@@ -39,6 +70,8 @@ jobs:
       # Minimum CPU architecture. x86-64-v3 omits the PCLMUL that RocksDB's
       # CRC32C path infers from AVX; 1 keeps its armv8-a+crc+crypto baseline.
       MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
+      PERF_CONTEXT: ${{ inputs.perf_context }}
+      JEMALLOC: ${{ inputs.jemalloc }}
     steps:
       - name: Install dependencies
         env:
@@ -72,18 +105,32 @@ jobs:
       - name: Build static dependencies
         run: |
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          # Keep libc malloc/free, jemalloc C++ operators, and dlopen-safe TLS.
-          portfile=vcpkg/ports/jemalloc/portfile.cmake
-          grep -Fxq '    OPTIONS ${opts}' $portfile
-          awk '{ print }
-               $0 == "    OPTIONS ${opts}" {
-                 print "        --enable-cxx"
-                 print "        --disable-initial-exec-tls"
-                 print "        --with-jemalloc-prefix=je_"
-               }' $portfile > $portfile.patched
-          mv -f $portfile.patched $portfile
-          ./vcpkg/vcpkg install --clean-after-build \
-            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
+          ports="lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET"
+          if [ "$JEMALLOC" != none ]; then
+            # jemalloc supplies the C++ operators, and dlopen'd libraries cannot use initial-exec TLS.
+            conf=
+            # Unprefixed keeps every allocation in the library on jemalloc, so LTO can bind and
+            # inline it directly; the version script still exports nothing.
+            prefix="        --with-jemalloc-prefix=je_"
+            if [ "$JEMALLOC" = private-unprefixed ] || [ "$JEMALLOC" = complete ]; then
+              prefix=
+            fi
+            if [ "$JEMALLOC" = private-tuned ]; then
+              conf="        --with-malloc-conf=background_thread:true"
+            fi
+            portfile=vcpkg/ports/jemalloc/portfile.cmake
+            grep -Fxq '    OPTIONS ${opts}' $portfile
+            awk -v conf="$conf" -v prefix="$prefix" '{ print }
+                 $0 == "    OPTIONS ${opts}" {
+                   print "        --enable-cxx"
+                   print "        --disable-initial-exec-tls"
+                   if (prefix != "") print prefix
+                   if (conf != "") print conf
+                 }' $portfile > $portfile.patched
+            mv -f $portfile.patched $portfile
+            ports="jemalloc:$TRIPLET $ports"
+          fi
+          ./vcpkg/vcpkg install --clean-after-build $ports
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -95,13 +142,97 @@ jobs:
           deps=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET
           # Keep bundled dependencies private and C++ allocations on jemalloc.
           echo '{ global: rocksdb_*; local: *; };' > $GITHUB_WORKSPACE/exports.map
+          # Without a bundled allocator, operator new and malloc both fall through to whichever
+          # allocator the process supplies, keeping the C API boundary on a single heap.
+          allocator=
+          with_jemalloc=OFF
+          # Compiling the counters out removes the bulk of this library's dynamic-TLS traffic.
+          perf_context=ON
+          if [ "$PERF_CONTEXT" = off ]; then
+            perf_context=OFF
+          fi
+          if [ "$JEMALLOC" != none ]; then
+            allocator="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive"
+            with_jemalloc=ON
+          fi
+          # glibc hands RocksDB heap pointers from these three, and RocksDB releases them with
+          # free(), so they must allocate from the bundled allocator too or the free is mismatched.
+          if [ "$JEMALLOC" = complete ]; then
+            cat > $GITHUB_WORKSPACE/alloc_shims.c <<'SHIM'
+          #define _GNU_SOURCE
+          #include <limits.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <unistd.h>
+          #include <errno.h>
+          #include <stdio.h>
+          extern char *__real_getcwd(char *buf, size_t size);
+          extern char *__real_realpath(const char *path, char *resolved);
+          char *__wrap_strdup(const char *s)
+          {
+              size_t n = strlen(s) + 1;
+              char *p = malloc(n);
+              return p ? memcpy(p, s, n) : NULL;
+          }
+          char *__wrap_getcwd(char *buf, size_t size)
+          {
+              if (buf) return __real_getcwd(buf, size);
+              char *p = malloc(PATH_MAX);
+              if (!p) return NULL;
+              if (!__real_getcwd(p, PATH_MAX)) { free(p); return NULL; }
+              return p;
+          }
+          char *__wrap_realpath(const char *path, char *resolved)
+          {
+              if (resolved) return __real_realpath(path, resolved);
+              char *p = malloc(PATH_MAX);
+              if (!p) return NULL;
+              if (!__real_realpath(path, p)) { free(p); return NULL; }
+              return p;
+          }
+          ssize_t __wrap___getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
+          {
+              if (!lineptr || !n || !stream) { errno = EINVAL; return -1; }
+              if (!*lineptr || *n == 0) {
+                  char *nb = malloc(128);
+                  if (!nb) return -1;
+                  *lineptr = nb; *n = 128;
+              }
+              size_t len = 0;
+              int c = EOF;
+              while ((c = getc(stream)) != EOF) {
+                  if (len + 2 > *n) {
+                      size_t nn = *n * 2;
+                      char *nb = realloc(*lineptr, nn);
+                      if (!nb) return -1;
+                      *lineptr = nb; *n = nn;
+                  }
+                  (*lineptr)[len++] = (char)c;
+                  if (c == delim) break;
+              }
+              if (len == 0 && c == EOF) return -1;
+              (*lineptr)[len] = 0;
+              return (ssize_t)len;
+          }
+          ssize_t __wrap_getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
+          { return __wrap___getdelim(lineptr, n, delim, stream); }
+          ssize_t __wrap_getline(char **lineptr, size_t *n, FILE *stream)
+          { return __wrap___getdelim(lineptr, n, 10, stream); }
+          SHIM
+            sed -i 's/^          //' $GITHUB_WORKSPACE/alloc_shims.c
+            # -fno-builtin: the compiler would otherwise fold malloc+memcpy back into strdup, which
+            # --wrap then routes to __wrap_strdup again - unbounded recursion on the first call.
+            gcc -c -O2 -fno-builtin -fPIC -o $GITHUB_WORKSPACE/alloc_shims.o $GITHUB_WORKSPACE/alloc_shims.c
+            allocator="$allocator $GITHUB_WORKSPACE/alloc_shims.o"
+            allocator="$allocator -Wl,--wrap=strdup,--wrap=getcwd,--wrap=realpath,--wrap=__getdelim,--wrap=getdelim,--wrap=getline"
+          fi
           # RocksDB's logging macros embed __FILE__, so remap the paths.
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive,$deps/lib/libjemalloc.a,--no-whole-archive -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -static-libstdc++ -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
+            -DCMAKE_SHARED_LINKER_FLAGS="$allocator -Wl,--version-script=$GITHUB_WORKSPACE/exports.map -static-libstdc++ -flto=$CMAKE_BUILD_PARALLEL_LEVEL" \
             -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET \
             -DFAIL_ON_WARNINGS=OFF \
@@ -114,7 +245,9 @@ jobs:
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
-            -DWITH_JEMALLOC=ON \
+            -DWITH_JEMALLOC=$with_jemalloc \
+            -DWITH_IOSTATS_CONTEXT=$perf_context \
+            -DWITH_PERF_CONTEXT=$perf_context \
             -DWITH_LIBURING=OFF \
             -DWITH_LZ4=ON \
             -DWITH_SNAPPY=ON \
@@ -127,6 +260,7 @@ jobs:
           mkdir artifact
           cp -L build/librocksdb.so artifact/librocksdb.so
           strip artifact/librocksdb.so
+          mkdir unstripped && cp -L build/librocksdb.so unstripped/librocksdb.so
 
       - name: Verify
         run: |
@@ -143,25 +277,71 @@ jobs:
             echo "::error::The library has unresolved runtime dependencies"
             exit 1
           fi
-          # Private jemalloc symbols are available only before stripping.
-          jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
-          archive_defined=$(nm -A --defined-only "$jemalloc" |
-            awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
+          # Symbols hidden by the version script are visible only before stripping.
           defined=$(readelf -Ws build/librocksdb.so |
             awk '$7 != "UND" { sub(/@@.*/, "", $8); print $8 }' | sort -u)
-          for symbol in _Znwm _Znam _ZdlPv _ZdaPv; do
-            if ! echo "$archive_defined" | grep -qx "$symbol" ||
-               ! echo "$defined" | grep -qx "$symbol"; then
-              echo "::error::jemalloc C++ operator is missing: $symbol"
+          if [ "$JEMALLOC" != none ]; then
+            alloc_symbol=je_mallocx
+            case "$JEMALLOC" in private-unprefixed | complete) alloc_symbol=mallocx ;; esac
+            jemalloc=$GITHUB_WORKSPACE/vcpkg/installed/$TRIPLET/lib/libjemalloc.a
+            archive_defined=$(nm -A --defined-only "$jemalloc" |
+              awk '$2 ~ /^[TW]$/ { print $3 }' | sort -u)
+            for symbol in _Znwm _Znam _ZdlPv _ZdaPv; do
+              if ! echo "$archive_defined" | grep -qx "$symbol" ||
+                 ! echo "$defined" | grep -qx "$symbol"; then
+                echo "::error::jemalloc C++ operator is missing: $symbol"
+                exit 1
+              fi
+            done
+            if ! echo "$defined" | grep -qx "$alloc_symbol"; then
+              echo "::error::jemalloc is not linked into RocksDB: $alloc_symbol is missing"
               exit 1
             fi
-          done
-          if ! echo "$defined" | grep -qx je_mallocx; then
-            echo "::error::jemalloc is not linked into RocksDB"
-            exit 1
+          else
+            if echo "$defined" | grep -qxE 'je_mallocx|mallocx'; then
+              echo "::error::jemalloc must not be bundled"
+              exit 1
+            fi
+            # Every allocation has to reach the process allocator for one heap to serve them all.
+            for symbol in malloc free; do
+              if ! readelf -Ws build/librocksdb.so |
+                 awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx "$symbol"; then
+                echo "::error::RocksDB must import $symbol from the process allocator"
+                exit 1
+              fi
+            done
           fi
-          if echo "$defined" | grep -qxE 'malloc|free'; then
-            echo "::error::jemalloc must not replace malloc"
+          # Only the unprefixed build may define malloc; the version script keeps it unexported,
+          # which the export check below enforces.
+          if [ "$JEMALLOC" = private-unprefixed ] || [ "$JEMALLOC" = complete ]; then
+            for symbol in malloc free; do
+              if ! echo "$defined" | grep -qx "$symbol"; then
+                echo "::error::the unprefixed build must define $symbol"
+                exit 1
+              fi
+            done
+            if [ "$JEMALLOC" = complete ]; then
+              # ld redirects every reference on the link line, so the wrap is total by construction;
+              # what has to be checked is that the shim linked at all. getcwd and realpath stay
+              # imported because __real_getcwd/__real_realpath are those imports.
+              for symbol in __wrap_strdup __wrap_getcwd __wrap_realpath __wrap___getdelim; do
+                if ! echo "$defined" | grep -qx "$symbol"; then
+                  echo "::error::$symbol was not linked in; the allocator wrap is inactive"
+                  exit 1
+                fi
+              done
+              # Nothing may reach these glibc entry points: they hand the caller heap memory that RocksDB
+              # frees through the bundled allocator, and their wrappers never call through.
+              for symbol in strdup __getdelim getdelim getline; do
+                if readelf -Ws build/librocksdb.so |
+                   awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' | grep -qx "$symbol"; then
+                  echo "::error::$symbol is still imported from glibc; the allocator wrap missed a call site"
+                  exit 1
+                fi
+              done
+            fi
+          elif echo "$defined" | grep -qxE 'malloc|free'; then
+            echo "::error::the bundled allocator must not replace malloc"
             exit 1
           fi
           if readelf -Ws build/librocksdb.so |
@@ -170,6 +350,26 @@ jobs:
             echo "::error::RocksDB must not query libc for jemalloc allocation sizes"
             exit 1
           fi
+          # Compiling the counters out must not withdraw published C API surface: these are the
+          # entry points RocksDbSharp binds, and they must keep resolving even when reporting zero.
+          exported=$(readelf --dyn-syms -W $library |
+            awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
+            grep -c '^rocksdb_' || true)
+          echo "Exported rocksdb_* symbols: ${exported}"
+          for symbol in rocksdb_perfcontext_create rocksdb_perfcontext_destroy \
+            rocksdb_perfcontext_metric rocksdb_perfcontext_report rocksdb_perfcontext_reset \
+            rocksdb_set_perf_level; do
+            if ! readelf --dyn-syms -W $library |
+               awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
+               grep -qx "$symbol"; then
+              echo "::error::the published C API lost $symbol"
+              exit 1
+            fi
+          done
+          # Dynamic TLS is a per-access call through __tls_get_addr for a dlopen'd library, so
+          # report the slot count: fewer slots means less of that traffic.
+          tls_slots=$(readelf -r -W $library | grep -c DTPMOD64 || true)
+          echo "General-dynamic TLS slots: ${tls_slots}"
           leaked=$(readelf --dyn-syms -W $library |
             awk '$1 ~ /^[0-9]+:$/ && $5 != "LOCAL" && $7 != "UND" { sub(/@@.*/, "", $8); print $8 }' |
             grep -Ev '^(rocksdb_|_init$|_fini$|_edata$|_end$|__bss_start$|$)' | sort -u || true)
@@ -185,6 +385,13 @@ jobs:
           path: artifact/librocksdb.so
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
+
+      - name: Upload unstripped library
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}-unstripped
+          path: unstripped/librocksdb.so
+          retention-days: ${{ env.RETENTION }}
 
   build-macos:
     name: macOS build

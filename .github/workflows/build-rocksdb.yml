@@ -168,6 +168,16 @@ jobs:
           #include <stdio.h>
           extern char *__real_getcwd(char *buf, size_t size);
           extern char *__real_realpath(const char *path, char *resolved);
+          extern void __libc_free(void *ptr);
+          static char *adopt(char *g)
+          {
+              if (!g) return NULL;
+              size_t n = strlen(g) + 1;
+              char *p = malloc(n);
+              if (p) memcpy(p, g, n);
+              __libc_free(g);
+              return p;
+          }
           char *__wrap_strdup(const char *s)
           {
               size_t n = strlen(s) + 1;
@@ -176,19 +186,11 @@ jobs:
           }
           char *__wrap_getcwd(char *buf, size_t size)
           {
-              if (buf) return __real_getcwd(buf, size);
-              char *p = malloc(PATH_MAX);
-              if (!p) return NULL;
-              if (!__real_getcwd(p, PATH_MAX)) { free(p); return NULL; }
-              return p;
+              return buf ? __real_getcwd(buf, size) : adopt(__real_getcwd(NULL, size));
           }
           char *__wrap_realpath(const char *path, char *resolved)
           {
-              if (resolved) return __real_realpath(path, resolved);
-              char *p = malloc(PATH_MAX);
-              if (!p) return NULL;
-              if (!__real_realpath(path, p)) { free(p); return NULL; }
-              return p;
+              return resolved ? __real_realpath(path, resolved) : adopt(__real_realpath(path, NULL));
           }
           ssize_t __wrap___getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
           {
@@ -386,10 +388,10 @@ jobs:
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
 
-      - name: Upload unstripped library
+      - name: Upload symbols
         uses: actions/upload-artifact@v7
         with:
-          name: linux-${{ matrix.arch }}-unstripped
+          name: symbols-linux-${{ matrix.arch }}
           path: unstripped/librocksdb.so
           retention-days: ${{ env.RETENTION }}
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -14,6 +15,7 @@ namespace Nethermind.RocksDbBindings;
 public unsafe sealed class RocksDb : IDisposable
 {
     private const byte ForceBottommostLevelCompaction = 2;
+    private const int StackMultiGetCapacity = 256;
 
     internal static ReadOptions DefaultReadOptions { get; } = new ReadOptions();
     internal static DbOptions DefaultOptions { get; } = new DbOptions();
@@ -525,6 +527,180 @@ public unsafe sealed class RocksDb : IDisposable
         finally
         {
             slice.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads fixed-length keys from one column family and deserializes the values in input order.
+    /// </summary>
+    /// <remarks>
+    /// Each key occupies <paramref name="keyLength"/> bytes in <paramref name="keys"/>. Missing
+    /// keys leave the corresponding output at <c>default</c>, while present empty values are passed
+    /// to <paramref name="deserializer"/>. A null column family uses the scalar <see cref="Get{T}"/>
+    /// path for compatibility with databases without explicit column-family handles. Native key and
+    /// value pointers are used only while their spans are pinned, and all native result handles are
+    /// released if a read or deserializer fails. A decoder exception may leave earlier outputs populated.
+    /// The spans, column-family handle, read options, and deserializer are used synchronously and are not retained.
+    /// </remarks>
+    /// <param name="keys">Contiguous fixed-length keys, in the order corresponding to <paramref name="values"/>.</param>
+    /// <param name="keyLength">The positive length of each key in <paramref name="keys"/>.</param>
+    /// <param name="values">The output elements, cleared before reads and filled in key order.</param>
+    /// <param name="deserializer">Decodes each present value, including values with zero length.</param>
+    /// <param name="cf">The column family to batch-read, or null to use scalar reads on the default family.</param>
+    /// <param name="readOptions">Options used for the native reads, or the default options when null.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="deserializer"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="keyLength"/> is not positive.</exception>
+    /// <exception cref="ArgumentException">The key buffer length does not match the output count and key length.</exception>
+    /// <exception cref="RocksDbNativeException">RocksDB reports an error for one of the keys.</exception>
+    /// <exception cref="NotSupportedException">A value is larger than <see cref="int.MaxValue"/> bytes.</exception>
+    public void MultiGet<T>(
+        ReadOnlySpan<byte> keys,
+        int keyLength,
+        Span<T> values,
+        ISpanDeserializer<T> deserializer,
+        IColumnFamilyHandle? cf = null,
+        ReadOptions? readOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(deserializer);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
+        if ((long)keys.Length != (long)values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+
+        values.Clear();
+        if (values.IsEmpty)
+            return;
+
+        if (cf is null)
+        {
+            for (int i = 0; i < values.Length; i++)
+                values[i] = Get(keys.Slice(i * keyLength, keyLength), deserializer, readOptions: readOptions)!;
+
+            return;
+        }
+
+        using HandleLease lease = Lease();
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
+
+        int count = values.Length;
+        rocksdb_slice_t[]? rentedKeys = null;
+        nint[]? rentedValueHandles = null;
+        nint[]? rentedErrorHandles = null;
+        scoped Span<rocksdb_slice_t> keySlices;
+        scoped Span<nint> valueHandles;
+        scoped Span<nint> errorHandles;
+
+        if (count <= StackMultiGetCapacity)
+        {
+            keySlices = stackalloc rocksdb_slice_t[count];
+            valueHandles = stackalloc nint[count];
+            errorHandles = stackalloc nint[count];
+        }
+        else
+        {
+            rentedKeys = ArrayPool<rocksdb_slice_t>.Shared.Rent(count);
+            rentedValueHandles = ArrayPool<nint>.Shared.Rent(count);
+            rentedErrorHandles = ArrayPool<nint>.Shared.Rent(count);
+            keySlices = rentedKeys.AsSpan(0, count);
+            valueHandles = rentedValueHandles.AsSpan(0, count);
+            errorHandles = rentedErrorHandles.AsSpan(0, count);
+        }
+
+        valueHandles.Clear();
+        errorHandles.Clear();
+
+        try
+        {
+            fixed (byte* keyData = keys)
+            fixed (rocksdb_slice_t* keySlicesPtr = keySlices)
+            fixed (nint* valueHandlesPtr = valueHandles)
+            fixed (nint* errorHandlesPtr = errorHandles)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    keySlicesPtr[i] = new rocksdb_slice_t
+                    {
+                        data = (sbyte*)(keyData + (i * keyLength)),
+                        size = (nuint)keyLength,
+                    };
+                }
+
+                rocksdb_batched_multi_get_cf_slice(
+                    RocksDbInterop.Db(NativeHandle),
+                    RocksDbInterop.ReadOptions(optionsHandle),
+                    RocksDbInterop.ColumnFamily(cf.Handle),
+                    (nuint)count,
+                    keySlicesPtr,
+                    (rocksdb_pinnableslice_t**)valueHandlesPtr,
+                    (sbyte**)errorHandlesPtr,
+                    sorted_input: false);
+
+                sbyte* firstError = null;
+                for (int i = 0; i < count; i++)
+                {
+                    sbyte* error = (sbyte*)errorHandlesPtr[i];
+                    if (error is null)
+                        continue;
+
+                    errorHandlesPtr[i] = nint.Zero;
+                    if (firstError is null)
+                        firstError = error;
+                    else
+                        rocksdb_free(error);
+                }
+
+                if (firstError is not null)
+                    RocksDbInterop.ThrowIfError(firstError);
+
+                for (int i = 0; i < count; i++)
+                {
+                    rocksdb_pinnableslice_t* valueHandle = (rocksdb_pinnableslice_t*)valueHandlesPtr[i];
+                    if (valueHandle is null)
+                        continue;
+
+                    try
+                    {
+                        nuint valueLength;
+                        sbyte* valueData = rocksdb_pinnableslice_value(valueHandle, &valueLength);
+                        if (valueLength > int.MaxValue)
+                            throw new NotSupportedException($"The value is {valueLength} bytes; values over {int.MaxValue} bytes cannot be exposed as a span.");
+
+                        ReadOnlySpan<byte> value = valueLength == 0
+                            ? ReadOnlySpan<byte>.Empty
+                            : new ReadOnlySpan<byte>((void*)valueData, (int)valueLength);
+                        values[i] = deserializer.Deserialize(value);
+                    }
+                    finally
+                    {
+                        rocksdb_pinnableslice_destroy(valueHandle);
+                        valueHandlesPtr[i] = nint.Zero;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (valueHandles[i] is not 0)
+                {
+                    rocksdb_pinnableslice_destroy((rocksdb_pinnableslice_t*)valueHandles[i]);
+                    valueHandles[i] = nint.Zero;
+                }
+
+                if (errorHandles[i] is not 0)
+                {
+                    rocksdb_free((void*)errorHandles[i]);
+                    errorHandles[i] = nint.Zero;
+                }
+            }
+
+            if (rentedKeys is not null)
+                ArrayPool<rocksdb_slice_t>.Shared.Return(rentedKeys);
+            if (rentedValueHandles is not null)
+                ArrayPool<nint>.Shared.Return(rentedValueHandles);
+            if (rentedErrorHandles is not null)
+                ArrayPool<nint>.Shared.Return(rentedErrorHandles);
         }
     }
 

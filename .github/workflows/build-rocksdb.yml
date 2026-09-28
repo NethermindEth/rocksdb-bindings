@@ -61,7 +61,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE="${{ github.workspace }}" -P bindings/native/apply.cmake
+        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -223,7 +223,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE="${{ github.workspace }}" -P bindings/native/apply.cmake
+        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -338,7 +338,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE="${{ github.workspace }}" -P bindings/native/apply.cmake
+        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7

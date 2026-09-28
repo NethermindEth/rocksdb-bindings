@@ -17,6 +17,25 @@ byte[]? value = await db.GetAsync(key);
 KeyValuePair<byte[], byte[]?>[] values = await db.MultiGetAsync(keys);
 ```
 
+`GetAsync<T>` accepts the existing `ISpanDeserializer<T>` and deserializes directly
+from native memory without copying the value into a managed byte array. For struct
+deserializers, use `GetAsync<T, TDeserializer>` to avoid boxing:
+
+```csharp
+int value = await db.GetAsync<int, Int32Deserializer>(key, default);
+
+readonly struct Int32Deserializer : ISpanDeserializer<int>
+{
+    public int Deserialize(ReadOnlySpan<byte> buffer)
+        => System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buffer);
+}
+```
+
+Missing keys return `default(T)` without invoking the deserializer. Deserialization
+runs on a thread-pool thread; shared deserializers must support concurrent calls.
+The span is valid only during `Deserialize`. Single reads use pooled completions:
+consume each returned `ValueTask` once, or call `AsTask()` once to share the result.
+
 The API is the same on every platform. Linux builds enable RocksDB's native
 coroutine reads using Folly and io_uring. Windows, macOS and filesystems without
 a read executor use RocksDB's synchronous fallback, which can block during

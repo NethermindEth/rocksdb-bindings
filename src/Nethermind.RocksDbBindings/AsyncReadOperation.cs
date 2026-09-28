@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks.Sources;
 
 using Nethermind.RocksDbBindings.Native;
 
@@ -39,7 +40,9 @@ internal sealed unsafe class AsyncReadHandle : SafeHandle
 
 internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThreadPoolWorkItem
 {
-    private readonly AsyncReadHandle _handle = handle;
+    private AsyncReadHandle? _handle = handle;
+
+    protected void Initialize(AsyncReadHandle handle) => _handle = handle;
 
     internal void Start(bool multi)
     {
@@ -47,7 +50,7 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         try
         {
             context = GCHandle.Alloc(this);
-            rocksdb_net_read_t* request = (rocksdb_net_read_t*)_handle.DangerousGetHandle();
+            rocksdb_net_read_t* request = (rocksdb_net_read_t*)_handle!.DangerousGetHandle();
             if (multi)
                 rocksdb_net_multi_get_async(request, (void*)GCHandle.ToIntPtr(context), &OnComplete);
             else
@@ -57,7 +60,7 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         {
             if (context.IsAllocated)
                 context.Free();
-            _handle.Dispose();
+            Release();
             throw;
         }
     }
@@ -74,43 +77,94 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
     }
 
     protected byte[]? ReadValue(int index)
+        => TryReadValue(index, out ReadOnlySpan<byte> value) ? value.ToArray() : null;
+
+    protected bool TryReadValue(int index, out ReadOnlySpan<byte> buffer)
     {
         nuint length;
         byte found;
         sbyte* error = null;
-        sbyte* value = rocksdb_net_read_value((rocksdb_net_read_t*)_handle.DangerousGetHandle(),
+        sbyte* value = rocksdb_net_read_value((rocksdb_net_read_t*)_handle!.DangerousGetHandle(),
             (nuint)index, &length, &found, &error);
         RocksDbInterop.ThrowIfError(error);
-        return found == 0 ? null : new ReadOnlySpan<byte>(value, checked((int)length)).ToArray();
+        buffer = found == 0 ? default : new ReadOnlySpan<byte>(value, checked((int)length));
+        return found != 0;
     }
 
     public abstract void Execute();
 
-    protected void Release() => _handle.Dispose();
+    protected void Release()
+    {
+        _handle!.Dispose();
+        _handle = null;
+    }
 }
 
-internal sealed class AsyncGetOperation(AsyncReadHandle handle) : AsyncReadOperation(handle)
+internal sealed class AsyncGetOperation<T, TDeserializer> : AsyncReadOperation, IValueTaskSource<T?>
+    where TDeserializer : ISpanDeserializer<T>
 {
-    private readonly TaskCompletionSource<byte[]?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    [ThreadStatic]
+    private static AsyncGetOperation<T, TDeserializer>? s_cached;
 
-    internal Task<byte[]?> Task => _completion.Task;
+    private ManualResetValueTaskSourceCore<T?> _completion = new() { RunContinuationsAsynchronously = true };
+    private TDeserializer _deserializer;
+
+    private AsyncGetOperation(AsyncReadHandle handle, TDeserializer deserializer) : base(handle)
+        => _deserializer = deserializer;
+
+    internal static AsyncGetOperation<T, TDeserializer> Rent(AsyncReadHandle handle, TDeserializer deserializer)
+    {
+        AsyncGetOperation<T, TDeserializer>? operation = s_cached;
+        if (operation is null)
+            return new(handle, deserializer);
+
+        s_cached = null;
+        operation.Initialize(handle);
+        operation._deserializer = deserializer;
+        return operation;
+    }
+
+    internal ValueTask<T?> ValueTask => new(this, _completion.Version);
 
     public override void Execute()
     {
-        byte[]? value;
+        T? value;
         try
         {
-            value = ReadValue(0);
+            value = TryReadValue(0, out ReadOnlySpan<byte> buffer) ? _deserializer.Deserialize(buffer) : default;
         }
         catch (Exception error)
         {
             Release();
+            _deserializer = default!;
             _completion.SetException(error);
             return;
         }
         Release();
+        _deserializer = default!;
         _completion.SetResult(value);
     }
+
+    public T? GetResult(short token)
+    {
+        // Only the consumer returns the operation to the pool, after native resources have been released.
+        if (_completion.GetStatus(token) == ValueTaskSourceStatus.Pending)
+            throw new InvalidOperationException("The read has not completed.");
+        try
+        {
+            return _completion.GetResult(token);
+        }
+        finally
+        {
+            _completion.Reset();
+            s_cached = this;
+        }
+    }
+
+    public ValueTaskSourceStatus GetStatus(short token) => _completion.GetStatus(token);
+
+    public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+        => _completion.OnCompleted(continuation, state, token, flags);
 }
 
 internal sealed class AsyncMultiGetOperation(AsyncReadHandle handle, byte[][] keys) : AsyncReadOperation(handle)

@@ -16,7 +16,30 @@ public sealed unsafe partial class RocksDb
     /// </remarks>
     public ValueTask<byte[]?> GetAsync(ReadOnlySpan<byte> key,
         IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+        => GetAsync<byte[], ByteArrayDeserializer>(key, default, cf, readOptions);
+
+    /// <summary>Deserializes a value asynchronously, returning default when the key does not exist.</summary>
+    /// <remarks>
+    /// Deserializes directly from native memory on a thread-pool thread, without an intermediate byte array.
+    /// Copies the key before returning. Read options must not be modified until completion.
+    /// RocksDB may complete synchronously when native coroutine reads are unavailable.
+    /// </remarks>
+    public ValueTask<T?> GetAsync<T>(ReadOnlySpan<byte> key, ISpanDeserializer<T> deserializer,
+        IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+        => GetAsync<T, ISpanDeserializer<T>>(key, deserializer, cf, readOptions);
+
+    /// <summary>Deserializes a value asynchronously without boxing a struct deserializer.</summary>
+    /// <remarks>
+    /// Returns default when the key does not exist. Deserialization runs on a thread-pool thread
+    /// directly over native memory. Copies the key before returning; read options must not be
+    /// modified until completion. Native submission may complete synchronously.
+    /// </remarks>
+    public ValueTask<T?> GetAsync<T, TDeserializer>(ReadOnlySpan<byte> key, TDeserializer deserializer,
+        IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+        where TDeserializer : ISpanDeserializer<T>
     {
+        if (deserializer is null)
+            throw new ArgumentNullException(nameof(deserializer));
         using HandleLease lease = Lease();
         ReadOptions options = readOptions ?? DefaultReadOptions;
         using HandleLease optionsLease = options.Lease(out nint optionsHandle);
@@ -31,9 +54,10 @@ public sealed unsafe partial class RocksDb
                 &keyData, &keyLength, &error);
             RocksDbInterop.ThrowIfError(error);
             AsyncReadHandle handle = OwnAsyncRead((nint)request, options);
-            AsyncGetOperation operation = new(handle);
+            AsyncGetOperation<T, TDeserializer> operation = AsyncGetOperation<T, TDeserializer>.Rent(handle, deserializer);
+            ValueTask<T?> result = operation.ValueTask;
             operation.Start(multi: false);
-            return new ValueTask<byte[]?>(operation.Task);
+            return result;
         }
     }
 
@@ -119,5 +143,10 @@ public sealed unsafe partial class RocksDb
             dbLease.Dispose();
             throw;
         }
+    }
+
+    private readonly struct ByteArrayDeserializer : ISpanDeserializer<byte[]>
+    {
+        public byte[] Deserialize(ReadOnlySpan<byte> buffer) => buffer.ToArray();
     }
 }

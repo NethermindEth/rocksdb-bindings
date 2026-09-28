@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -74,6 +75,118 @@ public class AsyncReadTests
         await Assert.That(await database.Db.GetAsync(key)).IsEquivalentTo(value, CollectionOrdering.Matching);
         await Assert.That(await database.Db.GetAsync([])).IsNotNull().And.IsEmpty();
         await Assert.That(await database.Db.GetAsync("missing"u8)).IsNull();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task GetAsync_DeserializesValuesAndReturnsDefaultForMissingKeys(bool typed)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put("key"u8, new byte[] { 42, 0, 0, 0 });
+        database.Db.Put("empty"u8, []);
+        using FlushOptions options = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(options);
+        for (int i = 0; i < 32; i++)
+        {
+            int value = typed
+                ? await database.Db.GetAsync<int, Int32Deserializer>("key"u8, default)
+                : await database.Db.GetAsync("key"u8, new Int32Deserializer());
+            int missing = typed
+                ? await database.Db.GetAsync<int, Int32Deserializer>("missing"u8, default)
+                : await database.Db.GetAsync("missing"u8, new Int32Deserializer());
+            await Assert.That(value).IsEqualTo(42);
+            await Assert.That(missing).IsEqualTo(0);
+        }
+        LengthDeserializer deserializer = new();
+        await Assert.That(await database.Db.GetAsync("empty"u8, deserializer)).IsEqualTo("0");
+        await Assert.That(await database.Db.GetAsync("missing"u8, deserializer)).IsNull();
+        await Assert.That(deserializer.Calls).IsEqualTo(1);
+        await Assert.That(async () => await database.Db.GetAsync<int>([], null!))
+            .ThrowsExactly<ArgumentNullException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task GetAsync_KeepsNativeMemoryAliveDuringDeserializationAndReleasesOnCompletion(bool fail)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put("key"u8, new byte[] { 42, 0, 0, 0 });
+        using Snapshot snapshot = database.Db.CreateSnapshot();
+        using ReadOptions options = new ReadOptions().SetSnapshot(snapshot);
+        ActionDeserializer deserializer = new(() =>
+        {
+            options.Dispose();
+            snapshot.Dispose();
+            database.Db.Dispose();
+            if (fail)
+                throw new FormatException("Invalid value");
+        });
+        ValueTask<int> read = database.Db.GetAsync("key"u8, deserializer, readOptions: options);
+        if (fail)
+            await Assert.That(async () => await read).ThrowsExactly<FormatException>();
+        else
+            await Assert.That(await read).IsEqualTo(42);
+
+        using DbOptions reopenOptions = new();
+        using RocksDb reopened = RocksDb.Open(reopenOptions, database.Path);
+        await Assert.That(await reopened.GetAsync("key"u8, new ActionDeserializer(() => { }))).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task GetAsync_ConcurrentDeserializersKeepTheirOwnState()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put("key"u8, new byte[] { 42, 0, 0, 0 });
+        for (int round = 0; round < 4; round++)
+        {
+            Task<int>[] reads = new Task<int>[128];
+            for (int i = 0; i < reads.Length; i++)
+                reads[i] = database.Db.GetAsync<int, Int32Deserializer>("key"u8, new(i)).AsTask();
+            int[] results = await Task.WhenAll(reads);
+            for (int i = 0; i < results.Length; i++)
+                await Assert.That(results[i]).IsEqualTo(42 + i);
+        }
+    }
+
+    [Test]
+    public async Task GetAsync_ReleasesNativeResourcesBeforeResultIsConsumed()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put("key"u8, new byte[] { 42, 0, 0, 0 });
+        ValueTask<int> read = database.Db.GetAsync<int, Int32Deserializer>("key"u8, default);
+        while (!read.IsCompleted)
+            await Task.Yield();
+        database.Db.Dispose();
+        using DbOptions options = new();
+        using RocksDb reopened = RocksDb.Open(options, database.Path);
+        await Assert.That(await read).IsEqualTo(42);
+    }
+
+    private readonly struct Int32Deserializer(int offset) : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => BinaryPrimitives.ReadInt32LittleEndian(buffer) + offset;
+    }
+
+    private sealed class LengthDeserializer : ISpanDeserializer<string>
+    {
+        internal int Calls { get; private set; }
+
+        public string Deserialize(ReadOnlySpan<byte> buffer)
+        {
+            Calls++;
+            return buffer.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private sealed class ActionDeserializer(Action action) : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer)
+        {
+            action();
+            return BinaryPrimitives.ReadInt32LittleEndian(buffer);
+        }
     }
 
     [Test]
@@ -164,6 +277,8 @@ public class AsyncReadTests
         SetTimestamp(options, timestamp);
 
         await Assert.That(async () => await database.Db.GetAsync("key"u8, readOptions: options))
+            .Throws<RocksDbException>();
+        await Assert.That(async () => await database.Db.GetAsync<int, Int32Deserializer>("key"u8, default, readOptions: options))
             .Throws<RocksDbException>();
         await Assert.That(async () => await database.Db.MultiGetAsync(["key"u8.ToArray()], readOptions: options))
             .Throws<RocksDbException>();

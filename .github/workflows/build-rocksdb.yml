@@ -90,11 +90,13 @@ jobs:
                  print "        --with-jemalloc-prefix=je_"
                }' $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
-          # Exception interposition conflicts with the static C++ runtime.
-          sed -i '/-DCMAKE_INSTALL_DIR=share\/folly/a\        -DFOLLY_NO_EXCEPTION_TRACER=ON' \
+          # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
+          folly_cpu=haswell
+          if [ "$TRIPLET" = arm64-linux ]; then folly_cpu=armv8-a+crc+crypto; fi
+          sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu\"" \
             vcpkg/ports/folly/portfile.cmake
           ./vcpkg/vcpkg install --clean-after-build \
-            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET \
+            jemalloc:$TRIPLET lz4:$TRIPLET "snappy[rtti]:$TRIPLET" zstd:$TRIPLET \
             "folly[liburing]:$TRIPLET"
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then

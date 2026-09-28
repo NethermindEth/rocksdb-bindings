@@ -95,9 +95,15 @@ jobs:
           if [ "$TRIPLET" = arm64-linux ]; then folly_cpu=armv8-a+crc+crypto; fi
           sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu\"" \
             vcpkg/ports/folly/portfile.cmake
+          # Fix feature detection and use the definitions supplied by liburing 2.15.
+          cp bindings/native/folly-liburing.patch vcpkg/ports/folly/
+          sed -i '/        fix-fmt-header.patch/a\        folly-liburing.patch' \
+            vcpkg/ports/folly/portfile.cmake
           ./vcpkg/vcpkg install --clean-after-build \
             jemalloc:$TRIPLET lz4:$TRIPLET "snappy[rtti]:$TRIPLET" zstd:$TRIPLET \
             "folly[liburing]:$TRIPLET"
+          grep -qx '#define FOLLY_HAS_LIBURING 1' \
+            vcpkg/installed/$TRIPLET/include/folly/folly-config.h
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"

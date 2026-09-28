@@ -8,8 +8,8 @@ project(rocksdb_bindings LANGUAGES C CXX)
 # including all C exports, into the same library used by the existing bindings.
 set(ROCKSDB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 add_subdirectory("${ROCKSDB_SOURCE}" rocksdb)
-# Use the bundled Folly configuration, including FOLLY_HAS_LIBURING.
-target_compile_options(rocksdb PRIVATE -UFOLLY_NO_CONFIG)
+# Filesystem sources check Folly feature macros before including its headers.
+target_compile_options(rocksdb PRIVATE -UFOLLY_NO_CONFIG -include folly/portability/Config.h)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/exports.cc" "")
 add_library(rocksdb-shared SHARED "${CMAKE_CURRENT_BINARY_DIR}/exports.cc")
 target_link_libraries(rocksdb-shared PRIVATE

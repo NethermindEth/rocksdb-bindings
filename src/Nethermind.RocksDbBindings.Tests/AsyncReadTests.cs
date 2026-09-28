@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using Nethermind.RocksDbBindings.Native;
@@ -9,6 +10,51 @@ namespace Nethermind.RocksDbBindings.Tests;
 
 public class AsyncReadTests
 {
+    [Test]
+    public async Task NativeCallback_CompletesOnTheReadExecutorWhenEnabled()
+    {
+        using var database = TestDatabase.Create();
+        using var options = new ReadOptions();
+        using var dbLease = database.Db.LeaseHandle(out nint db);
+        using var optionsLease = options.Lease(out nint readOptions);
+        var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = GCHandle.Alloc(completion);
+        nint request = 0;
+        var submittingThread = Environment.CurrentManagedThreadId;
+        try
+        {
+            request = SubmitNativeRead(db, readOptions, GCHandle.ToIntPtr(context));
+            var completingThread = await completion.Task;
+            if (Environment.GetEnvironmentVariable("ROCKSDB_EXPECT_NATIVE_ASYNC") == "1")
+                await Assert.That(completingThread).IsNotEqualTo(submittingThread);
+        }
+        finally
+        {
+            DestroyNativeRead(request);
+            context.Free();
+        }
+    }
+
+    private static unsafe nint SubmitNativeRead(nint db, nint options, nint context)
+    {
+        sbyte* key = null;
+        nuint length = 0;
+        sbyte* error = null;
+        var request = RocksDbNative.rocksdb_net_read_create(RocksDbInterop.Db(db),
+            RocksDbInterop.ReadOptions(options), 1, null, &key, &length, &error);
+        RocksDbInterop.ThrowIfError(error);
+        RocksDbNative.rocksdb_net_get_async(request, (void*)context, &NativeCompleted);
+        return (nint)request;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void NativeCompleted(void* context)
+        => ((TaskCompletionSource<int>)GCHandle.FromIntPtr((nint)context).Target!)
+            .SetResult(Environment.CurrentManagedThreadId);
+
+    private static unsafe void DestroyNativeRead(nint request)
+        => RocksDbNative.rocksdb_net_read_destroy((rocksdb_net_read_t*)request);
+
     [Test]
     [Arguments(false)]
     [Arguments(true)]

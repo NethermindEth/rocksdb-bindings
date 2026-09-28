@@ -64,7 +64,6 @@
     </None>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../THIRD-PARTY-NOTICES" Pack="true" PackagePath="/" />
-    <None Include="../../FOLLY-NOTICES.txt" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 

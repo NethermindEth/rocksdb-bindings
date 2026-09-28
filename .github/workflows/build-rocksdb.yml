@@ -90,10 +90,16 @@ jobs:
                  print "        --with-jemalloc-prefix=je_"
                }' $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
+          # Dependency sources embed __FILE__ too, so remap their paths as well.
+          prefix_map="-ffile-prefix-map=$GITHUB_WORKSPACE=."
+          triplet=$(find vcpkg/triplets -name "$TRIPLET.cmake")
+          echo "string(APPEND VCPKG_C_FLAGS \" $prefix_map\")" >> $triplet
+          echo "string(APPEND VCPKG_CXX_FLAGS \" $prefix_map\")" >> $triplet
           # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
+          # These flags replace the triplet's, so they repeat -fPIC and the path map.
           folly_cpu=haswell
           if [ "$TRIPLET" = arm64-linux ]; then folly_cpu=armv8-a+crc+crypto; fi
-          sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu\"" \
+          sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu $prefix_map\"" \
             vcpkg/ports/folly/portfile.cmake
           # Fix feature detection and use the definitions supplied by liburing 2.15.
           cp bindings/native/folly-liburing.patch vcpkg/ports/folly/
@@ -154,8 +160,6 @@ jobs:
           mkdir artifact
           cp -L build/librocksdb.so artifact/librocksdb.so
           strip artifact/librocksdb.so
-          cmake -DDEPS="$deps" -DOUTPUT=artifact/FOLLY-NOTICES.txt \
-            -P bindings/native/notices.cmake
 
       - name: Verify
         run: |
@@ -170,6 +174,10 @@ jobs:
           fi
           if ldd -r $library 2>&1 | grep -E 'not found|undefined symbol'; then
             echo "::error::The library has unresolved runtime dependencies"
+            exit 1
+          fi
+          if strings $library | grep -F "$GITHUB_WORKSPACE"; then
+            echo "::error::The library embeds build paths"
             exit 1
           fi
           # Private jemalloc symbols are available only before stripping.
@@ -211,7 +219,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
-          path: artifact/*
+          path: artifact/librocksdb.so
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
 
@@ -511,8 +519,6 @@ jobs:
       - name: Move artifacts
         working-directory: src/Nethermind.RocksDbBindings/runtimes
         run: |
-          mv linux-x64/FOLLY-NOTICES.txt ../../../FOLLY-NOTICES.txt
-          rm linux-arm64/FOLLY-NOTICES.txt
           for rid in linux-arm64 linux-x64; do
             mkdir -p $rid/native && mv -f $rid/librocksdb.so $rid/native/
           done

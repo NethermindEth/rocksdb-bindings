@@ -77,7 +77,9 @@ public class AsyncReadTests
     }
 
     [Test]
-    public async Task MultiGetAsync_PreservesOrderDuplicatesAndColumnFamilies()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGetAsync_PreservesOrderDuplicatesAndColumnFamilies(bool flush)
     {
         using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
         using var familyOptions = new ColumnFamilyOptions();
@@ -88,6 +90,12 @@ public class AsyncReadTests
         database.Db.Put(key, "default"u8);
         database.Db.Put(key, "block"u8, blocks);
         database.Db.Put([], []);
+        if (flush)
+        {
+            using var flushOptions = new FlushOptions().SetWaitForFlush(true);
+            database.Db.Flush(flushOptions);
+            database.Db.Flush(flushOptions, blocks);
+        }
 
         var values = await database.Db.MultiGetAsync([key, [], key, "missing"u8.ToArray(), key],
             [blocks, defaultFamily, defaultFamily, blocks, blocks]);

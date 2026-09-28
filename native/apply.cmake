@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: MIT
 
+if(NOT ROCKSDB_SOURCE)
+  set(ROCKSDB_SOURCE "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
 file(READ "${ROCKSDB_SOURCE}/db/c.cc" source)
 if(source MATCHES "rocksdb_async.inc")
   message(FATAL_ERROR "Async extension already applied")

@@ -61,7 +61,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
+        run: cmake -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -223,7 +223,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
+        run: cmake -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -338,7 +338,7 @@ jobs:
           path: bindings
 
       - name: Apply bindings extension
-        run: cmake -DROCKSDB_SOURCE=. -P bindings/native/apply.cmake
+        run: cmake -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -392,7 +392,10 @@ jobs:
 
           # WIN_CI enables parallel compilation and drops debug info; /Brepro
           # replaces the linker timestamp with a content hash.
-          cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.arch }} `
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vsMajor = ([version](& $vswhere -latest -property installationVersion)).Major
+          $generator = if ($vsMajor -ge 18) { "Visual Studio 18 2026" } else { "Visual Studio 17 2022" }
+          cmake -S . -B build -G $generator -A ${{ matrix.arch }} `
             "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro" `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
             -DFAIL_ON_WARNINGS=OFF `

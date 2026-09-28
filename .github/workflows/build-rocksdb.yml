@@ -71,7 +71,7 @@ jobs:
           path: vcpkg
 
       - name: Cache dependencies
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/vcpkg/archives
           key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
@@ -90,6 +90,9 @@ jobs:
                  print "        --with-jemalloc-prefix=je_"
                }' $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
+          # Exception interposition conflicts with the static C++ runtime.
+          sed -i '/-DCMAKE_INSTALL_DIR=share\/folly/a\        -DFOLLY_NO_EXCEPTION_TRACER=ON' \
+            vcpkg/ports/folly/portfile.cmake
           ./vcpkg/vcpkg install --clean-after-build \
             jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET \
             "folly[liburing]:$TRIPLET"
@@ -98,6 +101,12 @@ jobs:
             echo "::error::vcpkg produced shared dependencies: $shared"
             exit 1
           fi
+
+      - name: Save dependencies
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
 
       - name: Build
         run: |

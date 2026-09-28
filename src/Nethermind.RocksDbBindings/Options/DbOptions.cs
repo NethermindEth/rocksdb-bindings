@@ -12,7 +12,7 @@ public sealed class DbOptions : Options<DbOptions>
     public unsafe DbOptions SetReadIoExecutorThreads(int count)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
-        using var lease = Lease(out nint handle);
+        using HandleLease lease = Lease(out nint handle);
         rocksdb_options_set_read_io_executor_threads(RocksDbInterop.Options(handle), count);
         return this;
     }

@@ -47,7 +47,7 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         try
         {
             context = GCHandle.Alloc(this);
-            var request = (rocksdb_net_read_t*)_handle.DangerousGetHandle();
+            rocksdb_net_read_t* request = (rocksdb_net_read_t*)_handle.DangerousGetHandle();
             if (multi)
                 rocksdb_net_multi_get_async(request, (void*)GCHandle.ToIntPtr(context), &OnComplete);
             else
@@ -65,8 +65,8 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnComplete(void* context)
     {
-        var root = GCHandle.FromIntPtr((nint)context);
-        var operation = (AsyncReadOperation)root.Target!;
+        GCHandle root = GCHandle.FromIntPtr((nint)context);
+        AsyncReadOperation operation = (AsyncReadOperation)root.Target!;
         // Completion must leave the RocksDB callback before reading/freeing the
         // request or running a continuation that could submit another read.
         ThreadPool.UnsafeQueueUserWorkItem(operation, preferLocal: false);
@@ -78,7 +78,7 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         nuint length;
         byte found;
         sbyte* error = null;
-        var value = rocksdb_net_read_value((rocksdb_net_read_t*)_handle.DangerousGetHandle(),
+        sbyte* value = rocksdb_net_read_value((rocksdb_net_read_t*)_handle.DangerousGetHandle(),
             (nuint)index, &length, &found, &error);
         RocksDbInterop.ThrowIfError(error);
         return found == 0 ? null : new ReadOnlySpan<byte>(value, checked((int)length)).ToArray();
@@ -125,7 +125,7 @@ internal sealed class AsyncMultiGetOperation(AsyncReadHandle handle, byte[][] ke
         try
         {
             values = new KeyValuePair<byte[], byte[]?>[keys.Length];
-            for (var i = 0; i < keys.Length; i++)
+            for (int i = 0; i < keys.Length; i++)
                 values[i] = new(keys[i], ReadValue(i));
         }
         catch (Exception error)

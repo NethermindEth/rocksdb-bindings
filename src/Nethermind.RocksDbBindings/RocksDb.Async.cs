@@ -17,21 +17,21 @@ public sealed unsafe partial class RocksDb
     public ValueTask<byte[]?> GetAsync(ReadOnlySpan<byte> key,
         IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        using var lease = Lease();
-        var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        using HandleLease lease = Lease();
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
         fixed (byte* keyPtr = key)
         {
-            var keyData = (sbyte*)keyPtr;
-            var keyLength = (nuint)key.Length;
-            var family = RocksDbInterop.ColumnFamily(cf?.Handle ?? 0);
+            sbyte* keyData = (sbyte*)keyPtr;
+            nuint keyLength = (nuint)key.Length;
+            Native.rocksdb_column_family_handle_t* family = RocksDbInterop.ColumnFamily(cf?.Handle ?? 0);
             sbyte* error = null;
-            var request = rocksdb_net_read_create(RocksDbInterop.Db(NativeHandle),
+            Native.rocksdb_net_read_t* request = rocksdb_net_read_create(RocksDbInterop.Db(NativeHandle),
                 RocksDbInterop.ReadOptions(optionsHandle), 1, cf is null ? null : &family,
                 &keyData, &keyLength, &error);
             RocksDbInterop.ThrowIfError(error);
-            var handle = OwnAsyncRead((nint)request, options);
-            var operation = new AsyncGetOperation(handle);
+            AsyncReadHandle handle = OwnAsyncRead((nint)request, options);
+            AsyncGetOperation operation = new(handle);
             operation.Start(multi: false);
             return new ValueTask<byte[]?>(operation.Task);
         }
@@ -47,23 +47,23 @@ public sealed unsafe partial class RocksDb
         IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
-        using var lease = Lease();
+        using HandleLease lease = Lease();
         if (cf is not null && cf.Length != keys.Length)
             throw new ArgumentException("Column family handle count must match key count.", nameof(cf));
 
-        var options = readOptions ?? DefaultReadOptions;
-        using var optionsLease = options.Lease(out nint optionsHandle);
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
         if (keys.Length == 0)
             return ValueTask.FromResult(Array.Empty<KeyValuePair<byte[], byte[]?>>());
 
-        var keyCopies = new byte[keys.Length][];
-        var pins = new PinnedGCHandle<byte[]>[keys.Length];
-        var keyPointers = new nint[keys.Length];
-        var keyLengths = new nuint[keys.Length];
-        var families = cf is null ? null : new nint[keys.Length];
+        byte[][] keyCopies = new byte[keys.Length][];
+        PinnedGCHandle<byte[]>[] pins = new PinnedGCHandle<byte[]>[keys.Length];
+        nint[] keyPointers = new nint[keys.Length];
+        nuint[] keyLengths = new nuint[keys.Length];
+        nint[]? families = cf is null ? null : new nint[keys.Length];
         try
         {
-            for (var i = 0; i < keys.Length; i++)
+            for (int i = 0; i < keys.Length; i++)
             {
                 if (keys[i] is null)
                     throw new ArgumentException("Keys cannot contain null values.", nameof(keys));
@@ -83,20 +83,20 @@ public sealed unsafe partial class RocksDb
             fixed (nint* familyPointer = families)
             {
                 sbyte* error = null;
-                var request = rocksdb_net_read_create(RocksDbInterop.Db(NativeHandle),
+                Native.rocksdb_net_read_t* request = rocksdb_net_read_create(RocksDbInterop.Db(NativeHandle),
                     RocksDbInterop.ReadOptions(optionsHandle), (nuint)keys.Length,
                     (Native.rocksdb_column_family_handle_t**)familyPointer,
                     (sbyte**)keyPointer, lengthPointer, &error);
                 RocksDbInterop.ThrowIfError(error);
-                var handle = OwnAsyncRead((nint)request, options);
-                var operation = new AsyncMultiGetOperation(handle, keyCopies);
+                AsyncReadHandle handle = OwnAsyncRead((nint)request, options);
+                AsyncMultiGetOperation operation = new(handle, keyCopies);
                 operation.Start(multi: true);
                 return new ValueTask<KeyValuePair<byte[], byte[]?>[]>(operation.Task);
             }
         }
         finally
         {
-            foreach (var pin in pins)
+            foreach (PinnedGCHandle<byte[]> pin in pins)
                 pin.Dispose();
         }
     }

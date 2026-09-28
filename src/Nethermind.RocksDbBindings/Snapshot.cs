@@ -22,4 +22,6 @@ public sealed class Snapshot : IDisposable
     }
 
     public void Dispose() => _handle.Dispose();
+
+    internal HandleLease Lease() => new(_handle);
 }

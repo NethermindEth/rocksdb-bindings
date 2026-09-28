@@ -11,7 +11,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.RocksDbBindings;
 
-public unsafe sealed class RocksDb : IDisposable
+public unsafe sealed partial class RocksDb : IDisposable
 {
     private const byte ForceBottommostLevelCompaction = 2;
 

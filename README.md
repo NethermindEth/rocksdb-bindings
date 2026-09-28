@@ -5,6 +5,24 @@
 
 C# bindings for [RocksDB](https://github.com/facebook/rocksdb).
 
+## Async reads
+
+`GetAsync` and `MultiGetAsync` follow the results and error handling of `Get` and
+`MultiGet`. Keys are copied during submission. Read options must not be mutated
+until completion; disposing the database, read options or snapshot defers their
+native release until outstanding reads finish.
+
+```csharp
+byte[]? value = await db.GetAsync(key);
+KeyValuePair<byte[], byte[]?>[] values = await db.MultiGetAsync(keys);
+```
+
+The API is the same on every platform. Linux builds enable RocksDB's native
+coroutine reads using Folly and io_uring. Windows, macOS and filesystems without
+a read executor use RocksDB's synchronous fallback, which can block during
+submission. `DbOptions.SetReadIoExecutorThreads` configures the shared executor
+on supported builds. This API does not cancel submitted reads.
+
 ## License
 
 This project is licensed under the [MIT](https://github.com/nethermindeth/rocksdb-bindings/blob/main/LICENSE) license.

@@ -5,6 +5,10 @@ Nethermind.RocksDbBindings itself is licensed under the MIT license; see the
 LICENSE file in the source repository. This file reproduces the licenses of the
 third-party software distributed as part of this package.
 
+Linux coroutine reads additionally link Folly, liburing and their dependencies.
+Their licenses are reproduced in FOLLY-NOTICES.txt, generated from the pinned
+vcpkg build and included with the package.
+
 Two kinds of third-party software are covered:
 
   * Source-derived code compiled into Nethermind.RocksDbBindings.dll.

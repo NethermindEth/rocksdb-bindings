@@ -1,0 +1,14 @@
+--namespace
+Nethermind.RocksDbBindings.Native
+--method-class-name
+RocksDbNative
+--library-path
+rocksdb
+--language
+c++
+--std
+c++17
+--config
+codegen=latest
+--generate
+file-scoped-namespaces

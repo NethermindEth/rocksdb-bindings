@@ -55,6 +55,14 @@ jobs:
           repository: facebook/rocksdb
           ref: ${{ inputs.ref }}
 
+      - name: Check out bindings extension
+        uses: actions/checkout@v7
+        with:
+          path: bindings
+
+      - name: Apply bindings extension
+        run: cmake -P bindings/native/apply.cmake
+
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
         with:
@@ -63,7 +71,7 @@ jobs:
           path: vcpkg
 
       - name: Cache dependencies
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/vcpkg/archives
           key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
@@ -82,13 +90,37 @@ jobs:
                  print "        --with-jemalloc-prefix=je_"
                }' $portfile > $portfile.patched
           mv -f $portfile.patched $portfile
+          # Dependency sources embed __FILE__ too, so remap their paths as well.
+          prefix_map="-ffile-prefix-map=$GITHUB_WORKSPACE=."
+          triplet=$(find vcpkg/triplets -name "$TRIPLET.cmake")
+          echo "string(APPEND VCPKG_C_FLAGS \" $prefix_map\")" >> $triplet
+          echo "string(APPEND VCPKG_CXX_FLAGS \" $prefix_map\")" >> $triplet
+          # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
+          # These flags replace the triplet's, so they repeat -fPIC and the path map.
+          folly_cpu=haswell
+          if [ "$TRIPLET" = arm64-linux ]; then folly_cpu=armv8-a+crc+crypto; fi
+          sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu $prefix_map\"" \
+            vcpkg/ports/folly/portfile.cmake
+          # Fix feature detection and use the definitions supplied by liburing 2.15.
+          cp bindings/native/folly-liburing.patch vcpkg/ports/folly/
+          sed -i '/        fix-fmt-header.patch/a\        folly-liburing.patch' \
+            vcpkg/ports/folly/portfile.cmake
           ./vcpkg/vcpkg install --clean-after-build \
-            jemalloc:$TRIPLET lz4:$TRIPLET snappy:$TRIPLET zstd:$TRIPLET
+            jemalloc:$TRIPLET lz4:$TRIPLET "snappy[rtti]:$TRIPLET" zstd:$TRIPLET \
+            "folly[liburing]:$TRIPLET"
+          grep -qx '#define FOLLY_HAS_LIBURING 1' \
+            vcpkg/installed/$TRIPLET/include/folly/folly-config.h
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
             exit 1
           fi
+
+      - name: Save dependencies
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ env.VCPKG_REF }}-${{ github.run_id }}
 
       - name: Build
         run: |
@@ -96,7 +128,8 @@ jobs:
           # Keep bundled dependencies private and C++ allocations on jemalloc.
           echo '{ global: rocksdb_*; local: *; };' > $GITHUB_WORKSPACE/exports.map
           # RocksDB's logging macros embed __FILE__, so remap the paths.
-          cmake -S . -B build \
+          cmake -S bindings/native -B build \
+            -DROCKSDB_SOURCE=$GITHUB_WORKSPACE \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS=-ffile-prefix-map=$GITHUB_WORKSPACE=. \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
@@ -107,15 +140,15 @@ jobs:
             -DFAIL_ON_WARNINGS=OFF \
             -DHAVE_MALLOC_USABLE_SIZE=OFF \
             -DPORTABLE=$MIN_CPU \
-            -DROCKSDB_BUILD_SHARED=ON \
-            -DUSE_RTTI=OFF \
+            -DUSE_COROUTINES=ON \
+            -DUSE_RTTI=ON \
             -DWITH_BENCHMARK_TOOLS=OFF \
             -DWITH_BZ2=OFF \
             -DWITH_CORE_TOOLS=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GFLAGS=OFF \
             -DWITH_JEMALLOC=ON \
-            -DWITH_LIBURING=OFF \
+            -DWITH_LIBURING=ON \
             -DWITH_LZ4=ON \
             -DWITH_SNAPPY=ON \
             -DWITH_TESTS=OFF \
@@ -141,6 +174,10 @@ jobs:
           fi
           if ldd -r $library 2>&1 | grep -E 'not found|undefined symbol'; then
             echo "::error::The library has unresolved runtime dependencies"
+            exit 1
+          fi
+          if strings $library | grep -F "$GITHUB_WORKSPACE"; then
+            echo "::error::The library embeds build paths"
             exit 1
           fi
           # Private jemalloc symbols are available only before stripping.
@@ -204,6 +241,14 @@ jobs:
         with:
           repository: facebook/rocksdb
           ref: ${{ inputs.ref }}
+
+      - name: Check out bindings extension
+        uses: actions/checkout@v7
+        with:
+          path: bindings
+
+      - name: Apply bindings extension
+        run: cmake -P bindings/native/apply.cmake
 
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
@@ -312,6 +357,14 @@ jobs:
           repository: facebook/rocksdb
           ref: ${{ inputs.ref }}
 
+      - name: Check out bindings extension
+        uses: actions/checkout@v7
+        with:
+          path: bindings
+
+      - name: Apply bindings extension
+        run: cmake -P bindings/native/apply.cmake
+
       - name: Check out vcpkg repository
         uses: actions/checkout@v7
         with:
@@ -364,7 +417,10 @@ jobs:
 
           # WIN_CI enables parallel compilation and drops debug info; /Brepro
           # replaces the linker timestamp with a content hash.
-          cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.arch }} `
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vsMajor = ([version](& $vswhere -latest -property installationVersion)).Major
+          $generator = if ($vsMajor -ge 18) { "Visual Studio 18 2026" } else { "Visual Studio 17 2022" }
+          cmake -S . -B build -G $generator -A ${{ matrix.arch }} `
             "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro" `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
             -DFAIL_ON_WARNINGS=OFF `
@@ -435,7 +491,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bindings
-          path: src/Nethermind.RocksDbBindings/RocksDbNative.g.cs
+          path: src/Nethermind.RocksDbBindings/RocksDbNative*.g.cs
           retention-days: ${{ env.RETENTION }}
           if-no-files-found: error
 

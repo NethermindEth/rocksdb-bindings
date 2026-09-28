@@ -29,3 +29,14 @@ ClangSharpPInvokeGenerator @"$root/generation/rocksdb.rsp" \
 
 mv "$work/RocksDbNative.g.cs" \
   "$root/src/Nethermind.RocksDbBindings/RocksDbNative.g.cs"
+
+mkdir -p "$work/rocksdb"
+cp "$work/c.h" "$work/rocksdb/c.h"
+ClangSharpPInvokeGenerator @"$root/generation/rocksdb-async.rsp" \
+  --header-file "$header_file" \
+  --include-directory "$work" \
+  --file "$root/native/rocksdb_async.h" \
+  --output "$work/RocksDbNative.Async.g.cs"
+
+mv "$work/RocksDbNative.Async.g.cs" \
+  "$root/src/Nethermind.RocksDbBindings/RocksDbNative.Async.g.cs"

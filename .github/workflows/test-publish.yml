@@ -21,6 +21,7 @@ jobs:
   test:
     name: Test
     strategy:
+      fail-fast: false
       matrix:
         os:
           - ubuntu-latest
@@ -41,6 +42,8 @@ jobs:
 
       - name: Test
         working-directory: src/Nethermind.RocksDbBindings.Tests
+        env:
+          ROCKSDB_EXPECT_NATIVE_ASYNC: ${{ runner.os == 'Linux' && '1' || '0' }}
         run: dotnet test -c release
 
   notices:
@@ -53,8 +56,9 @@ jobs:
       - name: Check declared dependencies are mentioned
         run: |
           # grep exits non-zero on no match, which would end the step early.
-          ports=$(grep -oE '[a-z0-9.+-]+:\$(env:)?TRIPLET' \
-            .github/workflows/build-rocksdb.yml | sed 's/:.*//' | sort -u || true)
+          # Ports may carry a feature list, e.g. folly[liburing]:$TRIPLET.
+          ports=$(grep -oE '[a-z0-9.+-]+(\[[a-z0-9,-]+\])?:\$(env:)?TRIPLET' \
+            .github/workflows/build-rocksdb.yml | sed 's/[:[].*//' | sort -u || true)
           if [ -z "$ports" ]; then
             echo "::error::No vcpkg ports found in build-rocksdb.yml"
             exit 1

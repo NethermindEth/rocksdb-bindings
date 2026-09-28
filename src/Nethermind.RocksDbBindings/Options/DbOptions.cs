@@ -8,6 +8,15 @@ namespace Nethermind.RocksDbBindings;
 /// <inheritdoc/>
 public sealed class DbOptions : Options<DbOptions>
 {
+    /// <summary>Sets the maximum thread count of RocksDB's shared async read executor.</summary>
+    public unsafe DbOptions SetReadIoExecutorThreads(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        using HandleLease lease = Lease(out nint handle);
+        rocksdb_options_set_read_io_executor_threads(RocksDbInterop.Options(handle), count);
+        return this;
+    }
+
     // Read by an opening database, which takes its own reference: this slot can be pointed at
     // another environment afterwards, and that must not unroot the one already in use.
     internal Env? Env => NativeHandle.Env;

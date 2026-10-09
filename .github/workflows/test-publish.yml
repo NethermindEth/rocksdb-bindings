@@ -4,8 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       publish:
@@ -76,7 +74,7 @@ jobs:
   publish:
     name: Publish
     needs: [notices, test]
-    if: github.event_name == 'workflow_dispatch' && inputs.publish != 'No' || github.event_name == 'release'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish != 'No'
     runs-on: ubuntu-latest
     permissions:
       contents: read

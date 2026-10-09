@@ -232,7 +232,7 @@ jobs:
     runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-26-intel' }}
     env:
       TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-osx' || 'x64-osx' }}
-      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
       # See the Linux job.
       MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
     steps:

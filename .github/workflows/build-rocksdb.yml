@@ -428,7 +428,7 @@ jobs:
             "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro" `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
             -DFAIL_ON_WARNINGS=OFF `
-            -DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'SSE4.2' }} `
+            "-DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'SSE4.2' }}" `
             -DROCKSDB_BUILD_SHARED=ON `
             -DUSE_RTTI=OFF `
             -DWIN_CI=ON `

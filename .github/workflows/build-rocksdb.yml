@@ -36,9 +36,9 @@ jobs:
       options: --platform ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
     env:
       TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-linux' || 'x64-linux' }}
-      # Minimum CPU architecture. x86-64-v3 omits the PCLMUL that RocksDB's
-      # CRC32C path infers from AVX; 1 keeps its armv8-a+crc+crypto baseline.
-      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
+      # Minimum CPU architecture. x86-64-v2 omits AVX2 and PCLMUL, which some
+      # CPUs and VM models lack; 1 keeps its armv8-a+crc+crypto baseline.
+      MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'x86-64-v2' }}
     steps:
       - name: Install dependencies
         env:
@@ -97,7 +97,7 @@ jobs:
           echo "string(APPEND VCPKG_CXX_FLAGS \" $prefix_map\")" >> $triplet
           # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
           # These flags replace the triplet's, so they repeat -fPIC and the path map.
-          folly_cpu=haswell
+          folly_cpu=x86-64-v2
           if [ "$TRIPLET" = arm64-linux ]; then folly_cpu=armv8-a+crc+crypto; fi
           sed -i "/-DCMAKE_INSTALL_DIR=share\/folly/a\\        -DFOLLY_NO_EXCEPTION_TRACER=ON\n        \"-DCMAKE_CXX_FLAGS=-fPIC -march=$folly_cpu $prefix_map\"" \
             vcpkg/ports/folly/portfile.cmake
@@ -233,7 +233,8 @@ jobs:
     env:
       TRIPLET: ${{ matrix.arch == 'arm64' && 'arm64-osx' || 'x64-osx' }}
       MACOSX_DEPLOYMENT_TARGET: "15.0"
-      # See the Linux job.
+      # Intel Macs supported by the deployment target have AVX2. Haswell keeps
+      # the PCLMUL that RocksDB's CRC32C path needs, unlike x86-64-v3.
       MIN_CPU: ${{ matrix.arch == 'arm64' && '1' || 'haswell' }}
     steps:
       - name: Check out RocksDB repository
@@ -415,6 +416,9 @@ jobs:
           $env:ZSTD_INCLUDE = "$deps/include"
           $env:ZSTD_LIB_RELEASE = Resolve-Library @("zstd.lib", "zstd_static.lib", "libzstd_static.lib")
 
+          # MSVC defines no SSE4.2 macro, which RocksDB needs for hardware CRC32C.
+          if ("${{ matrix.arch }}" -eq "x64") { $env:CXXFLAGS = "/D__SSE4_2__=1" }
+
           # WIN_CI enables parallel compilation and drops debug info; /Brepro
           # replaces the linker timestamp with a content hash.
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
@@ -424,7 +428,7 @@ jobs:
             "-DCMAKE_SHARED_LINKER_FLAGS=/Brepro" `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
             -DFAIL_ON_WARNINGS=OFF `
-            -DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'AVX2' }} `
+            "-DPORTABLE=${{ matrix.arch == 'arm64' && '1' || 'SSE4.2' }}" `
             -DROCKSDB_BUILD_SHARED=ON `
             -DUSE_RTTI=OFF `
             -DWIN_CI=ON `

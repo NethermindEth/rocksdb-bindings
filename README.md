@@ -5,6 +5,12 @@
 
 C# bindings for [RocksDB](https://github.com/facebook/rocksdb).
 
+## CPU requirements
+
+Linux and Windows x64 binaries require x86-64-v2 (SSE4.2 and POPCNT), the .NET 11
+baseline. macOS x64 binaries require AVX2, available on all Intel Macs supported by
+macOS 15.
+
 ## Async reads
 
 `GetAsync` and `MultiGetAsync` follow the results and error handling of `Get` and

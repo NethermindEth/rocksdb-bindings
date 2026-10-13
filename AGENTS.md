@@ -19,5 +19,6 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 - Use conventional commits; keep scoped and imperative.
 - Do not edit `RocksDbNative*.g.cs`; regenerate it if needed using the [Dockerfile](./generation/Dockerfile). Do not install ClangSharp locally.
 - Prefer the latest versions of GitHub Actions and runners.
+- Keep native binaries within the [CPU requirements](./README.md#cpu-requirements).
 - Update [THIRD-PARTY-NOTICES](./THIRD-PARTY-NOTICES) when introducing a dependency if needed.
 - Keep [AGENTS.md](./AGENTS.md) in sync with the ongoing development.

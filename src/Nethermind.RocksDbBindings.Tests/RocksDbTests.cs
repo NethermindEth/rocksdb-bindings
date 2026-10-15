@@ -559,28 +559,27 @@ public class RocksDbTests
     [Arguments(true, true)]
     public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool proposed, bool namedFamily)
     {
-        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
-        using DbOptions options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies().SetBlockBasedTableFactory(table);
-        using ColumnFamilyOptions defaultOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
-        using ColumnFamilyOptions familyOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
-        ColumnFamilies families = new(defaultOptions);
-        if (namedFamily) families.Add("blocks", familyOptions);
-        using TestDatabase database = TestDatabase.Create(options, families);
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
         IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
         database.Db.Put([1, 1], [10], family);
         database.Db.Put([1, 2], [20], family);
-        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
-        if (family is null) database.Db.Flush(flush);
-        else database.Db.Flush(flush, family);
-        using ReadOptions readOptions = new ReadOptions().SetReadTier(1).SetFillCache(false);
         int[] values = [99, 99];
 
-        await Assert.That(() => ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), family, readOptions))
+        await Assert.That(() => ReadWithUnsupportedTimestamp(proposed, database.Db, values, family))
             .Throws<RocksDbNativeException>();
 
         await Assert.That(values).IsEquivalentTo([0, 0], CollectionOrdering.Matching);
         ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), family);
         await Assert.That(values).IsEquivalentTo([10, 20], CollectionOrdering.Matching);
+    }
+
+    private static unsafe void ReadWithUnsupportedTimestamp(bool proposed, RocksDb db, int[] values, IColumnFamilyHandle? family)
+    {
+        using ReadOptions options = new();
+        using HandleLease lease = options.Lease(out nint handle);
+        byte timestamp = 1;
+        Native.RocksDbNative.rocksdb_readoptions_set_timestamp((Native.rocksdb_readoptions_t*)handle, (sbyte*)&timestamp, 1);
+        ReadFixed(proposed, db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), family, options);
     }
 
     [Test]

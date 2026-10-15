@@ -48,6 +48,45 @@ a read executor use RocksDB's synchronous fallback, which can block during
 submission. `DbOptions.SetReadIoExecutorThreads` configures the shared executor
 on supported builds. This API does not cancel submitted reads.
 
+## Reusing iterator bounds
+
+`ReadOptions.UpdateIterateBounds` copies new lower and upper bounds into the
+buffers reserved by `SetIterateBounds`. Each new bound must fit its original
+buffer. Larger bounds and missing buffers are rejected before either bound
+changes. Updating does not allocate or replace the buffers.
+
+Bounds reuse supports non-tailing iterators only. Updates are rejected while
+`SetTailing(true)` is set. Once these options have created a tailing iterator,
+use fresh non-tailing options for bounds reuse. Setting tailing to false later
+does not change an existing iterator's mode.
+
+```csharp
+using ReadOptions options = new ReadOptions().SetIterateBounds(firstLower, firstUpper);
+using Iterator iterator = db.NewIterator(readOptions: options);
+
+foreach ((byte[] lower, byte[] upper) in ranges)
+{
+    options.UpdateIterateBounds(lower, upper);
+    iterator.Seek(lower);
+    while (iterator.Valid())
+    {
+        Consume(iterator.GetKeySpan(), iterator.GetValueSpan());
+        iterator.Next();
+    }
+    iterator.ThrowIfError();
+}
+```
+
+All iterators created from these options observe the new bounds. Stop using
+them before updating, then seek each iterator again before reading it. Do not
+update bounds concurrently with iteration or outstanding asynchronous reads.
+The ordinary `SetIterate*` methods replace buffers and must not be called while
+an iterator uses them.
+
+Updating bounds does not refresh the iterator's snapshot. Keep reuse local to
+a request or other bounded read scope, then dispose the iterator. A long-lived
+iterator can retain memtables and SST files after compaction.
+
 ## License
 
 This project is licensed under the [MIT](https://github.com/nethermindeth/rocksdb-bindings/blob/main/LICENSE) license.

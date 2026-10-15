@@ -11,9 +11,7 @@ namespace Nethermind.RocksDbBindings;
 /// An iterator takes its own reference to these options, so disposing them under a live iterator
 /// defers the release until the iterator is done rather than taking it away. It also captures
 /// the snapshot they carried when it was created, so a later <see cref="SetSnapshot"/> or
-/// <see cref="ClearSnapshot"/> leaves it reading the one it started with. The iterate bounds are
-/// the exception: an iterator reads the buffers these options own, and the setters overwrite them
-/// in place, so bounds must not be changed while an iterator created from them is alive.
+/// <see cref="ClearSnapshot"/> leaves it reading the one it started with.
 /// </remarks>
 public sealed unsafe class ReadOptions : NativeOptions
 {
@@ -112,7 +110,7 @@ public sealed unsafe class ReadOptions : NativeOptions
 
         var buffer = AllocateCopy(key);
         rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)buffer, (nuint)key.Length);
-        _handle.InstallLowerBound(buffer);
+        _handle.InstallLowerBound(buffer, key.Length);
         return this;
     }
 
@@ -127,7 +125,7 @@ public sealed unsafe class ReadOptions : NativeOptions
 
         var buffer = AllocateCopy(key);
         rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)buffer, (nuint)key.Length);
-        _handle.InstallUpperBound(buffer);
+        _handle.InstallUpperBound(buffer, key.Length);
         return this;
     }
 
@@ -138,6 +136,16 @@ public sealed unsafe class ReadOptions : NativeOptions
     /// <remarks>Do not change bounds while an iterator created from these options is alive.</remarks>
     public ReadOptions SetIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
         => SetIterateLowerBound(lowerBound).SetIterateUpperBound(upperBound);
+
+    /// <summary>Updates bounds in place for non-tailing iteration. Seek again before reading.</summary>
+    /// <exception cref="InvalidOperationException">Tailing is enabled, these options have created a tailing iterator,
+    /// or either bound has not been set. Use fresh non-tailing options after creating a tailing iterator.</exception>
+    public ReadOptions UpdateIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
+    {
+        using HandleLease lease = Lease(out _);
+        _handle.UpdateBounds(lowerBound, upperBound);
+        return this;
+    }
 
     public ReadOptions SetReadTier(int value)
     {
@@ -152,6 +160,7 @@ public sealed unsafe class ReadOptions : NativeOptions
         using var lease = Lease(out nint handle);
 
         rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
+        _handle.Tailing = value;
         return this;
     }
 

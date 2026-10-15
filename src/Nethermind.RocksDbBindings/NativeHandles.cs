@@ -120,6 +120,16 @@ internal sealed unsafe class ReadOptionsHandle : SafeHandle
 {
     private nint _lowerBound;
     private nint _upperBound;
+    private int _lowerBoundCapacity = -1;
+    private int _upperBoundCapacity = -1;
+    private bool _createdTailingIterator;
+
+    internal bool Tailing { get; set; }
+
+    internal void RegisterIterator()
+    {
+        if (Tailing) _createdTailingIterator = true;
+    }
 
     public ReadOptionsHandle(nint handle) : base(nint.Zero, ownsHandle: true) => SetHandle(handle);
 
@@ -136,10 +146,35 @@ internal sealed unsafe class ReadOptionsHandle : SafeHandle
     /// until the new one is installed: allocate, point RocksDB at it, then free the old one. A
     /// failed allocation thus leaves both the field and RocksDB on the still-valid old buffer.
     /// </remarks>
-    internal void InstallLowerBound(nint buffer) => Install(ref _lowerBound, buffer);
+    internal void InstallLowerBound(nint buffer, int capacity)
+    {
+        Install(ref _lowerBound, buffer);
+        _lowerBoundCapacity = capacity;
+    }
 
     /// <inheritdoc cref="InstallLowerBound"/>
-    internal void InstallUpperBound(nint buffer) => Install(ref _upperBound, buffer);
+    internal void InstallUpperBound(nint buffer, int capacity)
+    {
+        Install(ref _upperBound, buffer);
+        _upperBoundCapacity = capacity;
+    }
+
+    internal void UpdateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
+    {
+        if (Tailing || _createdTailingIterator)
+            throw new InvalidOperationException("Bounds reuse requires non-tailing options that have not created a tailing iterator.");
+
+        if (_lowerBoundCapacity < 0 || _upperBoundCapacity < 0)
+            throw new InvalidOperationException("Set both iterate bounds before updating them.");
+
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(lowerBound.Length, _lowerBoundCapacity, nameof(lowerBound));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(upperBound.Length, _upperBoundCapacity, nameof(upperBound));
+
+        lowerBound.CopyTo(new Span<byte>((void*)_lowerBound, lowerBound.Length));
+        upperBound.CopyTo(new Span<byte>((void*)_upperBound, upperBound.Length));
+        rocksdb_readoptions_set_iterate_lower_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)_lowerBound, (nuint)lowerBound.Length);
+        rocksdb_readoptions_set_iterate_upper_bound(RocksDbInterop.ReadOptions(handle), (sbyte*)_upperBound, (nuint)upperBound.Length);
+    }
 
     protected override bool ReleaseHandle()
     {
@@ -237,6 +272,7 @@ internal sealed unsafe class IteratorHandle : ChildHandle
             readOptions.DangerousAddRef(ref added);
             // Only reachable when the add-ref succeeded, so the release matches what was taken.
             _readOptions = readOptions;
+            if (readOptions is ReadOptionsHandle options) options.RegisterIterator();
         }
 
         Snapshot = snapshot;

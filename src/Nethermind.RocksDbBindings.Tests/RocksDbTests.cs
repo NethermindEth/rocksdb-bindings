@@ -553,33 +553,78 @@ public class RocksDbTests
     }
 
     [Test]
-    [Arguments(false, false)]
-    [Arguments(false, true)]
-    [Arguments(true, false)]
-    [Arguments(true, true)]
-    public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool proposed, bool namedFamily)
+    [Arguments(false, false, 2)]
+    [Arguments(false, true, 2)]
+    [Arguments(true, false, 2)]
+    [Arguments(true, true, 2)]
+    [Arguments(false, false, 512)]
+    [Arguments(false, true, 512)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 512)]
+    public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool proposed, bool namedFamily, int count)
     {
         using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
         IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
         database.Db.Put([1, 1], [10], family);
         database.Db.Put([1, 2], [20], family);
-        int[] values = [99, 99];
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = 1;
+            keys[i * 2 + 1] = (byte)(i % 2 + 1);
+        }
 
-        await Assert.That(() => ReadWithUnsupportedTimestamp(proposed, database.Db, values, family))
+        await Assert.That(() => ReadWithUnsupportedTimestamp(proposed, database.Db, keys, values, family))
             .Throws<RocksDbNativeException>();
 
-        await Assert.That(values).IsEquivalentTo([0, 0], CollectionOrdering.Matching);
-        ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), family);
-        await Assert.That(values).IsEquivalentTo([10, 20], CollectionOrdering.Matching);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+        ReadFixed(proposed, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(i % 2 == 0 ? 10 : 20);
     }
 
-    private static unsafe void ReadWithUnsupportedTimestamp(bool proposed, RocksDb db, int[] values, IColumnFamilyHandle? family)
+    private static unsafe void ReadWithUnsupportedTimestamp(bool proposed, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle? family)
     {
         using ReadOptions options = new();
         using HandleLease lease = options.Lease(out nint handle);
         byte timestamp = 1;
         Native.RocksDbNative.rocksdb_readoptions_set_timestamp((Native.rocksdb_readoptions_t*)handle, (sbyte*)&timestamp, 1);
-        ReadFixed(proposed, db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), family, options);
+        ReadFixed(proposed, db, keys, 2, values, new FirstByteDeserializer(), family, options);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_WhenLaterNativeReadsFail_ThrowsBeforeDecoding(bool proposed)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle family = database.Db.GetColumnFamily("blocks");
+        const int count = 512;
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = (byte)(i >> 8);
+            keys[i * 2 + 1] = (byte)i;
+            database.Db.Put(keys.AsSpan(i * 2, 2), [10], family);
+        }
+
+        await Assert.That(() => ReadWithZeroValueLimit(proposed, database.Db, keys, values, family))
+            .Throws<RocksDbNativeException>();
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+        ReadFixed(proposed, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(10);
+    }
+
+    private static unsafe void ReadWithZeroValueLimit(bool proposed, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle family)
+    {
+        using ReadOptions options = new();
+        using HandleLease lease = options.Lease(out nint handle);
+        Native.RocksDbNative.rocksdb_readoptions_set_value_size_soft_limit((Native.rocksdb_readoptions_t*)handle, 0);
+        ReadFixed(proposed, db, keys, 2, values, new ThrowingDeserializer(), family, options);
     }
 
     [Test]

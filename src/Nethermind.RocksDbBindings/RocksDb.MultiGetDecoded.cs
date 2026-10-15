@@ -76,16 +76,7 @@ public unsafe sealed partial class RocksDb
                         family, (nuint)count, keySlicesPtr, (rocksdb_pinnableslice_t**)valueHandlesPtr, (sbyte**)errorHandlesPtr, sortedInput);
                     initialized = true;
 
-                    sbyte* firstError = null;
-                    for (int i = 0; i < count; i++)
-                    {
-                        sbyte* error = (sbyte*)errorHandlesPtr[i];
-                        if (error is null) continue;
-                        errorHandlesPtr[i] = 0;
-                        if (firstError is null) firstError = error;
-                        else rocksdb_free(error);
-                    }
-                    if (firstError is not null) RocksDbInterop.ThrowIfError(firstError);
+                    if (errorHandles.ContainsAnyExcept(nint.Zero)) ThrowMultiGetErrors(errorHandles);
 
                     for (; completed < count; completed++)
                     {
@@ -125,6 +116,20 @@ public unsafe sealed partial class RocksDb
             optionsLease.Dispose();
             lease.Dispose();
         }
+    }
+
+    private static void ThrowMultiGetErrors(Span<nint> errors)
+    {
+        sbyte* firstError = null;
+        foreach (ref nint error in errors)
+        {
+            if (error == 0) continue;
+            sbyte* message = (sbyte*)error;
+            error = 0;
+            if (firstError is null) firstError = message;
+            else rocksdb_free(message);
+        }
+        RocksDbInterop.ThrowIfError(firstError);
     }
 
     private T ReadDecodedValue<T, TDeserializer>(ReadOnlySpan<byte> key, ref TDeserializer deserializer,

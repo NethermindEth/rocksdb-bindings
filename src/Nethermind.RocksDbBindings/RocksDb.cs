@@ -663,11 +663,18 @@ public unsafe sealed partial class RocksDb : IDisposable
 
     private bool HasKey(byte* key, nuint keyLength, IColumnFamilyHandle? cf, ReadOptions? readOptions)
     {
-        var pinned = GetPinned(key, keyLength, cf, readOptions);
-        if (pinned is null)
-            return false;
-        rocksdb_pinnableslice_destroy(pinned);
-        return true;
+        using HandleLease lease = Lease();
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
+        nuint valueLength;
+        byte found;
+        byte destination = 0;
+        sbyte* errptr = null;
+        _ = cf is null
+            ? rocksdb_get_into_buffer(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, (sbyte*)&destination, 0, &valueLength, &found, &errptr)
+            : rocksdb_get_into_buffer_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, (sbyte*)&destination, 0, &valueLength, &found, &errptr);
+        RocksDbInterop.ThrowIfError(errptr);
+        return found != 0;
     }
 
     private void Remove(byte* key, nuint keyLength, IColumnFamilyHandle? cf, WriteOptions? writeOptions)

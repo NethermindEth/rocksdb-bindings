@@ -1,0 +1,50 @@
+name: Compare key presence on one database
+on:
+  push:
+    branches: [perf/has-key-paired]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Record sources and machine
+        shell: bash
+        run: |
+          mkdir results
+          git rev-parse HEAD > results/sha.txt
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          git diff 165c9d253eaa19aa5aead2abef6ec4d276359a39 -- src/Nethermind.RocksDbBindings/RocksDb.cs > results/production.patch
+          sha256sum src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so > results/native-sha256.txt
+      - name: Build
+        run: dotnet build benchmarks/HasKeyPaired -c Release
+      - name: Measure
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/has-key-paired
+          DOTNET_TieredCompilation: '0'
+        run: |
+          set -euo pipefail
+          mkdir -p "$BENCH_DATA"
+          for repeat in 1 2 3; do
+            dotnet run --project benchmarks/HasKeyPaired -c Release --no-build -- "$GITHUB_WORKSPACE/results/paired-$repeat.json" | tee "$GITHUB_WORKSPACE/results/paired-$repeat.log"
+          done
+          python3 benchmarks/HasKeyPaired/verify.py results | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: paired-presence-${{ matrix.os }}
+          path: results

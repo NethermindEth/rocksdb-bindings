@@ -57,6 +57,19 @@ jobs:
           mkdir -p "$BENCH_DATA"
           dotnet run --project benchmarks/MultiGet -c Release -- --filter '*' --exporters json markdown --artifacts "$GITHUB_WORKSPACE/results/bdn" --join
           python3 benchmarks/MultiGet/verify.py "$GITHUB_WORKSPACE/results/bdn"
+      - name: Paired same-database measurements
+        working-directory: candidate
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/multiget-data
+          DOTNET_TieredCompilation: '0'
+        run: |
+          set -euo pipefail
+          cpu=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+          for process in 1 2 3; do
+            taskset -c "$cpu" dotnet run --no-build --project benchmarks/MultiGet -c Release -- --paired "$GITHUB_WORKSPACE/results/paired-$process.json" "$process"
+          done
+          python3 benchmarks/MultiGet/verify-paired.py "$GITHUB_WORKSPACE/results"
       - name: Job summary
         if: always()
         shell: bash

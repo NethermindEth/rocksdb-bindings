@@ -10,6 +10,12 @@ using Nethermind.RocksDbBindings;
 using Perfolizer.Horology;
 using Perfolizer.Mathematics.OutlierDetection;
 
+if (args is ["--paired", string output, string process])
+{
+    PairedMeasurements.Run(output, int.Parse(process));
+    return;
+}
+
 ManualConfig config = ManualConfig.Create(DefaultConfig.Instance);
 config.BuildTimeout = TimeSpan.FromMinutes(10);
 config.AddJob(Job.Default.WithRuntime(CoreRuntime.Core10_0).WithLaunchCount(2)
@@ -136,7 +142,8 @@ public class MultiGetBenchmarks
         }
         long expectedSum = _expected.Sum(batch => batch.Sum());
         if (LegacyMultiGet() != expectedSum || LegacyControl() != expectedSum || Reference17() != expectedSum
-            || Proposed() != expectedSum || Reference17FromJagged() != expectedSum || ProposedFromJagged() != expectedSum
+            || Proposed() != expectedSum || ProposedClass() != expectedSum
+            || Reference17FromJagged() != expectedSum || ProposedFromJagged() != expectedSum
             || Scalar() != expectedSum)
             throw new InvalidOperationException("Incorrect benchmark checksum");
         Console.WriteLine($"Verified {Queries} full values and decoded results for {Case}");
@@ -187,12 +194,16 @@ public class MultiGetBenchmarks
     }
 
     [Benchmark(OperationsPerInvoke = Queries)]
-    public long Proposed()
+    public long Proposed() => ReadProposed(_valueDecoder);
+
+    public long ProposedClass() => ReadProposed(_decoder);
+
+    private long ReadProposed<TDeserializer>(TDeserializer decoder) where TDeserializer : ISpanDeserializer<long>
     {
         long total = 0;
         for (int batch = 0; batch < _contiguous.Length; batch++)
         {
-            _db.MultiGetDecoded(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGetDecoded(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
             total += SumOutput();
         }
         return total;

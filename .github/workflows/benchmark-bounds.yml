@@ -1,0 +1,61 @@
+name: Benchmark bounded iterator reuse
+on:
+  push:
+    branches: [perf/reusable-iterator-bounds-bench]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          path: candidate
+      - uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/rocksdb-bindings
+          ref: 204d7112ec7c541f0fbd484ff573ea3d41caf063
+          lfs: true
+          path: baseline
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: candidate/global.json
+      - name: Record sources and machine
+        shell: bash
+        run: |
+          mkdir results
+          git -C baseline rev-parse HEAD > results/baseline-sha.txt
+          git -C candidate rev-parse HEAD > results/candidate-sha.txt
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          sha256sum baseline/src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so candidate/src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so > results/native-sha256.txt
+      - name: Build unchanged baseline
+        working-directory: baseline
+        run: dotnet build src/Nethermind.RocksDbBindings -c Release -p:AssemblyName=Nethermind.RocksDbBindings.Baseline
+      - name: Measure
+        working-directory: candidate
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/bounds-data
+        run: |
+          mkdir -p "$BENCH_DATA"
+          export BOUNDS_BASELINE_DLL="$GITHUB_WORKSPACE/baseline/src/artifacts/bin/Nethermind.RocksDbBindings/release/Nethermind.RocksDbBindings.Baseline.dll"
+          test -f "$BOUNDS_BASELINE_DLL"
+          dotnet run --project benchmarks/Bounds -c Release -- --filter '*' --exporters json markdown --artifacts "$GITHUB_WORKSPACE/results/bdn" --join
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          find results/bdn/results -name '*github.md' -exec cat {} \; >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bounded-reseek-${{ matrix.os }}
+          path: results

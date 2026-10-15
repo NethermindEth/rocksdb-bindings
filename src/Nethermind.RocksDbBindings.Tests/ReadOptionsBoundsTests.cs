@@ -184,6 +184,44 @@ public class ReadOptionsBoundsTests
         await Assert.That(Keys(iterator, "a")).IsEquivalentTo(new[] { "a", "d", "e" }, CollectionOrdering.Matching);
     }
 
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task UpdateIterateBounds_RejectsOptionsThatCreatedATailingIterator(bool disableTailing)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put("x"u8, "X"u8);
+        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flush);
+        using ReadOptions options = new ReadOptions().SetIterateBounds("a"u8, "d"u8).SetTailing(true);
+        using Iterator iterator = database.Db.NewIterator(readOptions: options);
+        await Assert.That(Keys(iterator, "a")).IsEmpty();
+        if (disableTailing) options.SetTailing(false);
+
+        await Assert.That(() => options.UpdateIterateBounds("w"u8, "z"u8)).Throws<InvalidOperationException>();
+        await Assert.That(Keys(iterator, "a")).IsEmpty();
+        using ReadOptions fresh = new ReadOptions().SetIterateBounds("w"u8, "z"u8);
+        using Iterator current = database.Db.NewIterator(readOptions: fresh);
+        await Assert.That(Keys(current, "w")).IsEquivalentTo(new[] { "x" }, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task UpdateIterateBounds_RejectsTailingBeforeAnyIteratorIsCreated()
+    {
+        using ReadOptions options = Bounds().SetTailing(true);
+        await Assert.That(() => options.UpdateIterateBounds("b"u8, "d"u8)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task UpdateIterateBounds_AllowsTailingDisabledBeforeIteratorCreation()
+    {
+        using TestDatabase database = Alphabet();
+        using ReadOptions options = Bounds().SetTailing(true).SetTailing(false);
+        using Iterator iterator = database.Db.NewIterator(readOptions: options);
+        options.UpdateIterateBounds("b"u8, "d"u8);
+        await Assert.That(Keys(iterator, "b")).IsEquivalentTo(new[] { "b", "c" }, CollectionOrdering.Matching);
+    }
+
     private static ReadOptions Bounds() => new ReadOptions().SetIterateBounds("0000"u8, "zzzz"u8);
 
     private static TestDatabase Alphabet()

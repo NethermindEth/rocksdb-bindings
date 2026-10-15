@@ -137,6 +137,9 @@ public sealed unsafe class ReadOptions : NativeOptions
     public ReadOptions SetIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
         => SetIterateLowerBound(lowerBound).SetIterateUpperBound(upperBound);
 
+    /// <summary>Updates bounds in place for non-tailing iteration. Seek again before reading.</summary>
+    /// <exception cref="InvalidOperationException">Tailing is enabled, these options have created a tailing iterator,
+    /// or either bound has not been set. Use fresh non-tailing options after creating a tailing iterator.</exception>
     public ReadOptions UpdateIterateBounds(ReadOnlySpan<byte> lowerBound, ReadOnlySpan<byte> upperBound)
     {
         using HandleLease lease = Lease(out _);
@@ -157,6 +160,7 @@ public sealed unsafe class ReadOptions : NativeOptions
         using var lease = Lease(out nint handle);
 
         rocksdb_readoptions_set_tailing(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
+        _handle.Tailing = value;
         return this;
     }
 

@@ -583,6 +583,27 @@ public class RocksDbTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_DefaultFamilyWithCacheOnlyReads_PreservesScalarReadTier(bool proposed)
+    {
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(table);
+        using TestDatabase database = TestDatabase.Create(options);
+        database.Db.Put([1, 1], [10]);
+        database.Db.Put([1, 2], [20]);
+        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flush);
+        using ReadOptions readOptions = new ReadOptions().SetReadTier(1);
+        int[] values = [99, 99];
+
+        await Assert.That(() => ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), readOptions: readOptions))
+            .Throws<RocksDbNativeException>();
+
+        await Assert.That(values).IsEquivalentTo([0, 0], CollectionOrdering.Matching);
+    }
+
+    [Test]
     public async Task MultiGetDecoded_WhenSingleDecoderClosesDatabase_KeepsTheValueAlive()
     {
         using TestDatabase database = TestDatabase.Create();
@@ -593,6 +614,26 @@ public class RocksDbTests
 
         await Assert.That(values).IsEquivalentTo([10], CollectionOrdering.Matching);
         await Assert.That(database.Db.Handle).IsEqualTo(nint.Zero);
+    }
+
+    [Test]
+    public async Task MultiGetDecoded_WithScalarFallback_PreservesStructDecoderState()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put([1, 1], [10]);
+        database.Db.Put([1, 2], [20]);
+        using ReadOptions options = new ReadOptions().SetReadTier(1);
+        int[] values = [99, 99];
+
+        database.Db.MultiGetDecoded([1, 1, 1, 2], 2, values.AsSpan(), new CountingValueDeserializer(), readOptions: options);
+
+        await Assert.That(values).IsEquivalentTo([11, 22], CollectionOrdering.Matching);
+    }
+
+    private struct CountingValueDeserializer : ISpanDeserializer<int>
+    {
+        private int _calls;
+        public int Deserialize(ReadOnlySpan<byte> buffer) => buffer[0] + ++_calls;
     }
 
     private sealed class ClosingDeserializer(RocksDb db) : ISpanDeserializer<int>

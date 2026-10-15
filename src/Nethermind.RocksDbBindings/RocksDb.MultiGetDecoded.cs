@@ -24,17 +24,7 @@ public unsafe sealed partial class RocksDb
         if (values.Length == 1)
         {
             using HandleLease singleLease = Lease();
-            if (TryGetPinned(keys, out PinnedSlice slice, cf, readOptions))
-            {
-                try
-                {
-                    values[0] = deserializer.Deserialize(slice.Value);
-                }
-                finally
-                {
-                    slice.Dispose();
-                }
-            }
+            values[0] = ReadDecodedValue<T, TDeserializer>(keys, ref deserializer, cf, readOptions);
             return;
         }
 
@@ -50,6 +40,12 @@ public unsafe sealed partial class RocksDb
             lease = Lease();
             ReadOptions options = readOptions ?? DefaultReadOptions;
             optionsLease = options.Lease(out nint optionsHandle);
+            if (cf is null && rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
+            {
+                for (; completed < count; completed++)
+                    values[completed] = ReadDecodedValue<T, TDeserializer>(keys.Slice(completed * keyLength, keyLength), ref deserializer, cf, options);
+                return;
+            }
             int handleCount = checked(count * 2);
             Span<rocksdb_slice_t> keySlices = count <= StackMultiGetCapacity
                 ? stackalloc rocksdb_slice_t[count]
@@ -128,6 +124,20 @@ public unsafe sealed partial class RocksDb
             if (rentedHandles is not null) ArrayPool<nint>.Shared.Return(rentedHandles);
             optionsLease.Dispose();
             lease.Dispose();
+        }
+    }
+
+    private T ReadDecodedValue<T, TDeserializer>(ReadOnlySpan<byte> key, ref TDeserializer deserializer,
+        IColumnFamilyHandle? cf, ReadOptions? readOptions) where TDeserializer : ISpanDeserializer<T>
+    {
+        if (!TryGetPinned(key, out PinnedSlice slice, cf, readOptions)) return default!;
+        try
+        {
+            return deserializer.Deserialize(slice.Value);
+        }
+        finally
+        {
+            slice.Dispose();
         }
     }
 }

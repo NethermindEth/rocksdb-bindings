@@ -450,6 +450,10 @@ public class RocksDbTests
         ReadFixed(proposed, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer(), blocks, readOptions);
 
         await Assert.That(values).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
+
+        int[] single = [99];
+        ReadFixed(proposed, database.Db, [1, 1], 2, single, new FirstByteDeserializer(), blocks, readOptions);
+        await Assert.That(single).IsEquivalentTo([10], CollectionOrdering.Matching);
     }
 
     [Test]
@@ -553,6 +557,10 @@ public class RocksDbTests
     }
 
     [Test]
+    [Arguments(false, false, 1)]
+    [Arguments(false, true, 1)]
+    [Arguments(true, false, 1)]
+    [Arguments(true, true, 1)]
     [Arguments(false, false, 2)]
     [Arguments(false, true, 2)]
     [Arguments(true, false, 2)]
@@ -646,6 +654,29 @@ public class RocksDbTests
             .Throws<RocksDbNativeException>();
 
         await Assert.That(values).IsEquivalentTo([0, 0], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(false, -1)]
+    [Arguments(false, 0)]
+    [Arguments(false, 1)]
+    [Arguments(true, -1)]
+    [Arguments(true, 0)]
+    [Arguments(true, 1)]
+    public async Task MultiGetDecoded_WithOneKey_DecodesMissingEmptyAndPresentValues(bool namedFamily, int valueKind)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        if (valueKind >= 0) database.Db.Put([1, 1], valueKind == 0 ? [] : [10], family);
+        int expected = valueKind < 0 ? 0 : valueKind == 0 ? -1 : 10;
+        int[] values = [99];
+
+        database.Db.MultiGetDecoded([1, 1], 2, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        await Assert.That(values[0]).IsEqualTo(expected);
+
+        values[0] = 99;
+        database.Db.MultiGetDecoded([1, 1], 2, values.AsSpan(), new FirstByteDeserializer(), family);
+        await Assert.That(values[0]).IsEqualTo(expected);
     }
 
     [Test]

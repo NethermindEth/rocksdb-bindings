@@ -24,7 +24,7 @@ public unsafe sealed partial class RocksDb
         if (values.Length == 1)
         {
             using HandleLease singleLease = Lease();
-            values[0] = ReadDecodedValue<T, TDeserializer>(keys, ref deserializer, cf, readOptions);
+            values[0] = ReadSingleDecodedValue<T, TDeserializer>(keys, ref deserializer, cf, readOptions);
             return;
         }
 
@@ -76,7 +76,16 @@ public unsafe sealed partial class RocksDb
                         family, (nuint)count, keySlicesPtr, (rocksdb_pinnableslice_t**)valueHandlesPtr, (sbyte**)errorHandlesPtr, sortedInput);
                     initialized = true;
 
-                    if (errorHandles.ContainsAnyExcept(nint.Zero)) ThrowMultiGetErrors(errorHandles);
+                    sbyte* firstError = null;
+                    for (int i = 0; i < count; i++)
+                    {
+                        sbyte* error = (sbyte*)errorHandlesPtr[i];
+                        if (error is null) continue;
+                        errorHandlesPtr[i] = 0;
+                        if (firstError is null) firstError = error;
+                        else rocksdb_free(error);
+                    }
+                    if (firstError is not null) RocksDbInterop.ThrowIfError(firstError);
 
                     for (; completed < count; completed++)
                     {
@@ -118,18 +127,37 @@ public unsafe sealed partial class RocksDb
         }
     }
 
-    private static void ThrowMultiGetErrors(Span<nint> errors)
+    private T ReadSingleDecodedValue<T, TDeserializer>(ReadOnlySpan<byte> key, ref TDeserializer deserializer,
+        IColumnFamilyHandle? cf, ReadOptions? readOptions) where TDeserializer : ISpanDeserializer<T>
     {
-        sbyte* firstError = null;
-        foreach (ref nint error in errors)
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
+        rocksdb_pinnableslice_t* pinned;
+        sbyte* error = null;
+        fixed (byte* keyData = key)
         {
-            if (error == 0) continue;
-            sbyte* message = (sbyte*)error;
-            error = 0;
-            if (firstError is null) firstError = message;
-            else rocksdb_free(message);
+            pinned = cf is null
+                ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
+                    (sbyte*)keyData, (nuint)key.Length, &error)
+                : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
+                    RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyData, (nuint)key.Length, &error);
         }
-        RocksDbInterop.ThrowIfError(firstError);
+        RocksDbInterop.ThrowIfError(error);
+        if (pinned is null) return default!;
+
+        try
+        {
+            nuint length;
+            sbyte* data = rocksdb_pinnableslice_value(pinned, &length);
+            if (data is null) return default!;
+            if (length > int.MaxValue)
+                throw new NotSupportedException($"The value is {length} bytes; values over {int.MaxValue} bytes cannot be exposed as a span.");
+            return deserializer.Deserialize(new ReadOnlySpan<byte>(data, (int)length));
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(pinned);
+        }
     }
 
     private T ReadDecodedValue<T, TDeserializer>(ReadOnlySpan<byte> key, ref TDeserializer deserializer,

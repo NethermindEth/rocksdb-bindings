@@ -32,8 +32,8 @@ cases = (
     "B512_V128_H100_SST_CF_SORT",
 )
 methods = ("LegacyMultiGet", "LegacyControl", "Reference17", "Proposed", "Reference17FromJagged", "ProposedFromJagged", "Scalar")
-expected = {(method, "Case=" + case) for method in methods for case in cases}
-actual = {(entry["Method"], entry["Parameters"]) for entry in entries}
+expected = {(method, f"MultiGetBenchmarks.{method}(Case: {case})") for method in methods for case in cases}
+actual = {(entry["Method"], entry["FullName"]) for entry in entries}
 if len(entries) != len(expected) or actual != expected:
     raise SystemExit(f"Incomplete results: missing={expected - actual}, extra={actual - expected}")
 for entry in entries:

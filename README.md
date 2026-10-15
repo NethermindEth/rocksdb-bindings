@@ -55,6 +55,11 @@ buffers reserved by `SetIterateBounds`. Each new bound must fit its original
 buffer. Larger bounds and missing buffers are rejected before either bound
 changes. Updating does not allocate or replace the buffers.
 
+Bounds reuse supports non-tailing iterators only. Updates are rejected while
+`SetTailing(true)` is set. Once these options have created a tailing iterator,
+use fresh non-tailing options for bounds reuse. Setting tailing to false later
+does not change an existing iterator's mode.
+
 ```csharp
 using ReadOptions options = new ReadOptions().SetIterateBounds(firstLower, firstUpper);
 using Iterator iterator = db.NewIterator(readOptions: options);

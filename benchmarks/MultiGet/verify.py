@@ -4,20 +4,27 @@ import sys
 from pathlib import Path
 
 if sys.argv[1] == "sources":
-    candidate, baseline, reference = map(Path, sys.argv[2:])
+    candidate, baseline, reference, production = map(Path, sys.argv[2:])
     legacy = "src/Nethermind.RocksDbBindings/RocksDb.cs"
-    if (candidate / legacy).read_bytes() != (baseline / legacy).read_bytes():
-        raise SystemExit("Legacy binding source changed")
+    current = (candidate / legacy).read_text()
+    wrapper_start = current.index('    /// <summary>Reads fixed-length contiguous keys with an interface decoder.</summary>')
+    wrapper_end = current.index('    public KeyValuePair<byte[], byte[]?>[] MultiGet(', wrapper_start)
+    if current[:wrapper_start] + current[wrapper_end:] != (baseline / legacy).read_text():
+        raise SystemExit("Legacy binding source changed outside the new forwarding overload")
+    for path in (legacy, "src/Nethermind.RocksDbBindings/RocksDb.MultiGet.cs",
+                 "src/Nethermind.RocksDbBindings.Tests/RocksDbTests.cs", "README.md"):
+        if (candidate / path).read_bytes() != (production / path).read_bytes():
+            raise SystemExit(f"Production source differs: {path}")
     original = (reference / legacy).read_text()
     start = original.index("    public void MultiGet<T>(")
     end = original.index("    public KeyValuePair<byte[], byte[]?>[] MultiGet(", start)
-    imported = (candidate / "src/Nethermind.RocksDbBindings/RocksDb.MultiGet.cs").read_text()
-    if original[start:end].strip() not in imported:
+    imported = (candidate / "src/Nethermind.RocksDbBindings/RocksDb.MultiGet.Reference17.cs").read_text()
+    if original[start:end].strip().replace("MultiGet<T>(", "MultiGetReference17<T>(").replace("StackMultiGetCapacity", "StackReadCapacity") not in imported:
         raise SystemExit("Imported PR17 method differs")
     for native in (baseline / "src/Nethermind.RocksDbBindings/runtimes").rglob("*rocksdb*"):
         if native.is_file() and native.read_bytes() != (candidate / native.relative_to(baseline)).read_bytes():
             raise SystemExit(f"Native library changed: {native}")
-    print("Verified unchanged legacy source/native libraries and exact PR17 method")
+    print("Verified exact production sources, unchanged legacy implementation/native libraries, and renamed PR17 method")
     raise SystemExit(0)
 
 reports = list((Path(sys.argv[1]) / "results").glob("*-report-full-compressed.json"))

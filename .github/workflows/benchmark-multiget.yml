@@ -1,7 +1,7 @@
 name: Benchmark batched reads
 on:
   push:
-    branches: [perf/multiget-bench]
+    branches: [perf/multiget-bench-proof]
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,6 +27,10 @@ jobs:
         with:
           ref: d6040cf00b66c0e45ab6c82b8a34501dcac500af
           path: reference
+      - uses: actions/checkout@v7
+        with:
+          ref: 38ccf63d77ffad6bb15c3e8a882073ac0477992e
+          path: production
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: candidate/global.json
@@ -38,9 +42,10 @@ jobs:
           git -C baseline rev-parse HEAD > results/baseline-sha.txt
           git -C reference rev-parse HEAD > results/reference-sha.txt
           git -C candidate rev-parse HEAD > results/candidate-sha.txt
+          git -C production rev-parse HEAD > results/production-sha.txt
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
-          python3 candidate/benchmarks/MultiGet/verify.py sources candidate baseline reference
+          python3 candidate/benchmarks/MultiGet/verify.py sources candidate baseline reference production
           sha256sum candidate/src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so > results/native-sha256.txt
       - name: Test
         working-directory: candidate/src/Nethermind.RocksDbBindings.Tests
@@ -69,7 +74,7 @@ jobs:
           for process in 1 2 3; do
             taskset -c "$cpu" dotnet run --no-build --project benchmarks/MultiGet -c Release -- --paired "$GITHUB_WORKSPACE/results/paired-$process.json" "$process"
           done
-          python3 benchmarks/MultiGet/verify-paired.py "$GITHUB_WORKSPACE/results"
+          python3 benchmarks/MultiGet/verify-paired.py "$GITHUB_WORKSPACE/results" --require-no-regression
       - name: Job summary
         if: always()
         shell: bash

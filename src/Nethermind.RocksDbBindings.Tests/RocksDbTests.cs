@@ -44,6 +44,47 @@ public class RocksDbTests
     private static bool HasKey(RocksDb db, byte[] key) => db.HasKey(key.AsSpan());
 
     [Test]
+    [Arguments(false, false, 1)]
+    [Arguments(false, false, 32)]
+    [Arguments(false, false, 512)]
+    [Arguments(false, true, 1)]
+    [Arguments(false, true, 32)]
+    [Arguments(false, true, 512)]
+    [Arguments(true, false, 1)]
+    [Arguments(true, false, 32)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 1)]
+    [Arguments(true, true, 32)]
+    [Arguments(true, true, 512)]
+    public async Task MultiGet_WithMultiByteValues_PreservesCompletePayload(bool genericDecoder, bool namedFamily, int count)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        byte[] payload = new byte[4097];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i % 251);
+        byte[] keys = new byte[count * 4];
+        byte[][] values = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            BitConverter.TryWriteBytes(keys.AsSpan(i * 4, 4), i);
+            values[i] = [99];
+            if (count == 1 || i != count - 1)
+                database.Db.Put(keys.AsSpan(i * 4, 4), count > 1 && i == 0 ? [] : payload, family);
+        }
+
+        if (genericDecoder)
+            database.Db.MultiGet<byte[], BytesDeserializer>(keys, 4, values.AsSpan(), new BytesDeserializer(), family);
+        else
+            database.Db.MultiGet<byte[]>(keys, 4, values.AsSpan(), new BytesDeserializer(), family);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (count > 1 && i == count - 1) await Assert.That(values[i]).IsNull();
+            else await Assert.That(values[i]).IsEquivalentTo(count > 1 && i == 0 ? [] : payload, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
     public async Task Open_WithoutCreateIfMissing_FailsOnAnEmptyDirectory()
     {
         using var directory = new TempDirectory();
@@ -380,17 +421,17 @@ public class RocksDbTests
         await Assert.That(database.Db.Get(Key, new Int32Deserializer())).IsEqualTo(0);
     }
 
-    private static void ReadFixed<T>(bool proposed, RocksDb db, ReadOnlySpan<byte> keys, int keyLength,
+    private static void ReadFixed<T>(bool genericDecoder, RocksDb db, ReadOnlySpan<byte> keys, int keyLength,
         T[] values, ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
     {
-        if (proposed) db.MultiGetDecoded(keys, keyLength, values.AsSpan(), deserializer, cf, readOptions);
-        else db.MultiGet(keys, keyLength, values.AsSpan(), deserializer, cf, readOptions);
+        if (genericDecoder) db.MultiGet<T, ISpanDeserializer<T>>(keys, keyLength, values.AsSpan(), deserializer, cf, readOptions);
+        else db.MultiGet<T>(keys, keyLength, values.AsSpan(), deserializer, cf, readOptions);
     }
 
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_FixedKeysReadsMixedEmptyMissingOrderAndDuplicates(bool proposed)
+    public async Task MultiGet_FixedKeysReadsMixedEmptyMissingOrderAndDuplicates(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
@@ -399,7 +440,7 @@ public class RocksDbTests
 
         byte[] keys = [1, 2, 1, 3, 1, 1, 1, 2, 1, 1];
         int[] values = [99, 99, 99, 99, 99];
-        ReadFixed(proposed, database.Db, keys, 2, values, new FirstByteDeserializer(), blocks);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), blocks);
 
         await Assert.That(values).IsEquivalentTo([-1, 0, 10, -1, 10], CollectionOrdering.Matching);
     }
@@ -409,7 +450,7 @@ public class RocksDbTests
     [Arguments(256, true)]
     [Arguments(512, false)]
     [Arguments(512, true)]
-    public async Task MultiGet_FixedKeysHandlesStackAndPooledBatches(int count, bool proposed)
+    public async Task MultiGet_FixedKeysHandlesStackAndPooledBatches(int count, bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
@@ -427,7 +468,7 @@ public class RocksDbTests
             database.Db.Put(keys.AsSpan(offset, keyLength), [(byte)(i & 0xff)], blocks);
         }
 
-        ReadFixed(proposed, database.Db, keys, keyLength, values, new FirstByteDeserializer(), blocks);
+        ReadFixed(genericDecoder, database.Db, keys, keyLength, values, new FirstByteDeserializer(), blocks);
 
         for (int i = 0; i < count; i++)
             await Assert.That(values[i]).IsEqualTo(i & 0xff);
@@ -436,7 +477,7 @@ public class RocksDbTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_UsesSnapshotWithCacheFillDisabled(bool proposed)
+    public async Task MultiGet_UsesSnapshotWithCacheFillDisabled(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
@@ -447,19 +488,19 @@ public class RocksDbTests
         database.Db.Put([1, 1], [20], blocks);
 
         int[] values = [99, 99];
-        ReadFixed(proposed, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer(), blocks, readOptions);
+        ReadFixed(genericDecoder, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer(), blocks, readOptions);
 
         await Assert.That(values).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
 
         int[] single = [99];
-        ReadFixed(proposed, database.Db, [1, 1], 2, single, new FirstByteDeserializer(), blocks, readOptions);
+        ReadFixed(genericDecoder, database.Db, [1, 1], 2, single, new FirstByteDeserializer(), blocks, readOptions);
         await Assert.That(single).IsEquivalentTo([10], CollectionOrdering.Matching);
     }
 
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_ValidatesShapeAndOverflowBeforeClearingOutputs(bool proposed)
+    public async Task MultiGet_ValidatesShapeAndOverflowBeforeClearingOutputs(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
@@ -467,16 +508,16 @@ public class RocksDbTests
 
         using (Assert.Multiple())
         {
-            await Assert.That(() => ReadFixed(proposed, database.Db, [], 1, values, null!, blocks))
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1, values, null!, blocks))
                 .Throws<ArgumentNullException>();
             await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
-            await Assert.That(() => ReadFixed(proposed, database.Db, [], 0, values, new FirstByteDeserializer(), blocks))
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 0, values, new FirstByteDeserializer(), blocks))
                 .Throws<ArgumentOutOfRangeException>();
             await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
-            await Assert.That(() => ReadFixed(proposed, database.Db, [], 1, values, new FirstByteDeserializer(), blocks))
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1, values, new FirstByteDeserializer(), blocks))
                 .Throws<ArgumentException>();
             await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
-            await Assert.That(() => ReadFixed(proposed, database.Db, [], 1 << 30, new int[2], new FirstByteDeserializer(), blocks))
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1 << 30, new int[2], new FirstByteDeserializer(), blocks))
                 .Throws<ArgumentException>();
         }
     }
@@ -484,14 +525,14 @@ public class RocksDbTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_CleansUpPinnableValuesWhenDeserializerThrows(bool proposed)
+    public async Task MultiGet_CleansUpPinnableValuesWhenDeserializerThrows(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
         database.Db.Put([1, 1], [10], blocks);
         database.Db.Put([1, 2], [20], blocks);
 
-        await Assert.That(() => ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, new int[2], new ThrowingDeserializer(), blocks))
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, [1, 1, 1, 2], 2, new int[2], new ThrowingDeserializer(), blocks))
             .Throws<InvalidOperationException>();
 
         await Assert.That(database.Db.Get([1, 1], blocks)).IsEquivalentTo(new byte[] { 10 }, CollectionOrdering.Matching);
@@ -500,13 +541,13 @@ public class RocksDbTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_WithoutColumnFamilyFallsBackToScalarReads(bool proposed)
+    public async Task MultiGet_WithoutColumnFamily_ReadsDefaultFamily(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create();
         database.Db.Put([1, 1], [10]);
 
         int[] values = [99, 99];
-        ReadFixed(proposed, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer());
+        ReadFixed(genericDecoder, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer());
 
         await Assert.That(values).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
     }
@@ -514,7 +555,7 @@ public class RocksDbTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGetDecoded_WithStructDecoder_HandlesSortedDuplicatesEmptyAndMissing(bool sorted)
+    public async Task MultiGet_WithStructDecoder_HandlesSortedDuplicatesEmptyAndMissing(bool sorted)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle family = database.Db.GetColumnFamily("blocks");
@@ -522,7 +563,7 @@ public class RocksDbTests
         database.Db.Put([1, 2], [], family);
         int[] values = [99, 99, 99, 99];
 
-        database.Db.MultiGetDecoded([1, 1, 1, 1, 1, 2, 1, 3], 2, values.AsSpan(), new FirstByteValueDeserializer(), family, sortedInput: sorted);
+        database.Db.MultiGet([1, 1, 1, 1, 1, 2, 1, 3], 2, values.AsSpan(), new FirstByteValueDeserializer(), family, sortedInput: sorted);
 
         await Assert.That(values).IsEquivalentTo([10, 10, -1, 0], CollectionOrdering.Matching);
     }
@@ -534,7 +575,7 @@ public class RocksDbTests
     [Arguments(1, 0, true)]
     [Arguments(4, 2, true)]
     [Arguments(512, 255, true)]
-    public async Task MultiGetDecoded_WhenDecoderThrows_PreservesPrefixAndClearsTail(int count, int throwAt, bool defaultFamily)
+    public async Task MultiGet_WhenDecoderThrows_PreservesPrefixAndClearsTail(int count, int throwAt, bool defaultFamily)
     {
         using TestDatabase database = defaultFamily ? TestDatabase.Create() : TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle? family = defaultFamily ? null : database.Db.GetColumnFamily("blocks");
@@ -547,12 +588,12 @@ public class RocksDbTests
             database.Db.Put(keys.AsSpan(i * 4, 4), [(byte)(i + 1)], family);
         }
 
-        await Assert.That(() => database.Db.MultiGetDecoded(keys, 4, values.AsSpan(), new ThrowAfterDeserializer(throwAt), family))
+        await Assert.That(() => database.Db.MultiGet(keys, 4, values.AsSpan(), new ThrowAfterDeserializer(throwAt), family))
             .Throws<InvalidOperationException>();
 
         for (int i = 0; i < count; i++)
             await Assert.That(values[i]).IsEqualTo(i < throwAt ? (i + 1) & 255 : 0);
-        database.Db.MultiGetDecoded(keys, 4, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        database.Db.MultiGet(keys, 4, values.AsSpan(), new FirstByteValueDeserializer(), family);
         for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo((i + 1) & 255);
     }
 
@@ -569,7 +610,7 @@ public class RocksDbTests
     [Arguments(false, true, 512)]
     [Arguments(true, false, 512)]
     [Arguments(true, true, 512)]
-    public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool proposed, bool namedFamily, int count)
+    public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool genericDecoder, bool namedFamily, int count)
     {
         using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
         IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
@@ -584,27 +625,27 @@ public class RocksDbTests
             keys[i * 2 + 1] = (byte)(i % 2 + 1);
         }
 
-        await Assert.That(() => ReadWithUnsupportedTimestamp(proposed, database.Db, keys, values, family))
+        await Assert.That(() => ReadWithUnsupportedTimestamp(genericDecoder, database.Db, keys, values, family))
             .Throws<RocksDbNativeException>();
 
         for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
-        ReadFixed(proposed, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
         for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(i % 2 == 0 ? 10 : 20);
     }
 
-    private static unsafe void ReadWithUnsupportedTimestamp(bool proposed, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle? family)
+    private static unsafe void ReadWithUnsupportedTimestamp(bool genericDecoder, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle? family)
     {
         using ReadOptions options = new();
         using HandleLease lease = options.Lease(out nint handle);
         byte timestamp = 1;
         Native.RocksDbNative.rocksdb_readoptions_set_timestamp((Native.rocksdb_readoptions_t*)handle, (sbyte*)&timestamp, 1);
-        ReadFixed(proposed, db, keys, 2, values, new FirstByteDeserializer(), family, options);
+        ReadFixed(genericDecoder, db, keys, 2, values, new FirstByteDeserializer(), family, options);
     }
 
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_WhenLaterNativeReadsFail_ThrowsBeforeDecoding(bool proposed)
+    public async Task MultiGet_WhenLaterNativeReadsFail_ThrowsBeforeDecoding(bool genericDecoder)
     {
         using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
         IColumnFamilyHandle family = database.Db.GetColumnFamily("blocks");
@@ -619,26 +660,26 @@ public class RocksDbTests
             database.Db.Put(keys.AsSpan(i * 2, 2), [10], family);
         }
 
-        await Assert.That(() => ReadWithZeroValueLimit(proposed, database.Db, keys, values, family))
+        await Assert.That(() => ReadWithZeroValueLimit(genericDecoder, database.Db, keys, values, family))
             .Throws<RocksDbNativeException>();
 
         for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
-        ReadFixed(proposed, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
         for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(10);
     }
 
-    private static unsafe void ReadWithZeroValueLimit(bool proposed, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle family)
+    private static unsafe void ReadWithZeroValueLimit(bool genericDecoder, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle family)
     {
         using ReadOptions options = new();
         using HandleLease lease = options.Lease(out nint handle);
         Native.RocksDbNative.rocksdb_readoptions_set_value_size_soft_limit((Native.rocksdb_readoptions_t*)handle, 0);
-        ReadFixed(proposed, db, keys, 2, values, new ThrowingDeserializer(), family, options);
+        ReadFixed(genericDecoder, db, keys, 2, values, new ThrowingDeserializer(), family, options);
     }
 
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task MultiGet_DefaultFamilyWithCacheOnlyReads_PreservesScalarReadTier(bool proposed)
+    public async Task MultiGet_DefaultFamilyWithCacheOnlyReads_PreservesScalarReadTier(bool genericDecoder)
     {
         BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
         using DbOptions options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(table);
@@ -650,7 +691,7 @@ public class RocksDbTests
         using ReadOptions readOptions = new ReadOptions().SetReadTier(1);
         int[] values = [99, 99];
 
-        await Assert.That(() => ReadFixed(proposed, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), readOptions: readOptions))
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, [1, 1, 1, 2], 2, values, new FirstByteDeserializer(), readOptions: readOptions))
             .Throws<RocksDbNativeException>();
 
         await Assert.That(values).IsEquivalentTo([0, 0], CollectionOrdering.Matching);
@@ -663,7 +704,7 @@ public class RocksDbTests
     [Arguments(true, -1)]
     [Arguments(true, 0)]
     [Arguments(true, 1)]
-    public async Task MultiGetDecoded_WithOneKey_DecodesMissingEmptyAndPresentValues(bool namedFamily, int valueKind)
+    public async Task MultiGet_WithOneKey_DecodesMissingEmptyAndPresentValues(bool namedFamily, int valueKind)
     {
         using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
         IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
@@ -671,29 +712,29 @@ public class RocksDbTests
         int expected = valueKind < 0 ? 0 : valueKind == 0 ? -1 : 10;
         int[] values = [99];
 
-        database.Db.MultiGetDecoded([1, 1], 2, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        database.Db.MultiGet([1, 1], 2, values.AsSpan(), new FirstByteValueDeserializer(), family);
         await Assert.That(values[0]).IsEqualTo(expected);
 
         values[0] = 99;
-        database.Db.MultiGetDecoded([1, 1], 2, values.AsSpan(), new FirstByteDeserializer(), family);
+        database.Db.MultiGet([1, 1], 2, values.AsSpan(), new FirstByteDeserializer(), family);
         await Assert.That(values[0]).IsEqualTo(expected);
     }
 
     [Test]
-    public async Task MultiGetDecoded_WhenSingleDecoderClosesDatabase_KeepsTheValueAlive()
+    public async Task MultiGet_WhenSingleDecoderClosesDatabase_KeepsTheValueAlive()
     {
         using TestDatabase database = TestDatabase.Create();
         database.Db.Put([1, 1], [10]);
         int[] values = [99];
 
-        database.Db.MultiGetDecoded([1, 1], 2, values.AsSpan(), new ClosingDeserializer(database.Db));
+        database.Db.MultiGet([1, 1], 2, values.AsSpan(), new ClosingDeserializer(database.Db));
 
         await Assert.That(values).IsEquivalentTo([10], CollectionOrdering.Matching);
         await Assert.That(database.Db.Handle).IsEqualTo(nint.Zero);
     }
 
     [Test]
-    public async Task MultiGetDecoded_WithScalarFallback_PreservesStructDecoderState()
+    public async Task MultiGet_WithScalarFallback_PreservesStructDecoderState()
     {
         using TestDatabase database = TestDatabase.Create();
         database.Db.Put([1, 1], [10]);
@@ -701,7 +742,7 @@ public class RocksDbTests
         using ReadOptions options = new ReadOptions().SetReadTier(1);
         int[] values = [99, 99];
 
-        database.Db.MultiGetDecoded([1, 1, 1, 2], 2, values.AsSpan(), new CountingValueDeserializer(), readOptions: options);
+        database.Db.MultiGet([1, 1, 1, 2], 2, values.AsSpan(), new CountingValueDeserializer(), readOptions: options);
 
         await Assert.That(values).IsEquivalentTo([11, 22], CollectionOrdering.Matching);
     }
@@ -710,6 +751,11 @@ public class RocksDbTests
     {
         private int _calls;
         public int Deserialize(ReadOnlySpan<byte> buffer) => buffer[0] + ++_calls;
+    }
+
+    private readonly struct BytesDeserializer : ISpanDeserializer<byte[]>
+    {
+        public byte[] Deserialize(ReadOnlySpan<byte> buffer) => buffer.ToArray();
     }
 
     private sealed class ClosingDeserializer(RocksDb db) : ISpanDeserializer<int>

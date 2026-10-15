@@ -125,8 +125,8 @@ public class MultiGetBenchmarks
             KeyValuePair<byte[], byte[]?>[] legacy = _db.MultiGet(_jagged[batch], _families, _readOptions);
             byte[][] reference = new byte[Case.Batch][];
             byte[][] proposed = new byte[Case.Batch][];
-            _db.MultiGet(_contiguous[batch], KeyLength, reference.AsSpan(), copy, _family, _readOptions);
-            _db.MultiGetDecoded(_contiguous[batch], KeyLength, proposed.AsSpan(), copy, _family, _readOptions, Case.Sorted);
+            _db.MultiGetReference17(_contiguous[batch], KeyLength, reference.AsSpan(), copy, _family, _readOptions);
+            _db.MultiGet(_contiguous[batch], KeyLength, proposed.AsSpan(), copy, _family, _readOptions, Case.Sorted);
             for (int i = 0; i < Case.Batch; i++)
             {
                 int id = BinaryPrimitives.ReadInt32BigEndian(_jagged[batch][i]);
@@ -135,14 +135,14 @@ public class MultiGetBenchmarks
                 RequireBytes(reference[i], expected);
                 RequireBytes(proposed[i], expected);
             }
-            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
+            _db.MultiGetReference17(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
             RequireNumbers(batch);
-            _db.MultiGetDecoded(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
             RequireNumbers(batch);
         }
         long expectedSum = _expected.Sum(batch => batch.Sum());
         if (LegacyMultiGet() != expectedSum || LegacyControl() != expectedSum || Reference17() != expectedSum
-            || Proposed() != expectedSum || ProposedClass() != expectedSum
+            || Proposed() != expectedSum || ProposedClass() != expectedSum || Interface() != expectedSum
             || Reference17FromJagged() != expectedSum || ProposedFromJagged() != expectedSum
             || Scalar() != expectedSum)
             throw new InvalidOperationException("Incorrect benchmark checksum");
@@ -187,7 +187,7 @@ public class MultiGetBenchmarks
         long total = 0;
         for (int batch = 0; batch < _contiguous.Length; batch++)
         {
-            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
+            _db.MultiGetReference17(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
             total += SumOutput();
         }
         return total;
@@ -198,12 +198,24 @@ public class MultiGetBenchmarks
 
     public long ProposedClass() => ReadProposed(_decoder);
 
+    public long Interface()
+    {
+        long total = 0;
+        for (int batch = 0; batch < _contiguous.Length; batch++)
+        {
+            _db.MultiGet<long>(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
+            total += SumOutput();
+        }
+        return total;
+    }
+
+
     private long ReadProposed<TDeserializer>(TDeserializer decoder) where TDeserializer : ISpanDeserializer<long>
     {
         long total = 0;
         for (int batch = 0; batch < _contiguous.Length; batch++)
         {
-            _db.MultiGetDecoded(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
             total += SumOutput();
         }
         return total;
@@ -236,8 +248,8 @@ public class MultiGetBenchmarks
         try
         {
             for (int i = 0; i < keys.Length; i++) keys[i].CopyTo(packed.Slice(i * KeyLength, KeyLength));
-            if (proposed) _db.MultiGetDecoded(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
-            else _db.MultiGet(packed, KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
+            if (proposed) _db.MultiGet(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            else _db.MultiGetReference17(packed, KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
         }
         finally
         {

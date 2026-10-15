@@ -36,6 +36,7 @@ internal static class PairedMeasurements
             new("ReferenceControl", fixture.Reference17, fixture.Reference17),
             new("Reference17", fixture.Reference17, fixture.Proposed),
             new("Reference17Class", fixture.Reference17, fixture.ProposedClass),
+            new("Reference17Interface", fixture.Reference17, fixture.Interface),
             new("Main", fixture.LegacyMultiGet, fixture.Proposed),
         ];
         long expected = fixture.Reference17();

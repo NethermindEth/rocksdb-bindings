@@ -17,6 +17,27 @@ public class RocksDbTests
         public int Deserialize(ReadOnlySpan<byte> buffer) => BitConverter.ToInt32(buffer);
     }
 
+    private sealed class FirstByteDeserializer : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? -1 : buffer[0];
+    }
+
+    private sealed class ThrowingDeserializer : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => throw new InvalidOperationException("decoder failed");
+    }
+
+    private static DbOptions CreatingOptions()
+        => new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+
+    private static ColumnFamilies Families(params string[] names)
+    {
+        ColumnFamilies families = new();
+        foreach (string name in names)
+            families.Add(name, new ColumnFamilyOptions());
+        return families;
+    }
+
     private static bool TryGetFixedSize(RocksDb db, byte[] key, byte[] output)
         => db.GetFixedSizeValue(key, output);
 
@@ -357,6 +378,114 @@ public class RocksDbTests
         using var database = TestDatabase.Create();
 
         await Assert.That(database.Db.Get(Key, new Int32Deserializer())).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task MultiGet_FixedKeysReadsMixedEmptyMissingOrderAndDuplicates()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+        database.Db.Put([1, 2], [], blocks);
+
+        byte[] keys = [1, 2, 1, 3, 1, 1, 1, 2, 1, 1];
+        int[] values = [99, 99, 99, 99, 99];
+        database.Db.MultiGet(keys, 2, values, new FirstByteDeserializer(), blocks);
+
+        await Assert.That(values).IsEquivalentTo([-1, 0, 10, -1, 10], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(256)]
+    [Arguments(512)]
+    public async Task MultiGet_FixedKeysHandlesStackAndPooledBatches(int count)
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        const int keyLength = 4;
+        byte[] keys = new byte[count * keyLength];
+        int[] values = new int[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            int offset = i * keyLength;
+            keys[offset] = (byte)(i >> 24);
+            keys[offset + 1] = (byte)(i >> 16);
+            keys[offset + 2] = (byte)(i >> 8);
+            keys[offset + 3] = (byte)i;
+            database.Db.Put(keys.AsSpan(offset, keyLength), [(byte)(i & 0xff)], blocks);
+        }
+
+        database.Db.MultiGet(keys, keyLength, values, new FirstByteDeserializer(), blocks);
+
+        for (int i = 0; i < count; i++)
+            await Assert.That(values[i]).IsEqualTo(i & 0xff);
+    }
+
+    [Test]
+    public async Task MultiGet_UsesSnapshotWithCacheFillDisabled()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+
+        using Snapshot snapshot = database.Db.CreateSnapshot();
+        using ReadOptions readOptions = new ReadOptions().SetSnapshot(snapshot).SetFillCache(false);
+        database.Db.Put([1, 1], [20], blocks);
+
+        int[] values = [0];
+        database.Db.MultiGet([1, 1], 2, values, new FirstByteDeserializer(), blocks, readOptions);
+
+        await Assert.That(values).IsEquivalentTo([10], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task MultiGet_ValidatesShapeAndOverflowBeforeClearingOutputs()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        int[] values = [123];
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => database.Db.MultiGet([], 1, values, null!, blocks))
+                .Throws<ArgumentNullException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => database.Db.MultiGet([], 0, values, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentOutOfRangeException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => database.Db.MultiGet([], 1, values, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => database.Db.MultiGet([], 1 << 30, new int[2], new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+        }
+    }
+
+    [Test]
+    public async Task MultiGet_CleansUpPinnableValuesWhenDeserializerThrows()
+    {
+        using var database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+        database.Db.Put([1, 2], [20], blocks);
+
+        await Assert.That(() => database.Db.MultiGet([1, 1, 1, 2], 2, new int[2], new ThrowingDeserializer(), blocks))
+            .Throws<InvalidOperationException>();
+
+        await Assert.That(database.Db.Get([1, 1], blocks)).IsEquivalentTo(new byte[] { 10 }, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task MultiGet_WithoutColumnFamilyFallsBackToScalarReads()
+    {
+        using var database = TestDatabase.Create();
+        database.Db.Put([1, 1], [10]);
+
+        int[] values = [99, 99];
+        database.Db.MultiGet([1, 1, 1, 3], 2, values, new FirstByteDeserializer());
+
+        await Assert.That(values).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
     }
 
     [Test]

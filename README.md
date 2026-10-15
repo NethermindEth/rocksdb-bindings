@@ -13,14 +13,14 @@ macOS 15.
 
 ## Decoded batched reads
 
-`MultiGetDecoded<T, TDeserializer>` reads contiguous fixed-length keys and writes
+`MultiGet<T, TDeserializer>` reads contiguous fixed-length keys and writes
 decoded values into a caller-owned span. The key buffer length must equal
 `keyLength * values.Length`. Both class and struct deserializers implement
 `ISpanDeserializer<T>`; struct deserializers do not require boxing.
 
 ```csharp
 int[] values = new int[keyCount];
-db.MultiGetDecoded<int, Int32Deserializer>(keys, keyLength, values, default, family);
+db.MultiGet<int, Int32Deserializer>(keys, keyLength, values, default, family);
 ```
 
 Missing keys produce `default(T)` without invoking the deserializer. Empty values
@@ -28,8 +28,8 @@ still invoke it with an empty span. The native value span is valid only during
 `Deserialize`; the deserializer must not retain a pointer to it.
 
 `sortedInput: true` requires keys already sorted according to the column family's
-comparator. The method does not sort or validate this hint. Leave it false for
-unsorted input.
+comparator. Results are undefined if this requirement is not met. The method
+does not sort or validate this hint. Leave it false for unsorted input.
 
 Argument validation occurs before clearing the output. Native batch errors are
 checked before decoding starts. If decoding throws, the successfully decoded

@@ -528,6 +528,17 @@ public unsafe sealed partial class RocksDb : IDisposable
         }
     }
 
+    /// <summary>Reads fixed-length contiguous keys with an interface decoder.</summary>
+    /// <remarks>Use the generic decoder overload for a struct decoder to avoid boxing.</remarks>
+    /// <exception cref="ArgumentNullException">The deserializer is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>
+    /// <exception cref="ArgumentException">The key buffer does not match the output count and key length.</exception>
+    /// <exception cref="RocksDbNativeException">A native read fails.</exception>
+    /// <exception cref="NotSupportedException">A native value exceeds the maximum span length.</exception>
+    public void MultiGet<T>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+        ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+        => MultiGet<T, ISpanDeserializer<T>>(keys, keyLength, values, deserializer, cf, readOptions);
+
     public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
         ArgumentNullException.ThrowIfNull(keys);

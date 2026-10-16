@@ -13,3 +13,8 @@ configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_async.inc"
                "${ROCKSDB_SOURCE}/db/rocksdb_async.inc" COPYONLY)
 configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_async.h"
                "${ROCKSDB_SOURCE}/db/rocksdb_async.h" COPYONLY)
+file(APPEND "${ROCKSDB_SOURCE}/db/c.cc" "\n#include \"rocksdb_batch.inc\"\n")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_batch.inc"
+               "${ROCKSDB_SOURCE}/db/rocksdb_batch.inc" COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_batch.h"
+               "${ROCKSDB_SOURCE}/db/rocksdb_batch.h" COPYONLY)

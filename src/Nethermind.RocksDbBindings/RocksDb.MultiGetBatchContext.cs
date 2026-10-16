@@ -1,0 +1,104 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: MIT
+
+using System.Buffers;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.RocksDbBindings.Native;
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+
+namespace Nethermind.RocksDbBindings;
+
+public unsafe sealed partial class RocksDb
+{
+    [SkipLocalsInit]
+    public void MultiGetBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+        TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
+        where TDeserializer : ISpanDeserializer<T>
+    {
+        if (values.Length <= 1)
+        {
+            MultiGet<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+            return;
+        }
+        if (deserializer is null) throw new ArgumentNullException(nameof(deserializer));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
+        if ((long)keys.Length != (long)values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+        values.Clear();
+
+        using HandleLease lease = Lease();
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
+        if (cf is null && rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
+        {
+            for (int i = 0; i < values.Length; i++)
+                values[i] = ReadDecodedValue<T, TDeserializer>(keys.Slice(i * keyLength, keyLength), ref deserializer, cf, options);
+            return;
+        }
+
+        int count = values.Length;
+        int scratchCount = checked(count * 2);
+        rocksdb_slice_t[]? rented = null;
+        Span<rocksdb_slice_t> scratch = count <= StackReadCapacity
+            ? stackalloc rocksdb_slice_t[scratchCount]
+            : (rented = ArrayPool<rocksdb_slice_t>.Shared.Rent(scratchCount)).AsSpan(0, scratchCount);
+        Span<rocksdb_slice_t> keySlices = scratch[..count];
+        Span<rocksdb_slice_t> valueSlices = scratch[count..];
+        try
+        {
+            fixed (byte* keyData = keys)
+            fixed (rocksdb_slice_t* keySlicesPtr = keySlices)
+            fixed (rocksdb_slice_t* valueSlicesPtr = valueSlices)
+            {
+                for (int i = 0; i < count; i++)
+                    keySlicesPtr[i] = new rocksdb_slice_t { data = (sbyte*)(keyData + i * keyLength), size = (nuint)keyLength };
+
+                sbyte* error = null;
+                nint batch = NativeBatchRead(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
+                    RocksDbInterop.ColumnFamily(cf?.Handle ?? 0), (nuint)count, keySlicesPtr, valueSlicesPtr,
+                    sortedInput ? (byte)1 : (byte)0, &error);
+                try
+                {
+                    RocksDbInterop.ThrowIfError(error);
+                    if (batch == 0) throw new InvalidOperationException("Native batch read returned no result or error.");
+                    for (int i = 0; i < count; i++)
+                    {
+                        nuint length = valueSlicesPtr[i].size;
+                        if (length == nuint.MaxValue) continue;
+                        if (length > int.MaxValue)
+                            throw new NotSupportedException($"The value is {length} bytes; values over {int.MaxValue} bytes cannot be exposed as a span.");
+                        values[i] = deserializer.Deserialize(new ReadOnlySpan<byte>(valueSlicesPtr[i].data, (int)length));
+                    }
+                }
+                finally
+                {
+                    if (batch != 0) NativeBatchDestroy(batch);
+                }
+            }
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<rocksdb_slice_t>.Shared.Return(rented);
+        }
+    }
+
+    [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_read", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern nint NativeBatchRead(rocksdb_t* db, rocksdb_readoptions_t* options,
+        rocksdb_column_family_handle_t* family, nuint count, rocksdb_slice_t* keys,
+        rocksdb_slice_t* values, byte sorted, sbyte** error);
+
+    [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern void NativeBatchDestroy(nint batch);
+
+    public static ulong GetNativeThreadAllocatedBytes()
+    {
+        ulong allocated;
+        if (NativeThreadAllocated(&allocated) != 0)
+            throw new InvalidOperationException("Native thread allocation statistics are unavailable.");
+        return allocated;
+    }
+
+    [DllImport("rocksdb", EntryPoint = "rocksdb_net_thread_allocated", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern int NativeThreadAllocated(ulong* allocated);
+}

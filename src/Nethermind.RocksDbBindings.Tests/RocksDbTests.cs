@@ -90,6 +90,31 @@ public class RocksDbTests
     }
 
     [Test]
+    [Arguments(1, false)]
+    [Arguments(2, false)]
+    [Arguments(3, false)]
+    [Arguments(257, false)]
+    [Arguments(1, true)]
+    [Arguments(2, true)]
+    [Arguments(3, true)]
+    [Arguments(257, true)]
+    public async Task MultiGet_WhenReplacingReferenceValues_KeepsPreviousValueUntilDecoded(int count, bool cacheOnly)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        using ReadOptions options = new ReadOptions().SetReadTier(cacheOnly ? 1 : 0);
+        byte[] keys = new byte[count];
+        byte[] previous = new byte[131072];
+        byte[][] values = Enumerable.Repeat(previous, count).ToArray();
+        database.Db.Put([0], [1, 2, 3]);
+        for (int i = 0; i < count; i++) keys[i] = (byte)(i == 0 ? 0 : 1);
+
+        database.Db.MultiGet(keys, 1, values.AsSpan(), new ObservingReplacementDeserializer(values, previous), readOptions: options);
+
+        await Assert.That(values[0]).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
+        for (int i = 1; i < count; i++) await Assert.That(values[i]).IsNull();
+    }
+
+    [Test]
     public async Task Open_WithoutCreateIfMissing_FailsOnAnEmptyDirectory()
     {
         using var directory = new TempDirectory();
@@ -652,9 +677,11 @@ public class RocksDbTests
 
     [Test]
     [Arguments(1, 0, false)]
+    [Arguments(2, 1, false)]
     [Arguments(4, 2, false)]
     [Arguments(512, 255, false)]
     [Arguments(1, 0, true)]
+    [Arguments(2, 1, true)]
     [Arguments(4, 2, true)]
     [Arguments(512, 255, true)]
     public async Task MultiGet_WhenDecoderThrows_PreservesPrefixAndClearsTail(int count, int throwAt, bool defaultFamily)
@@ -1021,6 +1048,16 @@ public class RocksDbTests
     {
         private int _calls;
         public int Deserialize(ReadOnlySpan<byte> buffer) => buffer[0] + ++_calls;
+    }
+
+    private readonly struct ObservingReplacementDeserializer(byte[][] values, byte[] previous) : ISpanDeserializer<byte[]>
+    {
+        public byte[] Deserialize(ReadOnlySpan<byte> buffer)
+        {
+            if (!ReferenceEquals(values[0], previous))
+                throw new InvalidOperationException("The previous result must stay in place until decoding completes.");
+            return buffer.ToArray();
+        }
     }
 
     private readonly struct BytesDeserializer : ISpanDeserializer<byte[]>

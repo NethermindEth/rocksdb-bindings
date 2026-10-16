@@ -37,8 +37,8 @@ prefix is retained and the remaining output stays cleared. Default-family reads
 with a non-default read tier use scalar reads and retain their error behavior.
 
 The database stays leased through decoding. Read options are leased while native
-reads are active. Do not mutate options or the key and output buffers during the
-call. Concurrent callers need
+reads are active. Key and output spans must not overlap. Do not mutate options
+or the key and output buffers during the call. Concurrent callers need
 separate output buffers and deserializers that support their use pattern.
 
 ## Async reads

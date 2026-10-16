@@ -519,6 +519,10 @@ public class RocksDbTests
             await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
             await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1 << 30, new int[2], new FirstByteDeserializer(), blocks))
                 .Throws<ArgumentException>();
+            int[] overflowValues = [123, 123, 123, 123];
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1 << 30, overflowValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(overflowValues).IsEquivalentTo([123, 123, 123, 123], CollectionOrdering.Matching);
         }
     }
 

@@ -529,7 +529,10 @@ public unsafe sealed partial class RocksDb : IDisposable
     }
 
     /// <summary>Reads fixed-length contiguous keys with an interface decoder.</summary>
-    /// <remarks>Use the generic decoder overload for a struct decoder to avoid boxing.</remarks>
+    /// <remarks>
+    /// The key and output spans must not overlap.
+    /// Use the generic decoder overload for a struct decoder to avoid boxing.
+    /// </remarks>
     /// <exception cref="ArgumentNullException">The deserializer is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>
     /// <exception cref="ArgumentException">The key buffer does not match the output count and key length.</exception>

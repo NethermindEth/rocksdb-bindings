@@ -14,6 +14,7 @@ public unsafe sealed partial class RocksDb
     /// <summary>Decodes values directly from native memory into the caller's output buffer.</summary>
     /// <remarks>
     /// Missing keys produce default values without calling the decoder. Empty values still call it.
+    /// The key and output spans must not overlap.
     /// The decoder must not retain the native value span after returning.
     /// A sorted-input hint requires keys in column-family comparator order; results are undefined otherwise.
     /// Native batch errors are checked before decoding. Decoder failures retain the decoded prefix and leave the tail cleared.

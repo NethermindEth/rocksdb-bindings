@@ -1,0 +1,140 @@
+name: MultiGet proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      native_run_id:
+        description: Verified six-platform native build run
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    name: MultiGet benchmark
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-26.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          ref: 6f729e00c8d80ad397495b191cda3300d361cf33
+          lfs: true
+          fetch-depth: 0
+          path: bindings
+
+      - name: Check out proof tools
+        uses: actions/checkout@v7
+        with:
+          path: proof
+
+      - name: Install isolated proof project
+        shell: bash
+        run: |
+          cp -R proof/benchmarks bindings/
+          cp -R proof/src/Nethermind.RocksDbBindings.BenchmarkReferences bindings/src/
+
+      - name: Check out main baseline
+        uses: actions/checkout@v7
+        with:
+          ref: 165c9d253eaa19aa5aead2abef6ec4d276359a39
+          path: baseline
+
+      - name: Check out reference 17
+        uses: actions/checkout@v7
+        with:
+          ref: d6040cf00b66c0e45ab6c82b8a34501dcac500af
+          path: reference
+
+      - name: Check out previous implementation
+        uses: actions/checkout@v7
+        with:
+          ref: f189a514f67d83066126ba57f97fa73b520eff9c
+          path: previous
+
+      - name: Download verified native artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-${{ matrix.arch }}
+          path: artifact
+          run-id: ${{ inputs.native_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: bindings/global.json
+
+      - name: Verify sources and packaged binary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BENCH_ARCH: ${{ matrix.arch }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python3 bindings/benchmarks/NativeMultiGet/verify-native-build.py bindings "$BENCH_ARCH" "$NATIVE_RUN_ID" results
+          cmp artifact/librocksdb.so "bindings/src/Nethermind.RocksDbBindings/runtimes/linux-$BENCH_ARCH/native/librocksdb.so"
+          python3 bindings/benchmarks/NativeMultiGet/verify.py sources bindings baseline reference previous
+          git -C bindings rev-parse HEAD > results/candidate-sha.txt
+          git -C baseline rev-parse HEAD > results/main-sha.txt
+          git -C reference rev-parse HEAD > results/reference17-sha.txt
+          git -C previous rev-parse HEAD > results/reference-sha.txt
+          lscpu > results/cpu.txt
+          dotnet --info > results/dotnet.txt
+          sha256sum artifact/librocksdb.so > results/native-sha256.txt
+
+      - name: Test packaged implementation
+        working-directory: bindings/src/Nethermind.RocksDbBindings.Tests
+        env:
+          ROCKSDB_EXPECT_NATIVE_ASYNC: '1'
+        run: dotnet test -c Release
+
+      - name: Benchmark
+        working-directory: bindings
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/multiget-data
+        run: |
+          set -euo pipefail
+          mkdir -p "$BENCH_DATA"
+          dotnet run --project benchmarks/NativeMultiGet -c Release -- --filter '*' --exporters json markdown --artifacts "$GITHUB_WORKSPACE/results/bdn" --join
+          python3 benchmarks/NativeMultiGet/verify.py "$GITHUB_WORKSPACE/results/bdn"
+
+      - name: Paired timings and allocations
+        working-directory: bindings
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/multiget-data
+          DOTNET_TieredCompilation: '0'
+        run: |
+          set -euo pipefail
+          cpu=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+          for process in 1 2 3; do
+            taskset -c "$cpu" dotnet run --no-build --project benchmarks/NativeMultiGet -c Release -- --paired "$GITHUB_WORKSPACE/results/paired-$process.json" "$process"
+          done
+          python3 benchmarks/NativeMultiGet/verify-paired.py "$GITHUB_WORKSPACE/results"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -d results ]; then
+            find results -name '*github.md' -exec cat {} \; >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: multiget-${{ matrix.arch }}
+          path: results
+          if-no-files-found: warn

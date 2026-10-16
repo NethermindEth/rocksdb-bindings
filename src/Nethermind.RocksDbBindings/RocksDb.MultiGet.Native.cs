@@ -33,20 +33,20 @@ public unsafe sealed partial class RocksDb
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
         if ((long)keys.Length != (long)values.Length * keyLength)
             throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+        int count = values.Length;
+        int scratchCount = checked(count * 2);
         values.Clear();
 
         using HandleLease lease = Lease();
         ReadOptions options = readOptions ?? DefaultReadOptions;
         using HandleLease optionsLease = options.Lease(out nint optionsHandle);
-        if (cf is null && rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
+        if (rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
         {
             for (int i = 0; i < values.Length; i++)
                 values[i] = ReadDecodedValue<T, TDeserializer>(keys.Slice(i * keyLength, keyLength), ref deserializer, cf, options);
             return;
         }
 
-        int count = values.Length;
-        int scratchCount = checked(count * 2);
         rocksdb_slice_t[]? rented = null;
         Span<rocksdb_slice_t> scratch = count <= StackReadCapacity
             ? stackalloc rocksdb_slice_t[scratchCount]
@@ -100,15 +100,4 @@ public unsafe sealed partial class RocksDb
 
     [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern void NativeBatchDestroy(nint batch);
-
-    internal static ulong GetNativeThreadAllocatedBytes()
-    {
-        ulong allocated;
-        if (NativeThreadAllocated(&allocated) != 0)
-            throw new InvalidOperationException("Native thread allocation statistics are unavailable.");
-        return allocated;
-    }
-
-    [DllImport("rocksdb", EntryPoint = "rocksdb_net_thread_allocated", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    private static extern int NativeThreadAllocated(ulong* allocated);
 }

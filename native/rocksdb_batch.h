@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include "rocksdb/c.h"
 
 #ifdef __cplusplus
@@ -20,7 +18,6 @@ extern ROCKSDB_LIBRARY_API unsigned char rocksdb_net_batch_read(
     unsigned char sorted, rocksdb_net_batch_t** batch, char** errptr);
 extern ROCKSDB_LIBRARY_API void rocksdb_net_batch_destroy(
     rocksdb_net_batch_t* batch);
-extern ROCKSDB_LIBRARY_API int rocksdb_net_thread_allocated(uint64_t* allocated);
 
 #ifdef __cplusplus
 }

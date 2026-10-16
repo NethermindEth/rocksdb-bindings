@@ -32,9 +32,10 @@ comparator. Results are undefined if this requirement is not met. The method
 does not sort or validate this hint. Leave it false for unsorted input.
 
 Argument validation occurs before clearing the output. Native batch errors are
-checked before decoding starts. If decoding throws, the successfully decoded
-prefix is retained and the remaining output stays cleared. Default-family reads
-with a non-default read tier use scalar reads and retain their error behavior.
+checked before decoding starts. With a non-default read tier, every family uses
+scalar reads; a read failure retains the decoded prefix and leaves the tail
+cleared. Decoder failures also retain the completed prefix. Disposed family
+handles are rejected before the output is cleared.
 
 The database stays leased through decoding. Read options are leased while native
 reads are active. Key and output spans must not overlap. Do not mutate options

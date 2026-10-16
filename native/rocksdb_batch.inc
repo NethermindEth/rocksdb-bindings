@@ -3,10 +3,6 @@
 
 #include "rocksdb_batch.h"
 
-#ifdef ROCKSDB_JEMALLOC
-extern "C" int je_mallctl(const char*, void*, size_t*, void*, size_t);
-#endif
-
 struct rocksdb_net_batch_t {
   std::vector<PinnableSlice> values;
 
@@ -54,22 +50,18 @@ unsigned char rocksdb_net_batch_read(
     *result = batch.release();
     return 1;
   } catch (const std::exception& error) {
-    SaveError(errptr, Status::Aborted(error.what()));
+    try {
+      SaveError(errptr, Status::Aborted(error.what()));
+    } catch (...) {
+    }
+    return 0;
+  } catch (...) {
     return 0;
   }
 }
 
 void rocksdb_net_batch_destroy(rocksdb_net_batch_t* batch) {
   delete batch;
-}
-
-int rocksdb_net_thread_allocated(uint64_t* allocated) {
-#ifdef ROCKSDB_JEMALLOC
-  size_t length = sizeof(*allocated);
-  return je_mallctl("thread.allocated", allocated, &length, nullptr, 0);
-#else
-  return -1;
-#endif
 }
 
 }

@@ -16,18 +16,24 @@ public unsafe sealed partial class RocksDb
     /// The key and output spans must not overlap.
     /// The decoder must not retain the native value span after returning.
     /// A sorted-input hint requires keys in column-family comparator order; results are undefined otherwise.
-    /// Native batch errors are checked before decoding. Decoder failures retain the decoded prefix and leave the tail cleared.
+    /// Native batch errors are checked before decoding. With a non-default read tier, keys are read and decoded one at a time;
+    /// a read failure retains the decoded prefix. Decoder failures also retain the prefix and leave the tail cleared.
     /// </remarks>
     /// <exception cref="ArgumentNullException">The deserializer is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>
     /// <exception cref="ArgumentException">The key buffer does not match the output count and key length.</exception>
     /// <exception cref="RocksDbNativeException">A native read fails.</exception>
     /// <exception cref="NotSupportedException">A native value exceeds the maximum span length.</exception>
+    /// <exception cref="ObjectDisposedException">The database, read options or column family handle has been disposed.</exception>
+    /// <exception cref="OverflowException">The batch exceeds the supported scratch size.</exception>
+    /// <exception cref="InvalidOperationException">The native batch read fails without an error message.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MultiGet<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
         TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
         where TDeserializer : ISpanDeserializer<T>
     {
+        if (cf is not null && cf.Handle == 0)
+            throw new ObjectDisposedException(nameof(cf), "The column family handle has been disposed.");
         if (values.Length > 2)
         {
             ReadBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
@@ -59,7 +65,7 @@ public unsafe sealed partial class RocksDb
         ReadOptions options = readOptions ?? DefaultReadOptions;
         using HandleLease optionsLease = options.Lease(out nint optionsHandle);
 
-        if (cf is null && rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
+        if (rocksdb_readoptions_get_read_tier(RocksDbInterop.ReadOptions(optionsHandle)) != 0)
         {
             for (; completed < count; completed++)
                 values[completed] = ReadDecodedValue<T, TDeserializer>(keys.Slice(completed * keyLength, keyLength), ref deserializer, cf, options);
@@ -167,6 +173,8 @@ public unsafe sealed partial class RocksDb
     private T ReadDecodedValue<T, TDeserializer>(ReadOnlySpan<byte> key, ref TDeserializer deserializer,
         IColumnFamilyHandle? cf, ReadOptions? readOptions) where TDeserializer : ISpanDeserializer<T>
     {
+        if (cf is not null && cf.Handle == 0)
+            throw new ObjectDisposedException(nameof(cf), "The column family handle has been disposed.");
         if (!TryGetPinned(key, out PinnedSlice slice, cf, readOptions)) return default!;
         try
         {

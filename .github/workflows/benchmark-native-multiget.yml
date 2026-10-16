@@ -1,8 +1,6 @@
 name: Native MultiGet benchmark
 
 on:
-  push:
-    branches: [perf/native-multiget-context]
   workflow_dispatch:
 
 permissions:
@@ -62,6 +60,13 @@ jobs:
           repository: microsoft/vcpkg
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
+
+      - name: Trust checked-out repositories
+        shell: bash
+        run: |
+          for path in "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/bindings" "$GITHUB_WORKSPACE/vcpkg" "$GITHUB_WORKSPACE/reference"; do
+            git config --global --add safe.directory "$path"
+          done
 
       - name: Cache dependencies
         uses: actions/cache/restore@v6

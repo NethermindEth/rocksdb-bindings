@@ -1,0 +1,129 @@
+name: Measure native MultiGet artifacts
+
+on:
+  push:
+    branches: [perf/native-multiget-context]
+  workflow_dispatch:
+    inputs:
+      native_run_id:
+        description: Run containing verified linux-x64 and linux-arm64 artifacts
+        type: string
+        required: true
+        default: '38839384408'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  NATIVE_RUN_ID: ${{ inputs.native_run_id || '38839384408' }}
+  ROCKSDB_REF: abeebd9630f11bd08c28b7bd43c7bdfc62050654
+
+jobs:
+  benchmark:
+    name: Measure native MultiGet
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-26.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+          fetch-depth: 0
+          path: bindings
+
+      - name: Check out reference
+        uses: actions/checkout@v7
+        with:
+          ref: f189a514f67d83066126ba57f97fa73b520eff9c
+          path: reference
+
+      - name: Check out RocksDB source
+        uses: actions/checkout@v7
+        with:
+          repository: facebook/rocksdb
+          ref: ${{ env.ROCKSDB_REF }}
+          path: rocksdb
+
+      - name: Download verified native artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-${{ matrix.arch }}
+          path: artifact
+          run-id: ${{ env.NATIVE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: bindings/global.json
+
+      - name: Verify artifact source and record environment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BENCH_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python3 bindings/benchmarks/NativeMultiGet/verify-native-build.py bindings "$BENCH_ARCH" "$NATIVE_RUN_ID" results
+          cmake -DROCKSDB_SOURCE="$GITHUB_WORKSPACE/rocksdb" -P bindings/native/apply.cmake
+          python3 bindings/benchmarks/NativeMultiGet/verify.py sources bindings reference rocksdb
+          git -C rocksdb rev-parse HEAD > results/rocksdb-sha.txt
+          git -C bindings rev-parse HEAD > results/candidate-sha.txt
+          git -C reference rev-parse HEAD > results/reference-sha.txt
+          lscpu > results/cpu.txt
+          dotnet --info > results/dotnet.txt
+          sha256sum artifact/librocksdb.so > results/native-sha256.txt
+          cp artifact/librocksdb.so bindings/src/Nethermind.RocksDbBindings/runtimes/linux-${{ matrix.arch }}/native/librocksdb.so
+
+      - name: Test both APIs and native result lifetime
+        working-directory: bindings/src/Nethermind.RocksDbBindings.Tests
+        env:
+          ROCKSDB_EXPECT_NATIVE_ASYNC: '1'
+        run: dotnet test -c Release
+
+      - name: Benchmark
+        working-directory: bindings
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/native-multiget-data
+        run: |
+          set -euo pipefail
+          mkdir -p "$BENCH_DATA"
+          dotnet run --project benchmarks/NativeMultiGet -c Release -- --filter '*' --exporters json markdown --artifacts "$GITHUB_WORKSPACE/results/bdn" --join
+          python3 benchmarks/NativeMultiGet/verify.py "$GITHUB_WORKSPACE/results/bdn"
+
+      - name: Paired timings and native allocations
+        working-directory: bindings
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/native-multiget-data
+          DOTNET_TieredCompilation: '0'
+        run: |
+          set -euo pipefail
+          cpu=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+          for process in 1 2 3; do
+            taskset -c "$cpu" dotnet run --no-build --project benchmarks/NativeMultiGet -c Release -- --paired "$GITHUB_WORKSPACE/results/paired-$process.json" "$process"
+          done
+          python3 benchmarks/NativeMultiGet/verify-paired.py "$GITHUB_WORKSPACE/results"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -d results ]; then
+            find results -name '*github.md' -exec cat {} \; >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-multiget-${{ matrix.arch }}
+          path: results
+          if-no-files-found: warn

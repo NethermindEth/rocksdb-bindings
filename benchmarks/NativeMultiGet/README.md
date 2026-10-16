@@ -8,6 +8,8 @@ The new context owns a fixed-size array of pinned values. Descriptors borrow the
 Native errors are checked before decoding. Database and option leases outlive context destruction.
 
 The workflow builds Linux x64 and ARM64 binaries with the production dependencies and CPU baseline.
+The measurement workflow can reuse verified native build artifacts. It checks the build steps, source revision, native files and build commands before reuse.
+The full native build remains available through `workflow_dispatch` when native sources change.
 Both compared methods use the same rebuilt binary and database. This does not measure the rebuilt binary against an older shipped binary.
 Contract tests run before the measurements, including decoder failure and database disposal during batch decoding.
 

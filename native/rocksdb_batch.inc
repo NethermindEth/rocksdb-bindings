@@ -3,7 +3,9 @@
 
 #include "rocksdb_batch.h"
 
+#ifdef ROCKSDB_JEMALLOC
 extern "C" int je_mallctl(const char*, void*, size_t*, void*, size_t);
+#endif
 
 struct rocksdb_net_batch_t {
   std::vector<PinnableSlice> values;
@@ -62,8 +64,12 @@ void rocksdb_net_batch_destroy(rocksdb_net_batch_t* batch) {
 }
 
 int rocksdb_net_thread_allocated(uint64_t* allocated) {
+#ifdef ROCKSDB_JEMALLOC
   size_t length = sizeof(*allocated);
   return je_mallctl("thread.allocated", allocated, &length, nullptr, 0);
+#else
+  return -1;
+#endif
 }
 
 }

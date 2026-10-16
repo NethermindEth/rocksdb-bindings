@@ -1,22 +1,19 @@
 name: Measure native MultiGet artifacts
 
 on:
-  push:
-    branches: [perf/native-multiget-context]
   workflow_dispatch:
     inputs:
       native_run_id:
         description: Run containing verified linux-x64 and linux-arm64 artifacts
         type: string
         required: true
-        default: '38839384408'
 
 permissions:
   contents: read
   actions: read
 
 env:
-  NATIVE_RUN_ID: ${{ inputs.native_run_id || '38839384408' }}
+  NATIVE_RUN_ID: ${{ inputs.native_run_id }}
   ROCKSDB_REF: abeebd9630f11bd08c28b7bd43c7bdfc62050654
 
 jobs:

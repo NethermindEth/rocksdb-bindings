@@ -1,6 +1,9 @@
 name: Native MultiGet benchmark
 
 on:
+  push:
+    branches: [perf/native-multiget-context]
+    paths: ["native/**"]
   workflow_dispatch:
 
 permissions:

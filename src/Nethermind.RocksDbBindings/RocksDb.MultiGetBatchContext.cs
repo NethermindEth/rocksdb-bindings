@@ -11,16 +11,24 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe sealed partial class RocksDb
 {
-    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MultiGetBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
         TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
         where TDeserializer : ISpanDeserializer<T>
     {
-        if (values.Length <= 1)
+        if (values.Length <= 2)
         {
             MultiGet<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
             return;
         }
+        ReadBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+    }
+
+    [SkipLocalsInit]
+    private void ReadBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+        TDeserializer deserializer, IColumnFamilyHandle? cf, ReadOptions? readOptions, bool sortedInput)
+        where TDeserializer : ISpanDeserializer<T>
+    {
         if (deserializer is null) throw new ArgumentNullException(nameof(deserializer));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
         if ((long)keys.Length != (long)values.Length * keyLength)
@@ -55,13 +63,15 @@ public unsafe sealed partial class RocksDb
                     keySlicesPtr[i] = new rocksdb_slice_t { data = (sbyte*)(keyData + i * keyLength), size = (nuint)keyLength };
 
                 sbyte* error = null;
-                nint batch = NativeBatchRead(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
+                nint batch = 0;
+                byte succeeded = NativeBatchRead(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
                     RocksDbInterop.ColumnFamily(cf?.Handle ?? 0), (nuint)count, keySlicesPtr, valueSlicesPtr,
-                    sortedInput ? (byte)1 : (byte)0, &error);
+                    sortedInput ? (byte)1 : (byte)0, &batch, &error);
                 try
                 {
                     RocksDbInterop.ThrowIfError(error);
-                    if (batch == 0) throw new InvalidOperationException("Native batch read returned no result or error.");
+                    if (succeeded == 0) throw new InvalidOperationException("Native batch read failed without an error.");
+                    if (batch == 0) return;
                     for (int i = 0; i < count; i++)
                     {
                         nuint length = valueSlicesPtr[i].size;
@@ -84,9 +94,9 @@ public unsafe sealed partial class RocksDb
     }
 
     [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_read", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    private static extern nint NativeBatchRead(rocksdb_t* db, rocksdb_readoptions_t* options,
+    private static extern byte NativeBatchRead(rocksdb_t* db, rocksdb_readoptions_t* options,
         rocksdb_column_family_handle_t* family, nuint count, rocksdb_slice_t* keys,
-        rocksdb_slice_t* values, byte sorted, sbyte** error);
+        rocksdb_slice_t* values, byte sorted, nint* batch, sbyte** error);
 
     [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern void NativeBatchDestroy(nint batch);

@@ -13,11 +13,11 @@ extern "C" {
 
 typedef struct rocksdb_net_batch_t rocksdb_net_batch_t;
 
-extern ROCKSDB_LIBRARY_API rocksdb_net_batch_t* rocksdb_net_batch_read(
+extern ROCKSDB_LIBRARY_API unsigned char rocksdb_net_batch_read(
     rocksdb_t* db, const rocksdb_readoptions_t* options,
     rocksdb_column_family_handle_t* family, size_t count,
     const rocksdb_slice_t* keys, rocksdb_slice_t* values,
-    unsigned char sorted, char** errptr);
+    unsigned char sorted, rocksdb_net_batch_t** batch, char** errptr);
 extern ROCKSDB_LIBRARY_API void rocksdb_net_batch_destroy(
     rocksdb_net_batch_t* batch);
 extern ROCKSDB_LIBRARY_API int rocksdb_net_thread_allocated(uint64_t* allocated);

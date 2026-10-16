@@ -39,7 +39,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             autoconf autoconf-archive automake build-essential ca-certificates \
-            cmake curl git libtool pkg-config python3 libicu70 tar unzip zip
+            cmake curl git git-lfs libtool pkg-config python3 libicu70 tar unzip zip
 
       - name: Check out RocksDB repository
         uses: actions/checkout@v7

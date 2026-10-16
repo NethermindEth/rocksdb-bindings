@@ -27,3 +27,38 @@ The exploratory workflow validates complete reports but does not fail when it me
 It excludes libc allocations and allocations on other threads. It does not measure live or peak memory.
 The reference releases pinned values during decoding; the candidate retains them until batch destruction.
 Warm numeric decoder results do not establish the effect on slow decoders or cache pressure.
+
+## Measured results
+
+[Run 38877281792](https://github.com/NethermindEth/rocksdb-bindings/actions/runs/38877281792) measured managed revision `6e626f99968d1725b5159ae1825a15b38c2e50bb`.
+It reused verified native revision `6a3d9439bd616f437a15de84d158fe25aaf4e452` from [build 38874335797](https://github.com/NethermindEth/rocksdb-bindings/actions/runs/38874335797).
+The reference was PR #24 at `f189a514f67d83066126ba57f97fa73b520eff9c`.
+The x64 runner reported AMD EPYC 9V74; the ARM64 runner reported Neoverse-N2.
+
+Both architectures passed 461 tests with no failures or skipped tests, all 91 BenchmarkDotNet results with two launches, and the complete paired matrix.
+The table shows the median of the three process medians for elapsed time versus the reference.
+Negative means less time. `*` means the result overlapped the A/A control band in at least one process; it is not a proved gain or regression.
+No comparison was classified as higher beyond its A/A controls in any process.
+
+| Case | x64 struct | ARM64 struct | x64 class | ARM64 class |
+|---|---:|---:|---:|---:|
+| 1 key | -0.46%* | -0.67% | -0.54% | -1.72% |
+| 2 keys | +0.13%* | +0.02%* | +0.06%* | -0.11%* |
+| 8 keys | -2.24% | -2.33% | -1.51% | -1.88% |
+| 32 keys | -2.91% | -2.74% | -2.67% | -2.43% |
+| 256 keys | -4.15% | -4.22% | -4.10% | -4.17% |
+| 512 keys | -4.66% | -5.37% | -4.35% | -5.14% |
+| 32 keys, all missing | -1.16% | -0.65% | -1.58% | -0.32% |
+| 32 keys, half found | -1.77% | -1.98% | -1.89% | -1.54% |
+| 32 keys, 8-byte values | -2.70% | -2.73% | -2.63% | -2.14% |
+| 32 keys, 8192-byte values | -2.85% | -2.82% | -2.78% | -2.08% |
+| 32 keys, memtable | -3.91% | -4.37% | -4.35% | -4.67% |
+| 32 keys, default CF | -3.07% | -2.72% | -2.82% | -2.60% |
+| 512 keys, sorted | -4.03% | -5.86% | -3.99% | -5.39% |
+
+For 32 keys with all values found, calling-thread jemalloc allocated bytes fell from 971.06 to 856.06 per key (-11.84%) on both architectures.
+For 32 missing keys, they fell from 870 to 850 per key (-2.30%).
+No paired sample recorded managed allocations or GC collections.
+
+These are warm component lookups, not RPC or block-processing measurements.
+The runner CPU differed from earlier x64 runs. Only the same-process reference comparisons above support these claims.

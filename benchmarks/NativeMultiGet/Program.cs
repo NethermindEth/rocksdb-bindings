@@ -129,25 +129,30 @@ public class NativeMultiGetBenchmarks
             KeyValuePair<byte[], byte[]?>[] legacy = _db.MultiGet(_jagged[batch], _families, _readOptions);
             byte[][] reference = new byte[Case.Batch][];
             byte[][] proposed = new byte[Case.Batch][];
-            _db.MultiGet(_contiguous[batch], KeyLength, reference.AsSpan(), copy, _family, _readOptions, Case.Sorted);
-            _db.MultiGetBatchContext(_contiguous[batch], KeyLength, proposed.AsSpan(), copy, _family, _readOptions, Case.Sorted);
+            byte[][] reference17 = new byte[Case.Batch][];
+            _db.MultiGetReference24(_contiguous[batch], KeyLength, reference.AsSpan(), copy, _family, _readOptions, Case.Sorted);
+            _db.MultiGet(_contiguous[batch], KeyLength, proposed.AsSpan(), copy, _family, _readOptions, Case.Sorted);
+            _db.MultiGetReference17(_contiguous[batch], KeyLength, reference17.AsSpan(), copy, _family, _readOptions);
             for (int i = 0; i < Case.Batch; i++)
             {
                 int id = BinaryPrimitives.ReadInt32BigEndian(_jagged[batch][i]);
                 byte[]? expected = id < Records ? Value(id) : null;
                 RequireBytes(legacy[i].Value, expected);
                 RequireBytes(reference[i], expected);
+                RequireBytes(reference17[i], expected);
                 RequireBytes(proposed[i], expected);
             }
-            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGetReference24(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
             RequireNumbers(batch);
-            _db.MultiGetBatchContext(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
             RequireNumbers(batch);
         }
         long expectedSum = _expected.Sum(batch => batch.Sum());
         if (Reference24() != expectedSum || ReferenceControl() != expectedSum || Candidate() != expectedSum
             || ReferenceClass() != expectedSum || CandidateClass() != expectedSum
-            || ReferencePacked() != expectedSum || CandidatePacked() != expectedSum)
+            || ReferencePacked() != expectedSum || CandidatePacked() != expectedSum
+            || Main() != expectedSum || MainControl() != expectedSum
+            || Reference17() != expectedSum || Reference17Control() != expectedSum)
             throw new InvalidOperationException("Incorrect benchmark checksum");
         Console.WriteLine($"Verified {Queries} full values and decoded results for {Case}");
     }
@@ -161,6 +166,42 @@ public class NativeMultiGetBenchmarks
     private void RequireNumbers(int batch)
     {
         if (!_output.AsSpan().SequenceEqual(_expected[batch])) throw new InvalidOperationException("Incorrect decoded result");
+    }
+
+    [Benchmark(OperationsPerInvoke = Queries)]
+    public long Main() => ReadLegacy();
+
+    public long MainControl() => ReadLegacy();
+
+    private long ReadLegacy()
+    {
+        long total = 0;
+        for (int batch = 0; batch < _jagged.Length; batch++)
+        {
+            KeyValuePair<byte[], byte[]?>[] values = _db.MultiGet(_jagged[batch], _families, _readOptions);
+            for (int i = 0; i < values.Length; i++)
+            {
+                _output[i] = values[i].Value is byte[] value ? _decoder.Deserialize(value) : 0;
+                total += _output[i];
+            }
+        }
+        return total;
+    }
+
+    [Benchmark(OperationsPerInvoke = Queries)]
+    public long Reference17() => ReadReference17();
+
+    public long Reference17Control() => ReadReference17();
+
+    private long ReadReference17()
+    {
+        long total = 0;
+        for (int batch = 0; batch < _contiguous.Length; batch++)
+        {
+            _db.MultiGetReference17(_contiguous[batch], KeyLength, _output.AsSpan(), _decoder, _family, _readOptions);
+            total += SumOutput();
+        }
+        return total;
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = Queries)]
@@ -177,7 +218,7 @@ public class NativeMultiGetBenchmarks
         long total = 0;
         for (int batch = 0; batch < _contiguous.Length; batch++)
         {
-            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGetReference24(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
             total += SumOutput();
         }
         return total;
@@ -194,7 +235,7 @@ public class NativeMultiGetBenchmarks
         long total = 0;
         for (int batch = 0; batch < _contiguous.Length; batch++)
         {
-            _db.MultiGetBatchContext(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
+            _db.MultiGet(_contiguous[batch], KeyLength, _output.AsSpan(), decoder, _family, _readOptions, Case.Sorted);
             total += SumOutput();
         }
         return total;
@@ -227,8 +268,8 @@ public class NativeMultiGetBenchmarks
         try
         {
             for (int i = 0; i < keys.Length; i++) keys[i].CopyTo(packed.Slice(i * KeyLength, KeyLength));
-            if (candidate) _db.MultiGetBatchContext(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
-            else _db.MultiGet(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            if (candidate) _db.MultiGet(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
+            else _db.MultiGetReference24(packed, KeyLength, _output.AsSpan(), _valueDecoder, _family, _readOptions, Case.Sorted);
         }
         finally
         {

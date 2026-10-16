@@ -11,25 +11,7 @@ namespace Nethermind.RocksDbBindings;
 
 public unsafe sealed partial class RocksDb
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void MultiGetBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
-        TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
-        where TDeserializer : ISpanDeserializer<T>
-    {
-        if (values.Length > 2)
-        {
-            ReadBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
-            return;
-        }
-        if (values.Length == 1)
-        {
-            ReadSingleBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions);
-            return;
-        }
-        MultiGet<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
-    }
-
-    private void ReadSingleBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+    private void ReadSingleMultiGet<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
         TDeserializer deserializer, IColumnFamilyHandle? cf, ReadOptions? readOptions)
         where TDeserializer : ISpanDeserializer<T>
     {
@@ -119,7 +101,7 @@ public unsafe sealed partial class RocksDb
     [DllImport("rocksdb", EntryPoint = "rocksdb_net_batch_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern void NativeBatchDestroy(nint batch);
 
-    public static ulong GetNativeThreadAllocatedBytes()
+    internal static ulong GetNativeThreadAllocatedBytes()
     {
         ulong allocated;
         if (NativeThreadAllocated(&allocated) != 0)

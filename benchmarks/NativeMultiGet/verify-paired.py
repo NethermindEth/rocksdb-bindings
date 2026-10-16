@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 cases = ('B1_V128_H100_SST_CF_RAND', 'B2_V128_H100_SST_CF_RAND', 'B8_V128_H100_SST_CF_RAND', 'B32_V128_H100_SST_CF_RAND', 'B256_V128_H100_SST_CF_RAND', 'B512_V128_H100_SST_CF_RAND', 'B32_V128_H0_SST_CF_RAND', 'B32_V128_H50_SST_CF_RAND', 'B32_V8_H100_SST_CF_RAND', 'B32_V8192_H100_SST_CF_RAND', 'B32_V128_H100_MEM_CF_RAND', 'B32_V128_H100_SST_DEF_RAND', 'B512_V128_H100_SST_CF_SORT')
-comparisons = ("StructControl", "ClassControl", "Struct", "Class")
+comparisons = ("MainControl", "Reference17Control", "StructControl", "ClassControl", "Main", "Reference17", "Struct", "Class")
 root = Path(sys.argv[1])
 summary = {case: {name: [] for name in comparisons} for case in cases}
 intervals = {case: {name: [] for name in comparisons} for case in cases}
@@ -50,8 +50,8 @@ assessments = {}
 regressions = []
 for case in cases:
     assessments[case] = {}
-    for name in ("Struct", "Class"):
-        controls = ("StructControl",) if name == "Struct" else ("ClassControl",)
+    for name in ("Main", "Reference17", "Struct", "Class"):
+        controls = ({"Main": "MainControl", "Reference17": "Reference17Control", "Struct": "StructControl", "Class": "ClassControl"}[name],)
         process_verdicts = []
         for process in range(3):
             control_low = min(0, *(intervals[case][control][process][0] for control in controls))
@@ -72,13 +72,13 @@ for name in comparisons:
     lines += ["", f"## {name}", "", "| Case | Process 1 | Process 2 | Process 3 |", "|---|---:|---:|---:|"]
     for case in cases:
         lines.append("| " + case + " | " + " | ".join(f"{value:+.2f}%" for value in summary[case][name]) + " |")
-    if name not in ("StructControl", "ClassControl"):
+    if not name.endswith("Control"):
         lines += ["", "| Case | Control comparison: processes 1 / 2 / 3 |", "|---|---|"]
         for case in cases:
             lines.append("| " + case + " | " + " / ".join(assessments[case][name]) + " |")
 (root / "paired-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 (root / "paired-controls.json").write_text(json.dumps({"intervals": intervals, "assessments": assessments, "regressions": regressions}, indent=2) + "\n")
-print("Verified three processes, thirteen cases, four comparisons, twelve balanced rounds and four arms per round")
+print("Verified three processes, thirteen cases, eight comparisons, twelve balanced rounds and four arms per round")
 for regression in regressions:
     print("Higher time beyond controls: " + regression)
 native_allocations = {case: {name: [] for name in comparisons} for case in cases}

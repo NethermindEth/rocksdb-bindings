@@ -1,10 +1,10 @@
-name: Measure native MultiGet artifacts
+name: MultiGet benchmark
 
 on:
   workflow_dispatch:
     inputs:
       native_run_id:
-        description: Run containing verified linux-x64 and linux-arm64 artifacts
+        description: Verified six-platform native build run
         type: string
         required: true
 
@@ -12,14 +12,10 @@ permissions:
   contents: read
   actions: read
 
-env:
-  NATIVE_RUN_ID: ${{ inputs.native_run_id }}
-  ROCKSDB_REF: abeebd9630f11bd08c28b7bd43c7bdfc62050654
-
 jobs:
   benchmark:
-    name: Measure native MultiGet
-    timeout-minutes: 45
+    name: MultiGet benchmark
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -33,25 +29,30 @@ jobs:
           fetch-depth: 0
           path: bindings
 
-      - name: Check out reference
+      - name: Check out main baseline
+        uses: actions/checkout@v7
+        with:
+          ref: 165c9d253eaa19aa5aead2abef6ec4d276359a39
+          path: baseline
+
+      - name: Check out reference 17
+        uses: actions/checkout@v7
+        with:
+          ref: d6040cf00b66c0e45ab6c82b8a34501dcac500af
+          path: reference
+
+      - name: Check out previous implementation
         uses: actions/checkout@v7
         with:
           ref: f189a514f67d83066126ba57f97fa73b520eff9c
-          path: reference
-
-      - name: Check out RocksDB source
-        uses: actions/checkout@v7
-        with:
-          repository: facebook/rocksdb
-          ref: ${{ env.ROCKSDB_REF }}
-          path: rocksdb
+          path: previous
 
       - name: Download verified native artifact
         uses: actions/download-artifact@v8
         with:
           name: linux-${{ matrix.arch }}
           path: artifact
-          run-id: ${{ env.NATIVE_RUN_ID }}
+          run-id: ${{ inputs.native_run_id }}
           github-token: ${{ github.token }}
 
       - name: Set up .NET
@@ -59,26 +60,27 @@ jobs:
         with:
           global-json-file: bindings/global.json
 
-      - name: Verify artifact source and record environment
+      - name: Verify sources and packaged binary
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           BENCH_ARCH: ${{ matrix.arch }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
         run: |
           set -euo pipefail
           mkdir -p results
           python3 bindings/benchmarks/NativeMultiGet/verify-native-build.py bindings "$BENCH_ARCH" "$NATIVE_RUN_ID" results
-          cmake -DROCKSDB_SOURCE="$GITHUB_WORKSPACE/rocksdb" -P bindings/native/apply.cmake
-          python3 bindings/benchmarks/NativeMultiGet/verify.py sources bindings reference rocksdb
-          git -C rocksdb rev-parse HEAD > results/rocksdb-sha.txt
+          cmp artifact/librocksdb.so "bindings/src/Nethermind.RocksDbBindings/runtimes/linux-$BENCH_ARCH/native/librocksdb.so"
+          python3 bindings/benchmarks/NativeMultiGet/verify.py sources bindings baseline reference previous
           git -C bindings rev-parse HEAD > results/candidate-sha.txt
-          git -C reference rev-parse HEAD > results/reference-sha.txt
+          git -C baseline rev-parse HEAD > results/main-sha.txt
+          git -C reference rev-parse HEAD > results/reference17-sha.txt
+          git -C previous rev-parse HEAD > results/reference-sha.txt
           lscpu > results/cpu.txt
           dotnet --info > results/dotnet.txt
           sha256sum artifact/librocksdb.so > results/native-sha256.txt
-          cp artifact/librocksdb.so bindings/src/Nethermind.RocksDbBindings/runtimes/linux-${{ matrix.arch }}/native/librocksdb.so
 
-      - name: Test both APIs and native result lifetime
+      - name: Test packaged implementation
         working-directory: bindings/src/Nethermind.RocksDbBindings.Tests
         env:
           ROCKSDB_EXPECT_NATIVE_ASYNC: '1'
@@ -88,18 +90,18 @@ jobs:
         working-directory: bindings
         shell: bash
         env:
-          BENCH_DATA: ${{ runner.temp }}/native-multiget-data
+          BENCH_DATA: ${{ runner.temp }}/multiget-data
         run: |
           set -euo pipefail
           mkdir -p "$BENCH_DATA"
           dotnet run --project benchmarks/NativeMultiGet -c Release -- --filter '*' --exporters json markdown --artifacts "$GITHUB_WORKSPACE/results/bdn" --join
           python3 benchmarks/NativeMultiGet/verify.py "$GITHUB_WORKSPACE/results/bdn"
 
-      - name: Paired timings and native allocations
+      - name: Paired timings and allocations
         working-directory: bindings
         shell: bash
         env:
-          BENCH_DATA: ${{ runner.temp }}/native-multiget-data
+          BENCH_DATA: ${{ runner.temp }}/multiget-data
           DOTNET_TieredCompilation: '0'
         run: |
           set -euo pipefail
@@ -121,6 +123,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: native-multiget-${{ matrix.arch }}
+          name: multiget-${{ matrix.arch }}
           path: results
           if-no-files-found: warn

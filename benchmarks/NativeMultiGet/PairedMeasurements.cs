@@ -33,8 +33,12 @@ internal static class PairedMeasurements
     {
         Comparison[] comparisons =
         [
+            new("MainControl", fixture.Main, fixture.MainControl),
+            new("Reference17Control", fixture.Reference17, fixture.Reference17Control),
             new("StructControl", fixture.Reference24, fixture.ReferenceControl),
             new("ClassControl", fixture.ReferenceClass, fixture.ReferenceClass),
+            new("Main", fixture.Main, fixture.Candidate),
+            new("Reference17", fixture.Reference17, fixture.Candidate),
             new("Struct", fixture.Reference24, fixture.Candidate),
             new("Class", fixture.ReferenceClass, fixture.CandidateClass),
         ];

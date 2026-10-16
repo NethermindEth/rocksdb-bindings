@@ -4,9 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="References/**/*.cs" />
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <ProjectReference Include="../../src/Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" />
+    <ProjectReference Include="../../src/Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" AdditionalProperties="IncludeMultiGetBenchmarkReferences=true;AssemblyName=Nethermind.RocksDbBindings.BenchmarkReferences" />
   </ItemGroup>
 </Project>

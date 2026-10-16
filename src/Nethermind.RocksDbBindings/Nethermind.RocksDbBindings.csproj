@@ -4,11 +4,6 @@
     <InternalsVisibleTo Include="Nethermind.RocksDbBindings.Tests" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(IncludeMultiGetBenchmarkReferences)' == 'true'">
-    <Compile Include="../../benchmarks/NativeMultiGet/References/*.cs" />
-    <InternalsVisibleTo Include="NativeMultiGet" />
-  </ItemGroup>
-
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>

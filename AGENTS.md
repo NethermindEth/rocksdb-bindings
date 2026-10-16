@@ -10,8 +10,6 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 - [build-rocksdb.yml](./.github/workflows/build-rocksdb.yml): Builds RocksDB and generates bindings for the specified version.
 - [test-publish.yml](./.github/workflows/test-publish.yml): Runs the tests and optionally publishes on NuGet.
 
-- [benchmarks/NativeMultiGet](./benchmarks/NativeMultiGet/): Same-database comparisons with frozen references. Reference partials compile only for the benchmark assembly.
-
 ## Coding guidelines
 
 - Follow [.editorconfig](./.editorconfig).

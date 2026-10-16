@@ -5,7 +5,8 @@ It does not publish a package. Existing managed read implementations and native 
 
 The new context owns a fixed-size array of pinned values. Descriptors borrow their data until context destruction.
 `size == SIZE_MAX` identifies missing values; size zero identifies present empty values.
-Batches with at most two keys use the existing implementation through a small inline dispatcher.
+A small inline dispatcher selects the path. A single key uses the existing pinned-read helper without entering the large batch method.
+Two keys use the existing MultiGet implementation.
 A successful native read with no owner means all keys are missing. Descriptors are not read in that case.
 The native owner is allocated only when at least one value is found, including an empty value.
 Native errors are checked before decoding. Database and option leases outlive context destruction.

@@ -16,12 +16,30 @@ public unsafe sealed partial class RocksDb
         TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
         where TDeserializer : ISpanDeserializer<T>
     {
-        if (values.Length <= 2)
+        if (values.Length > 2)
         {
-            MultiGet<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+            ReadBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
             return;
         }
-        ReadBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+        if (values.Length == 1)
+        {
+            ReadSingleBatchContext<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions);
+            return;
+        }
+        MultiGet<T, TDeserializer>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+    }
+
+    private void ReadSingleBatchContext<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+        TDeserializer deserializer, IColumnFamilyHandle? cf, ReadOptions? readOptions)
+        where TDeserializer : ISpanDeserializer<T>
+    {
+        if (deserializer is null) throw new ArgumentNullException(nameof(deserializer));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
+        if (keys.Length != keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+        values.Clear();
+        using HandleLease lease = Lease();
+        values[0] = ReadSingleDecodedValue<T, TDeserializer>(keys, ref deserializer, cf, readOptions);
     }
 
     [SkipLocalsInit]

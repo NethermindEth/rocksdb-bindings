@@ -6,7 +6,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 
 - [src](./src/): The main codebase. The C# API was originally derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), and has since been substantially rewritten.
 - [generation](./generation/): RocksDB bindings generation with ClangSharp.
-- [native](./native/): Async C API extension, included in upstream `db/c.cc` during the native build. Its declarations generate `RocksDbNative.Async.g.cs` separately.
+- [native](./native/): Async and decoded-batch C API extensions, included in upstream `db/c.cc` during the native build. Async declarations generate `RocksDbNative.Async.g.cs`. Batch bindings are declared in `RocksDb.MultiGet.Native.cs`.
 - [build-rocksdb.yml](./.github/workflows/build-rocksdb.yml): Builds RocksDB and generates bindings for the specified version.
 - [test-publish.yml](./.github/workflows/test-publish.yml): Runs the tests and optionally publishes on NuGet.
 

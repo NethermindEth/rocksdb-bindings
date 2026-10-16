@@ -11,6 +11,37 @@ Linux and Windows x64 binaries require x86-64-v2 (SSE4.2 and POPCNT), the .NET 1
 baseline. macOS x64 binaries require AVX2, available on all Intel Macs supported by
 macOS 15.
 
+## Decoded batched reads
+
+`MultiGet<T, TDeserializer>` reads contiguous fixed-length keys and writes
+decoded values into a caller-owned span. The key buffer length must equal
+`keyLength * values.Length`. Both class and struct deserializers implement
+`ISpanDeserializer<T>`; struct deserializers do not require boxing.
+
+```csharp
+int[] values = new int[keyCount];
+db.MultiGet<int, Int32Deserializer>(keys, keyLength, values, default, family);
+```
+
+Missing keys produce `default(T)` without invoking the deserializer. Empty values
+still invoke it with an empty span. The native value span is valid only during
+`Deserialize`; the deserializer must not retain a pointer to it.
+
+`sortedInput: true` requires keys already sorted according to the column family's
+comparator. Results are undefined if this requirement is not met. The method
+does not sort or validate this hint. Leave it false for unsorted input.
+
+Argument validation occurs before clearing the output. Native batch errors are
+checked before decoding starts. With a non-default read tier, every family uses
+scalar reads; a read failure retains the decoded prefix and leaves the tail
+cleared. Decoder failures also retain the completed prefix. Disposed family
+handles are rejected before the output is cleared.
+
+The database stays leased through decoding. Read options are leased while native
+reads are active. Key and output spans must not overlap. Do not mutate options
+or the key and output buffers during the call. Concurrent callers need
+separate output buffers and deserializers that support their use pattern.
+
 ## Async reads
 
 `GetAsync` and `MultiGetAsync` follow the results and error handling of `Get` and

@@ -70,6 +70,13 @@ jobs:
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
+      - name: Trust runner-owned checkouts in the build container
+        shell: bash
+        run: |
+          for path in "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/bindings" "$GITHUB_WORKSPACE/vcpkg"; do
+            git config --global --add safe.directory "$path"
+          done
+
       - name: Cache dependencies
         uses: actions/cache/restore@v6
         with:

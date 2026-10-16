@@ -528,6 +528,25 @@ public unsafe sealed partial class RocksDb : IDisposable
         }
     }
 
+    /// <summary>Reads fixed-length contiguous keys with an interface decoder.</summary>
+    /// <remarks>
+    /// The key and output spans must not overlap.
+    /// Use the generic decoder overload for a struct decoder to avoid boxing.
+    /// A sorted-input hint requires keys in column-family comparator order; results are undefined otherwise.
+    /// With a non-default read tier, keys are read and decoded one at a time; read failures retain the decoded prefix.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">The deserializer is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>
+    /// <exception cref="ArgumentException">The key buffer does not match the output count and key length.</exception>
+    /// <exception cref="RocksDbNativeException">A native read fails.</exception>
+    /// <exception cref="NotSupportedException">A native value exceeds the maximum span length.</exception>
+    /// <exception cref="ObjectDisposedException">The database, read options or column family handle has been disposed.</exception>
+    /// <exception cref="OverflowException">The batch exceeds the supported scratch size.</exception>
+    /// <exception cref="InvalidOperationException">The native batch read fails without an error message.</exception>
+    public void MultiGet<T>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
+        ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null, bool sortedInput = false)
+        => MultiGet<T, ISpanDeserializer<T>>(keys, keyLength, values, deserializer, cf, readOptions, sortedInput);
+
     public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys, IColumnFamilyHandle[]? cf = null, ReadOptions? readOptions = null)
     {
         ArgumentNullException.ThrowIfNull(keys);

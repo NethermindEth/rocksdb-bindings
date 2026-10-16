@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
+using Nethermind.RocksDbBindings.Native;
 
 namespace Nethermind.RocksDbBindings.Tests;
 
@@ -17,10 +18,76 @@ public class RocksDbTests
         public int Deserialize(ReadOnlySpan<byte> buffer) => BitConverter.ToInt32(buffer);
     }
 
+    private sealed class FirstByteDeserializer : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? -1 : buffer[0];
+    }
+
+    private sealed class ThrowingDeserializer : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => throw new InvalidOperationException("decoder failed");
+    }
+
+    private static DbOptions CreatingOptions()
+        => new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+
+    private static ColumnFamilies Families(params string[] names)
+    {
+        ColumnFamilies families = new();
+        foreach (string name in names)
+            families.Add(name, new ColumnFamilyOptions());
+        return families;
+    }
+
     private static bool TryGetFixedSize(RocksDb db, byte[] key, byte[] output)
         => db.GetFixedSizeValue(key, output);
 
     private static bool HasKey(RocksDb db, byte[] key) => db.HasKey(key.AsSpan());
+
+    [Test]
+    [Arguments(false, false, 1)]
+    [Arguments(false, false, 2)]
+    [Arguments(false, false, 32)]
+    [Arguments(false, false, 512)]
+    [Arguments(false, true, 1)]
+    [Arguments(false, true, 2)]
+    [Arguments(false, true, 32)]
+    [Arguments(false, true, 512)]
+    [Arguments(true, false, 1)]
+    [Arguments(true, false, 2)]
+    [Arguments(true, false, 32)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 1)]
+    [Arguments(true, true, 2)]
+    [Arguments(true, true, 32)]
+    [Arguments(true, true, 512)]
+    public async Task MultiGet_WithMultiByteValues_PreservesCompletePayload(bool genericDecoder, bool namedFamily, int count)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        byte[] payload = new byte[4097];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i % 251);
+        byte[] keys = new byte[count * 4];
+        byte[][] values = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            BitConverter.TryWriteBytes(keys.AsSpan(i * 4, 4), i);
+            values[i] = [99];
+            if (count == 1 || i != count - 1)
+                database.Db.Put(keys.AsSpan(i * 4, 4), count > 2 && i == 0 ? [] : payload, family);
+        }
+
+        if (genericDecoder)
+            database.Db.MultiGet<byte[], BytesDeserializer>(keys, 4, values.AsSpan(), new BytesDeserializer(), family);
+        else
+            database.Db.MultiGet<byte[]>(keys, 4, values.AsSpan(), new BytesDeserializer(), family);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (count > 1 && i == count - 1) await Assert.That(values[i]).IsNull();
+            else await Assert.That(values[i]).IsEquivalentTo(count > 2 && i == 0 ? [] : payload, CollectionOrdering.Matching);
+        }
+    }
 
     [Test]
     public async Task Open_WithoutCreateIfMissing_FailsOnAnEmptyDirectory()
@@ -357,6 +424,639 @@ public class RocksDbTests
         using var database = TestDatabase.Create();
 
         await Assert.That(database.Db.Get(Key, new Int32Deserializer())).IsEqualTo(0);
+    }
+
+    private static void ReadFixed<T>(bool genericDecoder, RocksDb db, ReadOnlySpan<byte> keys, int keyLength,
+        T[] values, ISpanDeserializer<T> deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        if (genericDecoder && deserializer is not null)
+            db.MultiGet<T, ForwardingValueDeserializer<T>>(keys, keyLength, values.AsSpan(), new(deserializer), cf, readOptions);
+        else
+            db.MultiGet<T>(keys, keyLength, values.AsSpan(), deserializer!, cf, readOptions);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_FixedKeysReadsMixedEmptyMissingOrderAndDuplicates(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+        database.Db.Put([1, 2], [], blocks);
+
+        byte[] keys = [1, 2, 1, 3, 1, 1, 1, 2, 1, 1];
+        int[] values = [99, 99, 99, 99, 99];
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), blocks);
+
+        await Assert.That(values).IsEquivalentTo([-1, 0, 10, -1, 10], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(256, false)]
+    [Arguments(256, true)]
+    [Arguments(512, false)]
+    [Arguments(512, true)]
+    public async Task MultiGet_FixedKeysHandlesStackAndPooledBatches(int count, bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        const int keyLength = 4;
+        byte[] keys = new byte[count * keyLength];
+        int[] values = new int[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            int offset = i * keyLength;
+            keys[offset] = (byte)(i >> 24);
+            keys[offset + 1] = (byte)(i >> 16);
+            keys[offset + 2] = (byte)(i >> 8);
+            keys[offset + 3] = (byte)i;
+            database.Db.Put(keys.AsSpan(offset, keyLength), [(byte)(i & 0xff)], blocks);
+        }
+
+        ReadFixed(genericDecoder, database.Db, keys, keyLength, values, new FirstByteDeserializer(), blocks);
+
+        for (int i = 0; i < count; i++)
+            await Assert.That(values[i]).IsEqualTo(i & 0xff);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_UsesSnapshotWithCacheFillDisabled(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+
+        using Snapshot snapshot = database.Db.CreateSnapshot();
+        using ReadOptions readOptions = new ReadOptions().SetSnapshot(snapshot).SetFillCache(false);
+        database.Db.Put([1, 1], [20], blocks);
+
+        int[] values = [99, 99, 99];
+        ReadFixed(genericDecoder, database.Db, [1, 1, 1, 3, 1, 1], 2, values, new FirstByteDeserializer(), blocks, readOptions);
+
+        await Assert.That(values).IsEquivalentTo([10, 0, 10], CollectionOrdering.Matching);
+
+        int[] pair = [99, 99];
+        ReadFixed(genericDecoder, database.Db, [1, 1, 1, 3], 2, pair, new FirstByteDeserializer(), blocks, readOptions);
+        await Assert.That(pair).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
+
+        int[] single = [99];
+        ReadFixed(genericDecoder, database.Db, [1, 1], 2, single, new FirstByteDeserializer(), blocks, readOptions);
+        await Assert.That(single).IsEquivalentTo([10], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_ValidatesShapeAndOverflowBeforeClearingOutputs(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        int[] values = [123];
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1, values, null!, blocks))
+                .Throws<ArgumentNullException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 0, values, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentOutOfRangeException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1, values, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(values).IsEquivalentTo([123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1 << 30, new int[2], new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            int[] overflowValues = [123, 123, 123, 123];
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 1 << 30, overflowValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(overflowValues).IsEquivalentTo([123, 123, 123, 123], CollectionOrdering.Matching);
+            int[] pairValues = [123, 123];
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [1, 1, 1, 2], 2, pairValues, null!, blocks))
+                .Throws<ArgumentNullException>();
+            await Assert.That(pairValues).IsEquivalentTo([123, 123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 0, pairValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentOutOfRangeException>();
+            await Assert.That(pairValues).IsEquivalentTo([123, 123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 2, pairValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(pairValues).IsEquivalentTo([123, 123], CollectionOrdering.Matching);
+            int[] multipleValues = [123, 123, 123];
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [1, 1, 1, 2, 1, 3], 2, multipleValues, null!, blocks))
+                .Throws<ArgumentNullException>();
+            await Assert.That(multipleValues).IsEquivalentTo([123, 123, 123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 0, multipleValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentOutOfRangeException>();
+            await Assert.That(multipleValues).IsEquivalentTo([123, 123, 123], CollectionOrdering.Matching);
+            await Assert.That(() => ReadFixed(genericDecoder, database.Db, [], 2, multipleValues, new FirstByteDeserializer(), blocks))
+                .Throws<ArgumentException>();
+            await Assert.That(multipleValues).IsEquivalentTo([123, 123, 123], CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_CleansUpPinnableValuesWhenDeserializerThrows(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], blocks);
+        database.Db.Put([1, 2], [20], blocks);
+
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, [1, 1, 1, 2], 2, new int[2], new ThrowingDeserializer(), blocks))
+            .Throws<InvalidOperationException>();
+
+        await Assert.That(database.Db.Get([1, 1], blocks)).IsEquivalentTo(new byte[] { 10 }, CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_WithoutColumnFamily_ReadsDefaultFamily(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put([1, 1], [10]);
+
+        int[] values = [99, 99];
+        ReadFixed(genericDecoder, database.Db, [1, 1, 1, 3], 2, values, new FirstByteDeserializer());
+
+        await Assert.That(values).IsEquivalentTo([10, 0], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(2, false, false)]
+    [Arguments(2, false, true)]
+    [Arguments(2, true, false)]
+    [Arguments(2, true, true)]
+    [Arguments(3, false, false)]
+    [Arguments(3, false, true)]
+    [Arguments(3, true, false)]
+    [Arguments(3, true, true)]
+    [Arguments(32, false, false)]
+    [Arguments(32, false, true)]
+    [Arguments(32, true, false)]
+    [Arguments(32, true, true)]
+    [Arguments(512, false, false)]
+    [Arguments(512, false, true)]
+    [Arguments(512, true, false)]
+    [Arguments(512, true, true)]
+    public async Task MultiGet_WithOnlyMissingOrEmptyValues_PreservesTheirDistinction(int count, bool namedFamily, bool present)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        byte[] keys = new byte[count * 4];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            BitConverter.TryWriteBytes(keys.AsSpan(i * 4, 4), i);
+            if (present) database.Db.Put(keys.AsSpan(i * 4, 4), [], family);
+        }
+
+        if (present)
+            database.Db.MultiGet(keys, 4, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        else
+            database.Db.MultiGet(keys, 4, values.AsSpan(), new ThrowingDeserializer(), family);
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(present ? -1 : 0);
+        database.Db.Put(keys.AsSpan(0, 4), [10], family);
+        database.Db.MultiGet(keys, 4, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        await Assert.That(values[0]).IsEqualTo(10);
+        for (int i = 1; i < count; i++) await Assert.That(values[i]).IsEqualTo(present ? -1 : 0);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task MultiGet_WithDecoder_HandlesSortedDuplicatesEmptyAndMissing(bool sorted, bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle family = database.Db.GetColumnFamily("blocks");
+        database.Db.Put([1, 1], [10], family);
+        database.Db.Put([1, 2], [], family);
+        int[] values = [99, 99, 99, 99];
+
+        if (genericDecoder)
+            database.Db.MultiGet([1, 1, 1, 1, 1, 2, 1, 3], 2, values.AsSpan(), new FirstByteValueDeserializer(), family, sortedInput: sorted);
+        else
+            database.Db.MultiGet<int>([1, 1, 1, 1, 1, 2, 1, 3], 2, values.AsSpan(), new FirstByteDeserializer(), family, sortedInput: sorted);
+
+        await Assert.That(values).IsEquivalentTo([10, 10, -1, 0], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(1, 0, false)]
+    [Arguments(4, 2, false)]
+    [Arguments(512, 255, false)]
+    [Arguments(1, 0, true)]
+    [Arguments(4, 2, true)]
+    [Arguments(512, 255, true)]
+    public async Task MultiGet_WhenDecoderThrows_PreservesPrefixAndClearsTail(int count, int throwAt, bool defaultFamily)
+    {
+        using TestDatabase database = defaultFamily ? TestDatabase.Create() : TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle? family = defaultFamily ? null : database.Db.GetColumnFamily("blocks");
+        byte[] keys = new byte[count * 4];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            BitConverter.TryWriteBytes(keys.AsSpan(i * 4, 4), i);
+            database.Db.Put(keys.AsSpan(i * 4, 4), [(byte)(i + 1)], family);
+        }
+
+        await Assert.That(() => database.Db.MultiGet(keys, 4, values.AsSpan(), new ThrowAfterDeserializer(throwAt), family))
+            .Throws<InvalidOperationException>();
+
+        for (int i = 0; i < count; i++)
+            await Assert.That(values[i]).IsEqualTo(i < throwAt ? (i + 1) & 255 : 0);
+        database.Db.MultiGet(keys, 4, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo((i + 1) & 255);
+    }
+
+    [Test]
+    [Arguments(false, false, 1)]
+    [Arguments(false, true, 1)]
+    [Arguments(true, false, 1)]
+    [Arguments(true, true, 1)]
+    [Arguments(false, false, 2)]
+    [Arguments(false, true, 2)]
+    [Arguments(true, false, 2)]
+    [Arguments(true, true, 2)]
+    [Arguments(false, false, 512)]
+    [Arguments(false, true, 512)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 512)]
+    public async Task MultiGet_WhenNativeReadsFail_ClearsOutputsAndRemainsUsable(bool genericDecoder, bool namedFamily, int count)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        database.Db.Put([1, 1], [10], family);
+        database.Db.Put([1, 2], [20], family);
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = 1;
+            keys[i * 2 + 1] = (byte)(i % 2 + 1);
+        }
+
+        await Assert.That(() => ReadWithUnsupportedTimestamp(genericDecoder, database.Db, keys, values, family))
+            .Throws<RocksDbNativeException>();
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(i % 2 == 0 ? 10 : 20);
+    }
+
+    private static unsafe void ReadWithUnsupportedTimestamp(bool genericDecoder, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle? family)
+    {
+        using ReadOptions options = new();
+        using HandleLease lease = options.Lease(out nint handle);
+        byte timestamp = 1;
+        RocksDbNative.rocksdb_readoptions_set_timestamp((rocksdb_readoptions_t*)handle, (sbyte*)&timestamp, 1);
+        ReadFixed(genericDecoder, db, keys, 2, values, new FirstByteDeserializer(), family, options);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGet_WhenLaterNativeReadsFail_ThrowsBeforeDecoding(bool genericDecoder)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle family = database.Db.GetColumnFamily("blocks");
+        const int count = 512;
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = (byte)(i >> 8);
+            keys[i * 2 + 1] = (byte)i;
+            database.Db.Put(keys.AsSpan(i * 2, 2), [10], family);
+        }
+
+        await Assert.That(() => ReadWithZeroValueLimit(genericDecoder, database.Db, keys, values, family))
+            .Throws<RocksDbNativeException>();
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(10);
+    }
+
+    private static unsafe void ReadWithZeroValueLimit(bool genericDecoder, RocksDb db, byte[] keys, int[] values, IColumnFamilyHandle family)
+    {
+        using ReadOptions options = new();
+        using HandleLease lease = options.Lease(out nint handle);
+        RocksDbNative.rocksdb_readoptions_set_value_size_soft_limit((rocksdb_readoptions_t*)handle, 0);
+        ReadFixed(genericDecoder, db, keys, 2, values, new ThrowingDeserializer(), family, options);
+    }
+
+    [Test]
+    [Arguments(false, 0, 1)]
+    [Arguments(false, 0, 2)]
+    [Arguments(false, 0, 3)]
+    [Arguments(false, 0, 512)]
+    [Arguments(false, 1, 1)]
+    [Arguments(false, 1, 2)]
+    [Arguments(false, 1, 3)]
+    [Arguments(false, 1, 512)]
+    [Arguments(false, 2, 1)]
+    [Arguments(false, 2, 2)]
+    [Arguments(false, 2, 3)]
+    [Arguments(false, 2, 512)]
+    [Arguments(true, 0, 1)]
+    [Arguments(true, 0, 2)]
+    [Arguments(true, 0, 3)]
+    [Arguments(true, 0, 512)]
+    [Arguments(true, 1, 1)]
+    [Arguments(true, 1, 2)]
+    [Arguments(true, 1, 3)]
+    [Arguments(true, 1, 512)]
+    [Arguments(true, 2, 1)]
+    [Arguments(true, 2, 2)]
+    [Arguments(true, 2, 3)]
+    [Arguments(true, 2, 512)]
+    public async Task MultiGet_WithCacheOnlyReads_HonorsReadTierForEveryFamily(bool genericDecoder, int familyKind, int count)
+    {
+        using TestDatabase database = CreateUncachedFamilyDatabase();
+        IColumnFamilyHandle? family = GetReadFamily(database.Db, familyKind);
+        database.Db.Put([1, 1], [10], family);
+        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flush, family ?? database.Db.GetDefaultColumnFamily());
+        using ReadOptions readOptions = new ReadOptions().SetReadTier(1);
+        byte[] keys = new byte[count * 2];
+        Array.Fill(keys, (byte)1);
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+
+        await Assert.That(() => database.Db.Get([1, 1], family, readOptions)).Throws<RocksDbNativeException>();
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family, readOptions))
+            .Throws<RocksDbNativeException>();
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+        ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family);
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(10);
+    }
+
+    [Test]
+    [Arguments(false, 0, 2)]
+    [Arguments(false, 0, 3)]
+    [Arguments(false, 1, 2)]
+    [Arguments(false, 1, 3)]
+    [Arguments(false, 2, 2)]
+    [Arguments(false, 2, 3)]
+    [Arguments(true, 0, 2)]
+    [Arguments(true, 0, 3)]
+    [Arguments(true, 1, 2)]
+    [Arguments(true, 1, 3)]
+    [Arguments(true, 2, 2)]
+    [Arguments(true, 2, 3)]
+    public async Task MultiGet_WhenCacheOnlyReadFails_RetainsDecodedPrefix(bool genericDecoder, int familyKind, int count)
+    {
+        using TestDatabase database = CreateUncachedFamilyDatabase();
+        IColumnFamilyHandle? family = GetReadFamily(database.Db, familyKind);
+        database.Db.Put([1, 2], [20], family);
+        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flush, family ?? database.Db.GetDefaultColumnFamily());
+        database.Db.Put([1, 1], [10], family);
+        using ReadOptions readOptions = new ReadOptions().SetReadTier(1);
+        byte[] keys = new byte[count * 2];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = 1;
+            keys[i * 2 + 1] = (byte)(i == 0 ? 1 : 2);
+        }
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+
+        await Assert.That(database.Db.Get([1, 1], family, readOptions)).IsEquivalentTo(new byte[] { 10 }, CollectionOrdering.Matching);
+        await Assert.That(() => database.Db.Get([1, 2], family, readOptions)).Throws<RocksDbNativeException>();
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, keys, 2, values, new FirstByteDeserializer(), family, readOptions))
+            .Throws<RocksDbNativeException>();
+
+        await Assert.That(values[0]).IsEqualTo(10);
+        for (int i = 1; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(false, false, 2)]
+    [Arguments(false, false, 3)]
+    [Arguments(false, true, 2)]
+    [Arguments(false, true, 3)]
+    [Arguments(true, false, 2)]
+    [Arguments(true, false, 3)]
+    [Arguments(true, true, 2)]
+    [Arguments(true, true, 3)]
+    public async Task MultiGet_WhenScalarDecoderClosesFamily_PreservesPrefixAndRejectsFurtherReads(bool genericDecoder, bool namedFamily, int count)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle family = namedFamily ? database.Db.GetColumnFamily("blocks") : database.Db.GetDefaultColumnFamily();
+        database.Db.Put([1, 1], [10], family);
+        byte[] keys = new byte[count * 2];
+        Array.Fill(keys, (byte)1);
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        using ReadOptions options = new ReadOptions().SetReadTier(1);
+
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, keys, 2, values, new ClosingFamilyDeserializer(family), family, options))
+            .Throws<ObjectDisposedException>();
+
+        await Assert.That(family.Handle).IsEqualTo(nint.Zero);
+        await Assert.That(values[0]).IsEqualTo(10);
+        for (int i = 1; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
+    }
+
+    private static TestDatabase CreateUncachedFamilyDatabase()
+    {
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
+        using ColumnFamilyOptions defaultOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
+        using ColumnFamilyOptions namedOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
+        ColumnFamilies families = new(defaultOptions);
+        families.Add("blocks", namedOptions);
+        using DbOptions options = CreatingOptions();
+        return TestDatabase.Create(options, families);
+    }
+
+    private static IColumnFamilyHandle? GetReadFamily(RocksDb db, int familyKind)
+        => familyKind == 0 ? null : familyKind == 1 ? db.GetDefaultColumnFamily() : db.GetColumnFamily("blocks");
+
+    [Test]
+    [Arguments(false, false, 0)]
+    [Arguments(false, false, 1)]
+    [Arguments(false, false, 2)]
+    [Arguments(false, false, 3)]
+    [Arguments(false, false, 512)]
+    [Arguments(false, true, 0)]
+    [Arguments(false, true, 1)]
+    [Arguments(false, true, 2)]
+    [Arguments(false, true, 3)]
+    [Arguments(false, true, 512)]
+    [Arguments(true, false, 0)]
+    [Arguments(true, false, 1)]
+    [Arguments(true, false, 2)]
+    [Arguments(true, false, 3)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 0)]
+    [Arguments(true, true, 1)]
+    [Arguments(true, true, 2)]
+    [Arguments(true, true, 3)]
+    [Arguments(true, true, 512)]
+    public async Task MultiGet_WithDisposedFamily_RejectsBeforeChangingOutputs(bool genericDecoder, bool namedFamily, int count)
+    {
+        using TestDatabase database = TestDatabase.Create(CreatingOptions(), Families("blocks"));
+        IColumnFamilyHandle family = namedFamily ? database.Db.GetColumnFamily("blocks") : database.Db.GetDefaultColumnFamily();
+        ((IDisposable)family).Dispose();
+        int[] values = new int[count];
+        Array.Fill(values, 99);
+        byte[] keys = new byte[count];
+
+        await Assert.That(family.Handle).IsEqualTo(nint.Zero);
+        await Assert.That(() => ReadFixed(genericDecoder, database.Db, keys, 1, values, new FirstByteDeserializer(), family))
+            .Throws<ObjectDisposedException>();
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo(99);
+    }
+
+    [Test]
+    [Arguments(false, -1)]
+    [Arguments(false, 0)]
+    [Arguments(false, 1)]
+    [Arguments(true, -1)]
+    [Arguments(true, 0)]
+    [Arguments(true, 1)]
+    public async Task MultiGet_WithOneKey_DecodesMissingEmptyAndPresentValues(bool namedFamily, int valueKind)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        if (valueKind >= 0) database.Db.Put([1, 1], valueKind == 0 ? [] : [10], family);
+        int expected = valueKind < 0 ? 0 : valueKind == 0 ? -1 : 10;
+        int[] values = [99];
+
+        database.Db.MultiGet([1, 1], 2, values.AsSpan(), new FirstByteValueDeserializer(), family);
+        await Assert.That(values[0]).IsEqualTo(expected);
+
+        values[0] = 99;
+        database.Db.MultiGet([1, 1], 2, values.AsSpan(), new FirstByteDeserializer(), family);
+        await Assert.That(values[0]).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(1, false)]
+    [Arguments(2, false)]
+    [Arguments(32, false)]
+    [Arguments(512, false)]
+    [Arguments(1, true)]
+    [Arguments(2, true)]
+    [Arguments(32, true)]
+    [Arguments(512, true)]
+    public async Task MultiGet_WhenDecoderClosesDatabase_KeepsTheValuesAlive(int count, bool namedFamily)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        database.Db.Put([1, 1], [10], family);
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        int[] expected = new int[count];
+        Array.Fill(values, 99);
+        Array.Fill(expected, 10);
+        Array.Fill(keys, (byte)1);
+
+        database.Db.MultiGet(keys, 2, values.AsSpan(), new ClosingDeserializer(database.Db), family);
+
+        await Assert.That(values).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        await Assert.That(database.Db.Handle).IsEqualTo(nint.Zero);
+    }
+
+    [Test]
+    [Arguments(1, false, 0)]
+    [Arguments(1, false, 1)]
+    [Arguments(1, true, 0)]
+    [Arguments(1, true, 1)]
+    [Arguments(2, false, 0)]
+    [Arguments(2, false, 1)]
+    [Arguments(2, true, 0)]
+    [Arguments(2, true, 1)]
+    [Arguments(3, false, 0)]
+    [Arguments(3, false, 1)]
+    [Arguments(3, true, 0)]
+    [Arguments(3, true, 1)]
+    [Arguments(512, false, 0)]
+    [Arguments(512, false, 1)]
+    [Arguments(512, true, 0)]
+    [Arguments(512, true, 1)]
+    public async Task MultiGet_WithStatefulStructDecoder_PreservesStateAcrossValues(int count, bool namedFamily, int readTier)
+    {
+        using TestDatabase database = namedFamily ? TestDatabase.Create(CreatingOptions(), Families("blocks")) : TestDatabase.Create();
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        database.Db.Put([1, 1], [10], family);
+        database.Db.Put([1, 2], [20], family);
+        using ReadOptions options = new ReadOptions().SetReadTier(readTier);
+        byte[] keys = new byte[count * 2];
+        int[] values = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i * 2] = 1;
+            keys[i * 2 + 1] = (byte)(i % 2 + 1);
+            values[i] = 99;
+        }
+
+        database.Db.MultiGet(keys, 2, values.AsSpan(), new CountingValueDeserializer(), family, options);
+
+        for (int i = 0; i < count; i++) await Assert.That(values[i]).IsEqualTo((i % 2 == 0 ? 10 : 20) + i + 1);
+    }
+
+    private readonly struct ForwardingValueDeserializer<T>(ISpanDeserializer<T> deserializer) : ISpanDeserializer<T>
+    {
+        public T Deserialize(ReadOnlySpan<byte> buffer) => deserializer.Deserialize(buffer);
+    }
+
+    private struct CountingValueDeserializer : ISpanDeserializer<int>
+    {
+        private int _calls;
+        public int Deserialize(ReadOnlySpan<byte> buffer) => buffer[0] + ++_calls;
+    }
+
+    private readonly struct BytesDeserializer : ISpanDeserializer<byte[]>
+    {
+        public byte[] Deserialize(ReadOnlySpan<byte> buffer) => buffer.ToArray();
+    }
+
+    private sealed class ClosingFamilyDeserializer(IColumnFamilyHandle family) : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer)
+        {
+            ((IDisposable)family).Dispose();
+            return buffer[0];
+        }
+    }
+
+    private sealed class ClosingDeserializer(RocksDb db) : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer)
+        {
+            db.Dispose();
+            return buffer[0];
+        }
+    }
+
+    private readonly struct FirstByteValueDeserializer : ISpanDeserializer<int>
+    {
+        public int Deserialize(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? -1 : buffer[0];
+    }
+
+    private sealed class ThrowAfterDeserializer(int throwAt) : ISpanDeserializer<int>
+    {
+        private int _calls;
+        public int Deserialize(ReadOnlySpan<byte> buffer) => _calls++ == throwAt
+            ? throw new InvalidOperationException("decoder failed")
+            : buffer[0];
     }
 
     [Test]

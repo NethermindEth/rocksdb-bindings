@@ -1,9 +1,10 @@
 {
-  "candidate_run_id": "",
+  "candidate_run_id": "39126281155",
   "size_gb": "4",
   "cache_mb": "256",
   "rounds": "6",
   "batches": "150",
   "threads": "8",
-  "hot_share": "0.3"
+  "hot_share": "0.3",
+  "read_io_threads": "4"
 }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
@@ -122,6 +124,77 @@ public sealed unsafe partial class RocksDb
         {
             foreach (PinnedGCHandle<byte[]> pin in pins)
                 pin.Dispose();
+        }
+    }
+
+    /// <summary>Reads fixed-length keys asynchronously and decodes the values into the caller's buffer.</summary>
+    /// <remarks>
+    /// Copies the keys before returning, so the key buffer may be reused at once. The value buffer must stay
+    /// alive and untouched until the task completes. Missing keys produce default values without calling the
+    /// decoder; empty values still call it. Decoding runs on a thread-pool thread directly over native memory
+    /// and the decoder must not retain that span. On a read or decoder failure, values from the failing index
+    /// on are cleared. Read options must not be modified until completion.
+    /// RocksDB may complete synchronously when native coroutine reads are unavailable.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">The deserializer is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>
+    /// <exception cref="ArgumentException">The key buffer does not match the output count and key length.</exception>
+    /// <exception cref="ObjectDisposedException">The database, read options or column family handle has been disposed.</exception>
+    [SkipLocalsInit]
+    public ValueTask MultiGetAsync<T, TDeserializer>(ReadOnlySpan<byte> keys, int keyLength, Memory<T> values,
+        TDeserializer deserializer, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+        where TDeserializer : ISpanDeserializer<T>
+    {
+        if (deserializer is null) throw new ArgumentNullException(nameof(deserializer));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
+        if ((long)keys.Length != (long)values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+        if (cf is not null && cf.Handle == 0)
+            throw new ObjectDisposedException(nameof(cf), "The column family handle has been disposed.");
+        int count = values.Length;
+        if (count == 0) return ValueTask.CompletedTask;
+
+        using HandleLease lease = Lease();
+        ReadOptions options = readOptions ?? DefaultReadOptions;
+        using HandleLease optionsLease = options.Lease(out nint optionsHandle);
+
+        // Pointer and length scratch for the native create call, which copies the keys it is given.
+        int scratchCount = cf is null ? checked(count * 2) : checked(count * 3);
+        nint[]? rented = null;
+        Span<nint> scratch = scratchCount <= StackReadCapacity * 3
+            ? stackalloc nint[scratchCount]
+            : (rented = ArrayPool<nint>.Shared.Rent(scratchCount)).AsSpan(0, scratchCount);
+        try
+        {
+            fixed (byte* keyData = keys)
+            fixed (nint* scratchPointer = scratch)
+            {
+                nint* keyPointers = scratchPointer;
+                nuint* keyLengths = (nuint*)(scratchPointer + count);
+                nint* families = cf is null ? null : scratchPointer + count * 2;
+                for (int i = 0; i < count; i++)
+                {
+                    keyPointers[i] = (nint)(keyData + (nint)i * keyLength);
+                    keyLengths[i] = (nuint)keyLength;
+                    if (families is not null) families[i] = cf!.Handle;
+                }
+
+                sbyte* error = null;
+                Native.rocksdb_net_read_t* request = rocksdb_net_read_create(RocksDbInterop.Db(NativeHandle),
+                    RocksDbInterop.ReadOptions(optionsHandle), (nuint)count,
+                    (Native.rocksdb_column_family_handle_t**)families, (sbyte**)keyPointers, keyLengths, &error);
+                RocksDbInterop.ThrowIfError(error);
+                AsyncReadHandle handle = OwnAsyncRead((nint)request, options);
+                AsyncDecodedMultiGetOperation<T, TDeserializer> operation =
+                    AsyncDecodedMultiGetOperation<T, TDeserializer>.Rent(handle, values, deserializer);
+                ValueTask result = operation.ValueTask;
+                operation.Start(multi: true);
+                return result;
+            }
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<nint>.Shared.Return(rented);
         }
     }
 

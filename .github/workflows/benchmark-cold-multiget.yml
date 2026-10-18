@@ -46,6 +46,10 @@ on:
         description: Share of each batch taken from the warmed hot set
         required: false
         default: "0.3"
+      read_io_threads:
+        description: Extra runs with this many RocksDB async read executor threads (0 = skip)
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -82,6 +86,7 @@ jobs:
           IN_BATCHES: ${{ inputs.batches }}
           IN_THREADS: ${{ inputs.threads }}
           IN_HOT_SHARE: ${{ inputs.hot_share }}
+          IN_READ_IO_THREADS: ${{ inputs.read_io_threads }}
         run: |
           params=benchmarks/ColdMultiGet/ci-params.json
           resolve() { # name input-value
@@ -98,6 +103,7 @@ jobs:
           resolve BATCHES "$IN_BATCHES"
           resolve THREADS "$IN_THREADS"
           resolve HOT_SHARE "$IN_HOT_SHARE"
+          resolve READ_IO_THREADS "$IN_READ_IO_THREADS"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
@@ -155,6 +161,14 @@ jobs:
             --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
             --label candidate-nouring-${{ matrix.arch }} --out "$RESULTS/candidate-nouring-${{ matrix.arch }}.json" | tee "$RESULTS/candidate-nouring-${{ matrix.arch }}.log"
 
+      - name: Run candidate with more read executor threads
+        if: env.CANDIDATE_RUN_ID != '' && env.READ_IO_THREADS != '' && env.READ_IO_THREADS != '0'
+        run: |
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" --read-io-threads "$READ_IO_THREADS" \
+            --label candidate-io$READ_IO_THREADS-${{ matrix.arch }} --out "$RESULTS/candidate-io$READ_IO_THREADS-${{ matrix.arch }}.json" | tee "$RESULTS/candidate-io$READ_IO_THREADS-${{ matrix.arch }}.log"
+
       - name: Run control again (repository library, drift check)
         run: |
           cp "$RUNNER_TEMP/control-librocksdb.so" "${{ steps.native.outputs.lib }}"
@@ -162,6 +176,14 @@ jobs:
           dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
             --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
             --label control2-${{ matrix.arch }} --out "$RESULTS/control2-${{ matrix.arch }}.json" | tee "$RESULTS/control2-${{ matrix.arch }}.log"
+
+      - name: Run control with more read executor threads
+        if: env.READ_IO_THREADS != '' && env.READ_IO_THREADS != '0'
+        run: |
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" --read-io-threads "$READ_IO_THREADS" \
+            --label control-io$READ_IO_THREADS-${{ matrix.arch }} --out "$RESULTS/control-io$READ_IO_THREADS-${{ matrix.arch }}.json" | tee "$RESULTS/control-io$READ_IO_THREADS-${{ matrix.arch }}.log"
 
       - name: Upload results
         if: always()

@@ -45,7 +45,8 @@ internal sealed class Config
     public ulong Seed { get; set; } = 20261018;
     public string Out { get; set; } = "cold-multiget-results.json";
     public string Label { get; set; } = "unlabeled";
-    public string Arms { get; set; } = "scalar1,scalarN,multiget,multiget_async,multiget_api";
+    public string Arms { get; set; } = "scalar1,scalarN,multiget,multiget_async,multiget_api,multiget_api_decoded";
+    public int ReadIoThreads { get; set; }
     public bool Sorted { get; set; }
 
     public static Config Parse(string[] args)
@@ -72,6 +73,7 @@ internal sealed class Config
                 case "--label": config.Label = value; break;
                 case "--arms": config.Arms = value; break;
                 case "--sorted": config.Sorted = bool.Parse(value); break;
+                case "--read-io-threads": config.ReadIoThreads = int.Parse(value); break;
                 default: throw new ArgumentException($"Unknown argument {args[i]}");
             }
         }
@@ -205,7 +207,7 @@ internal static unsafe class Program
         Config config = Config.Parse(args);
         long records = (long)(config.SizeGb * 1024 * 1024 * 1024 / 110); // ~110 B per record on disk before compression
         records -= records % Workload.SlotsPerAccount;
-        Console.WriteLine($"label={config.Label} mode={config.Mode} records={records:N0} cache={config.CacheMb} MB batch={config.Batch} hot={config.HotShare:P0} absent={config.AbsentShare:P0}");
+        Console.WriteLine($"label={config.Label} mode={config.Mode} records={records:N0} cache={config.CacheMb} MB batch={config.Batch} hot={config.HotShare:P0} absent={config.AbsentShare:P0} read_io_threads={config.ReadIoThreads}");
 
         if (config.Mode is "build" or "all") Build(config, records);
         if (config.Mode is "run" or "all") return Run(config, records);
@@ -277,6 +279,7 @@ internal static unsafe class Program
             .SetCreateIfMissing(false)
             .SetUseDirectReads(true)
             .SetMaxOpenFiles(-1);
+        if (config.ReadIoThreads > 0) options.SetReadIoExecutorThreads(config.ReadIoThreads);
         ColumnFamilies families = new();
         families.Add(Workload.Family, FamilyOptions(cache));
         using RocksDb db = RocksDb.OpenReadOnly(options, config.DbPath, families, false);
@@ -463,6 +466,7 @@ internal static unsafe class Program
             case "multiget": db.MultiGet<long, PrefixDeserializer>(query.Keys, Workload.KeyLength, results, default, family, plain, config.Sorted); break;
             case "multiget_async": db.MultiGet<long, PrefixDeserializer>(query.Keys, Workload.KeyLength, results, default, family, asyncIo, config.Sorted); break;
             case "multiget_api": ApiAsyncReads(db, family, query, asyncIo, results); break;
+            case "multiget_api_decoded": db.MultiGetAsync<long, PrefixDeserializer>(query.Keys, Workload.KeyLength, results, default, family, asyncIo).AsTask().GetAwaiter().GetResult(); break;
             default: throw new ArgumentException($"Unknown arm {arm}");
         }
         long end = Stopwatch.GetTimestamp();

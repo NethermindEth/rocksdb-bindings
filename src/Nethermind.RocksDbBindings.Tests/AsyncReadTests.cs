@@ -307,4 +307,122 @@ public class AsyncReadTests
         await Assert.That(async () => await database.Db.GetAsync([])).ThrowsExactly<ObjectDisposedException>();
         await Assert.That(async () => await database.Db.MultiGetAsync([])).ThrowsExactly<ObjectDisposedException>();
     }
+
+    private static byte[] FixedKeys(params int[] ids)
+    {
+        byte[] keys = new byte[ids.Length * 4];
+        for (int i = 0; i < ids.Length; i++) BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * 4, 4), ids[i]);
+        return keys;
+    }
+
+    private static byte[] Value(int id)
+    {
+        byte[] value = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(value, id * 10);
+        return value;
+    }
+
+    [Test]
+    [Arguments(false, false, 3)]
+    [Arguments(false, true, 3)]
+    [Arguments(true, false, 3)]
+    [Arguments(true, true, 3)]
+    [Arguments(true, false, 300)]
+    [Arguments(true, true, 300)]
+    public async Task MultiGetAsync_Decoded_MatchesTheSyncDecodedRead(bool flush, bool namedFamily, int count)
+    {
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using ColumnFamilyOptions familyOptions = new();
+        using TestDatabase database = TestDatabase.Create(options, new ColumnFamilies { { "blocks", familyOptions } });
+        IColumnFamilyHandle? family = namedFamily ? database.Db.GetColumnFamily("blocks") : null;
+        int[] ids = Enumerable.Range(0, count).Select(i => i % 7 == 3 ? i - 1 : i).ToArray();
+        for (int i = 0; i < count; i++)
+        {
+            if (i % 5 != 4) database.Db.Put(FixedKeys(i), Value(i), family);
+        }
+        if (flush)
+        {
+            using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+            if (family is null) database.Db.Flush(flushOptions);
+            else database.Db.Flush(flushOptions, family);
+        }
+
+        byte[] keys = FixedKeys(ids);
+        int[] expected = new int[count];
+        int[] actual = Enumerable.Repeat(-1, count).ToArray();
+        database.Db.MultiGet<int, Int32Deserializer>(keys, 4, expected, new Int32Deserializer(1), family);
+        await database.Db.MultiGetAsync<int, Int32Deserializer>(keys, 4, actual, new Int32Deserializer(1), family);
+
+        await Assert.That(actual).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        for (int i = 0; i < count; i++)
+        {
+            int id = ids[i];
+            await Assert.That(actual[i]).IsEqualTo(id % 5 == 4 ? 0 : id * 10 + 1);
+        }
+    }
+
+    [Test]
+    public async Task MultiGetAsync_Decoded_CopiesKeysAndDistinguishesEmptyValues()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put(FixedKeys(1), Value(1));
+        database.Db.Put(FixedKeys(2), []);
+        LengthDeserializer deserializer = new();
+        byte[] keys = FixedKeys(1, 2, 3);
+        string[] values = new string[3];
+
+        ValueTask read = database.Db.MultiGetAsync<string, LengthDeserializer>(keys, 4, values, deserializer);
+        keys.AsSpan().Fill(0xFF);
+        await read;
+
+        await Assert.That(values[0]).IsEqualTo("4");
+        await Assert.That(values[1]).IsEqualTo("0");
+        await Assert.That(values[2]).IsNull();
+        await Assert.That(deserializer.Calls).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task MultiGetAsync_Decoded_ClearsTheTailOnDecoderFailureAndReleasesResources()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        for (int i = 0; i < 4; i++) database.Db.Put(FixedKeys(i), Value(i));
+        int calls = 0;
+        ActionDeserializer deserializer = new(() =>
+        {
+            if (++calls == 3) throw new InvalidOperationException("decoder");
+        });
+        int[] values = [-1, -1, -1, -1];
+
+        await Assert.That(async () => await database.Db.MultiGetAsync<int, ActionDeserializer>(FixedKeys(0, 1, 2, 3), 4, values, deserializer))
+            .ThrowsExactly<InvalidOperationException>();
+        await Assert.That(values).IsEquivalentTo(new[] { 0, 10, 0, 0 }, CollectionOrdering.Matching);
+
+        database.Db.Dispose();
+        using DbOptions reopenOptions = new();
+        using RocksDb reopened = RocksDb.Open(reopenOptions, database.Path);
+        await Assert.That(reopened.Get(FixedKeys(1))).IsEquivalentTo(Value(1), CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task MultiGetAsync_Decoded_FaultsOnReadErrorAndValidatesInputs()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put(FixedKeys(1), Value(1));
+        using ReadOptions options = new();
+        using PinnedGCHandle<byte[]> timestamp = new(new byte[1]);
+        SetTimestamp(options, timestamp);
+        int[] values = [-1];
+
+        await Assert.That(async () => await database.Db.MultiGetAsync<int, Int32Deserializer>(FixedKeys(1), 4, values, default, readOptions: options))
+            .Throws<RocksDbException>();
+        await Assert.That(values[0]).IsEqualTo(0);
+
+        await database.Db.MultiGetAsync<int, Int32Deserializer>([], 4, Memory<int>.Empty, default);
+        await Assert.That(async () => await database.Db.MultiGetAsync<int, Int32Deserializer>(FixedKeys(1), 0, new int[1], default))
+            .ThrowsExactly<ArgumentOutOfRangeException>();
+        await Assert.That(async () => await database.Db.MultiGetAsync<int, Int32Deserializer>(FixedKeys(1), 4, new int[2], default))
+            .ThrowsExactly<ArgumentException>();
+        await Assert.That(async () => await database.Db.MultiGetAsync<string, LengthDeserializer>(FixedKeys(1), 4, new string[1], null!))
+            .ThrowsExactly<ArgumentNullException>();
+    }
 }

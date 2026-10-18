@@ -192,3 +192,83 @@ internal sealed class AsyncMultiGetOperation(AsyncReadHandle handle, byte[][] ke
         _completion.SetResult(values);
     }
 }
+
+internal sealed class AsyncDecodedMultiGetOperation<T, TDeserializer> : AsyncReadOperation, IValueTaskSource
+    where TDeserializer : ISpanDeserializer<T>
+{
+    [ThreadStatic]
+    private static AsyncDecodedMultiGetOperation<T, TDeserializer>? s_cached;
+
+    private ManualResetValueTaskSourceCore<bool> _completion = new() { RunContinuationsAsynchronously = true };
+    private Memory<T> _values;
+    private TDeserializer _deserializer;
+
+    private AsyncDecodedMultiGetOperation(AsyncReadHandle handle, Memory<T> values, TDeserializer deserializer) : base(handle)
+    {
+        _values = values;
+        _deserializer = deserializer;
+    }
+
+    internal static AsyncDecodedMultiGetOperation<T, TDeserializer> Rent(AsyncReadHandle handle, Memory<T> values, TDeserializer deserializer)
+    {
+        AsyncDecodedMultiGetOperation<T, TDeserializer>? operation = s_cached;
+        if (operation is null)
+            return new(handle, values, deserializer);
+
+        s_cached = null;
+        operation.Initialize(handle);
+        operation._values = values;
+        operation._deserializer = deserializer;
+        return operation;
+    }
+
+    internal ValueTask ValueTask => new(this, _completion.Version);
+
+    public override void Execute()
+    {
+        Span<T> values = _values.Span;
+        int completed = 0;
+        try
+        {
+            for (; completed < values.Length; completed++)
+                values[completed] = TryReadValue(completed, out ReadOnlySpan<byte> buffer) ? _deserializer.Deserialize(buffer) : default!;
+        }
+        catch (Exception error)
+        {
+            values[completed..].Clear();
+            Finish();
+            _completion.SetException(error);
+            return;
+        }
+        Finish();
+        _completion.SetResult(true);
+    }
+
+    private void Finish()
+    {
+        Release();
+        _values = default;
+        _deserializer = default!;
+    }
+
+    public void GetResult(short token)
+    {
+        // Only the consumer returns the operation to the pool, after native resources have been released.
+        if (_completion.GetStatus(token) == ValueTaskSourceStatus.Pending)
+            throw new InvalidOperationException("The read has not completed.");
+        try
+        {
+            _completion.GetResult(token);
+        }
+        finally
+        {
+            _completion.Reset();
+            s_cached = this;
+        }
+    }
+
+    public ValueTaskSourceStatus GetStatus(short token) => _completion.GetStatus(token);
+
+    public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+        => _completion.OnCompleted(continuation, state, token, flags);
+}

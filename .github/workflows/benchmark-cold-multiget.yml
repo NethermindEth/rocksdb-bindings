@@ -1,0 +1,182 @@
+name: Benchmark cold MultiGet
+
+# Steady-state partial-miss read benchmark (benchmarks/ColdMultiGet). Runs the repository's
+# native library as the control and, when a build-rocksdb run id is given, that run's Linux
+# library as the candidate: once with io_uring on and once with ROCKSDB_NET_IO_URING=0.
+# Also packs the candidate into a NuGet package artifact for a local-feed validation in
+# Nethermind. Nothing is published.
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: build-rocksdb.yml run id whose linux-x64/linux-arm64 artifacts are the candidate library (empty = control only)
+        required: false
+        default: ""
+      size_gb:
+        description: Database size in GB (must exceed the cache several times over)
+        required: false
+        default: "4"
+      cache_mb:
+        description: Block cache size in MB
+        required: false
+        default: "256"
+      rounds:
+        description: ABBA rounds
+        required: false
+        default: "6"
+      batches:
+        description: Timed batches per arm per round
+        required: false
+        default: "150"
+      threads:
+        description: Threads for the scalarN arm
+        required: false
+        default: "8"
+      hot_share:
+        description: Share of each batch taken from the warmed hot set
+        required: false
+        default: "0.3"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    name: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      DB_PATH: ${{ github.workspace }}/cold-db
+      RESULTS: ${{ github.workspace }}/results
+      SIZE_GB: ${{ inputs.size_gb }}
+      CACHE_MB: ${{ inputs.cache_mb }}
+      ROUNDS: ${{ inputs.rounds }}
+      BATCHES: ${{ inputs.batches }}
+      THREADS: ${{ inputs.threads }}
+      HOT_SHARE: ${{ inputs.hot_share }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Build benchmark
+        run: dotnet build benchmarks/ColdMultiGet -c release
+
+      - name: Locate the native library in the build output
+        id: native
+        run: |
+          lib=$(find benchmarks/artifacts/bin -path "*runtimes/linux-${{ matrix.arch }}/native/librocksdb.so" | head -1)
+          if [ -z "$lib" ]; then echo "::error::native library not found in build output"; exit 1; fi
+          echo "lib=$lib" >> "$GITHUB_OUTPUT"
+          cp "$lib" "$RUNNER_TEMP/control-librocksdb.so"
+          sha256sum "$lib"
+
+      - name: Build database
+        run: |
+          mkdir -p "$RESULTS"
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode build --db "$DB_PATH" --size-gb "$SIZE_GB"
+          df -h "$DB_PATH"
+
+      - name: Run control (repository library)
+        run: |
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
+            --label control-${{ matrix.arch }} --out "$RESULTS/control-${{ matrix.arch }}.json" | tee "$RESULTS/control-${{ matrix.arch }}.log"
+
+      - name: Download candidate library
+        if: inputs.candidate_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$CANDIDATE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "linux-${{ matrix.arch }}" --dir "$RUNNER_TEMP/candidate"
+          sha256sum "$RUNNER_TEMP/candidate/librocksdb.so"
+          cp "$RUNNER_TEMP/candidate/librocksdb.so" "${{ steps.native.outputs.lib }}"
+
+      - name: Run candidate (io_uring on)
+        if: inputs.candidate_run_id != ''
+        run: |
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
+            --label candidate-${{ matrix.arch }} --out "$RESULTS/candidate-${{ matrix.arch }}.json" | tee "$RESULTS/candidate-${{ matrix.arch }}.log"
+
+      - name: Run candidate (ROCKSDB_NET_IO_URING=0)
+        if: inputs.candidate_run_id != ''
+        env:
+          ROCKSDB_NET_IO_URING: "0"
+        run: |
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
+            --label candidate-nouring-${{ matrix.arch }} --out "$RESULTS/candidate-nouring-${{ matrix.arch }}.json" | tee "$RESULTS/candidate-nouring-${{ matrix.arch }}.log"
+
+      - name: Run control again (repository library, drift check)
+        run: |
+          cp "$RUNNER_TEMP/control-librocksdb.so" "${{ steps.native.outputs.lib }}"
+          app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
+          dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
+            --rounds "$ROUNDS" --batches "$BATCHES" --threads "$THREADS" --hot-share "$HOT_SHARE" \
+            --label control2-${{ matrix.arch }} --out "$RESULTS/control2-${{ matrix.arch }}.json" | tee "$RESULTS/control2-${{ matrix.arch }}.log"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cold-multiget-${{ matrix.arch }}
+          path: results
+          if-no-files-found: error
+
+  pack:
+    name: Pack candidate for a local feed
+    if: inputs.candidate_run_id != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Replace the Linux libraries with the candidate build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          for arch in x64 arm64; do
+            gh run download "$CANDIDATE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "linux-$arch" --dir "$RUNNER_TEMP/linux-$arch"
+            cp "$RUNNER_TEMP/linux-$arch/librocksdb.so" src/Nethermind.RocksDbBindings/runtimes/linux-$arch/native/librocksdb.so
+          done
+          sha256sum src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so
+
+      - name: Pack
+        working-directory: src
+        run: |
+          version_prefix=$(sed -n 's|.*<VersionPrefix>\(.*\)</VersionPrefix>.*|\1|p' Directory.Build.props)
+          dotnet pack ./Nethermind.RocksDbBindings -c release -p:Version=$version_prefix.${{ github.run_number }}-iouring
+          ls -la artifacts/package/release
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nupkg-iouring
+          path: src/artifacts/package/release/*.nupkg
+          if-no-files-found: error

@@ -187,6 +187,18 @@ public sealed unsafe class ReadOptions : NativeOptions
         return this;
     }
 
+    /// <summary>
+    /// Lets a MultiGet batch read its SST files concurrently; RocksDB defaults it to true. Takes effect
+    /// together with <see cref="SetAsyncIO"/> and a native build with coroutine support.
+    /// </summary>
+    public ReadOptions SetOptimizeMultiGetForIO(bool value)
+    {
+        using var lease = Lease(out nint handle);
+
+        rocksdb_readoptions_set_optimize_multiget_for_io(RocksDbInterop.ReadOptions(handle), RocksDbInterop.Bool(value));
+        return this;
+    }
+
     public ReadOptions SetPinData(bool enable)
     {
         using var lease = Lease(out nint handle);

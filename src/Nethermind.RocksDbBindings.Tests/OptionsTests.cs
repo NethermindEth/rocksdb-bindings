@@ -1054,4 +1054,67 @@ public class OptionsTests
             return (new WeakReference(snapshot), iterator);
         }
     }
+
+    private readonly struct CopyingDeserializer : ISpanDeserializer<byte[]>
+    {
+        public byte[] Deserialize(ReadOnlySpan<byte> buffer) => buffer.ToArray();
+    }
+
+    private static unsafe (byte AsyncIO, byte OptimizeMultiGetForIO) AsyncReadFlags(ReadOptions options)
+    {
+        using var lease = options.Lease(out nint handle);
+
+        return (rocksdb_readoptions_get_async_io((rocksdb_readoptions_t*)handle),
+            rocksdb_readoptions_get_optimize_multiget_for_io((rocksdb_readoptions_t*)handle));
+    }
+
+    [Test]
+    public async Task ReadOptions_SetOptimizeMultiGetForIO_WritesThroughToNative()
+    {
+        using var options = new ReadOptions();
+
+        // RocksDB defaults optimize_multiget_for_io to true and async_io to false.
+        await Assert.That(AsyncReadFlags(options)).IsEqualTo(((byte)0, (byte)1));
+
+        options.SetAsyncIO(true).SetOptimizeMultiGetForIO(false);
+
+        await Assert.That(AsyncReadFlags(options)).IsEqualTo(((byte)1, (byte)0));
+
+        options.SetOptimizeMultiGetForIO(true);
+
+        await Assert.That(AsyncReadFlags(options)).IsEqualTo(((byte)1, (byte)1));
+    }
+
+    [Test]
+    public async Task MultiGet_WithAsyncIOOptions_ReturnsTheSameValuesAsTheDefaultOptions()
+    {
+        using var directory = new TempDirectory();
+        using var db = RocksDb.Open(new DbOptions().SetCreateIfMissing(), directory.Path);
+        const int count = 300;
+        byte[] keys = new byte[count * 8];
+        for (int i = 0; i < count; i++)
+        {
+            BitConverter.TryWriteBytes(keys.AsSpan(i * 8, 8), (long)i * 7919);
+            if (i % 3 != 2) db.Put(keys.AsSpan(i * 8, 8), BitConverter.GetBytes(i));
+        }
+
+        // Spread the keys over the memtable and one SST so a coroutine-enabled build has files to fan out over.
+        db.Flush(new FlushOptions().SetWaitForFlush(true));
+        for (int i = 0; i < count; i += 10)
+        {
+            if (i % 3 != 2) db.Put(keys.AsSpan(i * 8, 8), BitConverter.GetBytes(i));
+        }
+
+        using var asyncOptions = new ReadOptions().SetAsyncIO(true).SetOptimizeMultiGetForIO(true);
+        byte[][] expected = new byte[count][];
+        byte[][] actual = new byte[count][];
+        db.MultiGet<byte[], CopyingDeserializer>(keys, 8, expected.AsSpan(), default);
+        db.MultiGet<byte[], CopyingDeserializer>(keys, 8, actual.AsSpan(), default, readOptions: asyncOptions);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (i % 3 == 2) await Assert.That(actual[i]).IsNull();
+            else await Assert.That(actual[i]).IsEquivalentTo(expected[i], CollectionOrdering.Matching);
+        }
+    }
 }

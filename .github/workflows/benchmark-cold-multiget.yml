@@ -86,7 +86,8 @@ jobs:
           params=benchmarks/ColdMultiGet/ci-params.json
           resolve() { # name input-value
             value="$2"
-            if [ -z "$value" ]; then value=$(jq -r --arg k "$1" '.[$k] // ""' "$params"); fi
+            # The file keys are the lower-case input names.
+            if [ -z "$value" ]; then value=$(jq -r --arg k "$(echo "$1" | tr '[:upper:]' '[:lower:]')" '.[$k] // ""' "$params"); fi
             echo "$1=$value" >> "$GITHUB_ENV"
             echo "$1=$value"
           }

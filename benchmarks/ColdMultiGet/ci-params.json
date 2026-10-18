@@ -1,0 +1,9 @@
+{
+  "candidate_run_id": "",
+  "size_gb": "4",
+  "cache_mb": "256",
+  "rounds": "6",
+  "batches": "150",
+  "threads": "8",
+  "hot_share": "0.3"
+}

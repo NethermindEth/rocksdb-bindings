@@ -7,6 +7,15 @@ name: Benchmark cold MultiGet
 # Nethermind. Nothing is published.
 
 on:
+  # workflow_dispatch only resolves on the default branch, so a push to the benchmark branch runs
+  # with the values in benchmarks/ColdMultiGet/ci-params.json; dispatch inputs override them.
+  push:
+    branches: [perf/cold-multiget-bench]
+    paths:
+      - benchmarks/**
+      - src/**
+      - native/**
+      - .github/workflows/benchmark-cold-multiget.yml
   workflow_dispatch:
     inputs:
       candidate_run_id:
@@ -58,18 +67,36 @@ jobs:
     env:
       DB_PATH: ${{ github.workspace }}/cold-db
       RESULTS: ${{ github.workspace }}/results
-      SIZE_GB: ${{ inputs.size_gb }}
-      CACHE_MB: ${{ inputs.cache_mb }}
-      ROUNDS: ${{ inputs.rounds }}
-      BATCHES: ${{ inputs.batches }}
-      THREADS: ${{ inputs.threads }}
-      HOT_SHARE: ${{ inputs.hot_share }}
-      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           lfs: true
+
+      - name: Resolve parameters
+        env:
+          IN_CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          IN_SIZE_GB: ${{ inputs.size_gb }}
+          IN_CACHE_MB: ${{ inputs.cache_mb }}
+          IN_ROUNDS: ${{ inputs.rounds }}
+          IN_BATCHES: ${{ inputs.batches }}
+          IN_THREADS: ${{ inputs.threads }}
+          IN_HOT_SHARE: ${{ inputs.hot_share }}
+        run: |
+          params=benchmarks/ColdMultiGet/ci-params.json
+          resolve() { # name input-value
+            value="$2"
+            if [ -z "$value" ]; then value=$(jq -r --arg k "$1" '.[$k] // ""' "$params"); fi
+            echo "$1=$value" >> "$GITHUB_ENV"
+            echo "$1=$value"
+          }
+          resolve CANDIDATE_RUN_ID "$IN_CANDIDATE_RUN_ID"
+          resolve SIZE_GB "$IN_SIZE_GB"
+          resolve CACHE_MB "$IN_CACHE_MB"
+          resolve ROUNDS "$IN_ROUNDS"
+          resolve BATCHES "$IN_BATCHES"
+          resolve THREADS "$IN_THREADS"
+          resolve HOT_SHARE "$IN_HOT_SHARE"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
@@ -101,7 +128,7 @@ jobs:
             --label control-${{ matrix.arch }} --out "$RESULTS/control-${{ matrix.arch }}.json" | tee "$RESULTS/control-${{ matrix.arch }}.log"
 
       - name: Download candidate library
-        if: inputs.candidate_run_id != ''
+        if: env.CANDIDATE_RUN_ID != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -110,7 +137,7 @@ jobs:
           cp "$RUNNER_TEMP/candidate/librocksdb.so" "${{ steps.native.outputs.lib }}"
 
       - name: Run candidate (io_uring on)
-        if: inputs.candidate_run_id != ''
+        if: env.CANDIDATE_RUN_ID != ''
         run: |
           app=$(find benchmarks/artifacts/bin -name ColdMultiGet.dll | head -1)
           dotnet "$app" --mode run --db "$DB_PATH" --size-gb "$SIZE_GB" --cache-mb "$CACHE_MB" \
@@ -118,7 +145,7 @@ jobs:
             --label candidate-${{ matrix.arch }} --out "$RESULTS/candidate-${{ matrix.arch }}.json" | tee "$RESULTS/candidate-${{ matrix.arch }}.log"
 
       - name: Run candidate (ROCKSDB_NET_IO_URING=0)
-        if: inputs.candidate_run_id != ''
+        if: env.CANDIDATE_RUN_ID != ''
         env:
           ROCKSDB_NET_IO_URING: "0"
         run: |
@@ -145,7 +172,6 @@ jobs:
 
   pack:
     name: Pack candidate for a local feed
-    if: inputs.candidate_run_id != ''
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -153,13 +179,22 @@ jobs:
         with:
           lfs: true
 
+      - name: Resolve candidate run
+        env:
+          IN_CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          value="$IN_CANDIDATE_RUN_ID"
+          if [ -z "$value" ]; then value=$(jq -r '.candidate_run_id // ""' benchmarks/ColdMultiGet/ci-params.json); fi
+          echo "CANDIDATE_RUN_ID=$value" >> "$GITHUB_ENV"
+          echo "candidate_run_id=$value"
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
       - name: Replace the Linux libraries with the candidate build
+        if: env.CANDIDATE_RUN_ID != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
         run: |
           for arch in x64 arm64; do
             gh run download "$CANDIDATE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "linux-$arch" --dir "$RUNNER_TEMP/linux-$arch"
@@ -168,6 +203,7 @@ jobs:
           sha256sum src/Nethermind.RocksDbBindings/runtimes/linux-*/native/librocksdb.so
 
       - name: Pack
+        if: env.CANDIDATE_RUN_ID != ''
         working-directory: src
         run: |
           version_prefix=$(sed -n 's|.*<VersionPrefix>\(.*\)</VersionPrefix>.*|\1|p' Directory.Build.props)
@@ -175,6 +211,7 @@ jobs:
           ls -la artifacts/package/release
 
       - name: Upload package
+        if: env.CANDIDATE_RUN_ID != ''
         uses: actions/upload-artifact@v7
         with:
           name: nupkg-iouring

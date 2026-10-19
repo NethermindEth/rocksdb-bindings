@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using System.Runtime.InteropServices;
-
 using Nethermind.RocksDbBindings.Native;
 
 using static Nethermind.RocksDbBindings.Native.RocksDbNative;
@@ -13,7 +11,9 @@ public sealed unsafe partial class RocksDb
 {
     /// <summary>Reads fixed-length keys asynchronously so that later reads find their blocks in the cache.</summary>
     /// <remarks>
-    /// The values are never copied out: unlike <see cref="MultiGetAsync"/>, a prefetch allocates nothing per key.
+    /// The values are never copied out: unlike <see cref="MultiGetAsync"/>, a prefetch allocates no managed memory
+    /// per key. It returns a <see cref="Task"/> rather than a pooled value task because a caller that does not wait
+    /// for it attaches a continuation, which a value task would turn into a task anyway.
     /// Copies the keys before returning. Read options must not be modified until completion, and they decide
     /// whether the blocks enter the cache. The block cache read tier does not stop it: RocksDB reads such a key from
     /// its file. Missing keys are not an error. RocksDB may complete synchronously when native coroutine reads are
@@ -42,7 +42,7 @@ public sealed unsafe partial class RocksDb
         sbyte* error = null;
         fixed (byte* keyData = keys)
         {
-            request = NativePrefetchCreate(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
+            request = rocksdb_net_prefetch_create(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle),
                 RocksDbInterop.ColumnFamily(cf?.Handle ?? 0), (nuint)(keys.Length / keyLength), (sbyte*)keyData,
                 (nuint)keyLength, &error);
         }
@@ -51,8 +51,4 @@ public sealed unsafe partial class RocksDb
         operation.Start(multi: true);
         return operation.Task;
     }
-
-    [DllImport("rocksdb", EntryPoint = "rocksdb_net_prefetch_create", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    private static extern rocksdb_net_read_t* NativePrefetchCreate(rocksdb_t* db, rocksdb_readoptions_t* options,
-        rocksdb_column_family_handle_t* family, nuint count, sbyte* keys, nuint keyLength, sbyte** error);
 }

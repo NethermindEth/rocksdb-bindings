@@ -94,7 +94,7 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
     protected void ThrowIfAnyReadFailed()
     {
         sbyte* error = null;
-        NativeReadFailed((rocksdb_net_read_t*)_handle!.DangerousGetHandle(), &error);
+        rocksdb_net_read_failed((rocksdb_net_read_t*)_handle!.DangerousGetHandle(), &error);
         RocksDbInterop.ThrowIfError(error);
     }
 
@@ -105,9 +105,6 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         _handle!.Dispose();
         _handle = null;
     }
-
-    [DllImport("rocksdb", EntryPoint = "rocksdb_net_read_failed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    private static extern byte NativeReadFailed(rocksdb_net_read_t* request, sbyte** error);
 }
 
 internal sealed class AsyncGetOperation<T, TDeserializer> : AsyncReadOperation, IValueTaskSource<T?>

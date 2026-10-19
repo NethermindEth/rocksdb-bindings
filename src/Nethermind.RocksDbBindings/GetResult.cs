@@ -17,4 +17,10 @@ public enum GetResult
     /// (<see cref="ReadOptions.SetReadTier"/> with 1) whose blocks are not in memory.
     /// </summary>
     Incomplete = 3,
+
+    /// <summary>
+    /// The read failed for another reason, such as corruption or an IO error. <see cref="RocksDb.Get(ReadOnlySpan{byte}, Span{byte}, IColumnFamilyHandle?, ReadOptions?)"/>
+    /// reports the same failure with its message.
+    /// </summary>
+    Failed = 4,
 }

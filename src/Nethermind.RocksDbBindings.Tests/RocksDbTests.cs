@@ -392,7 +392,7 @@ public class RocksDbTests
 
         using (Assert.Multiple())
         {
-            await Assert.That(length).IsEqualTo(3);
+            await Assert.That(length).IsEqualTo(3L);
             await Assert.That(output).IsEquivalentTo(new byte[] { 1, 2, 3, 9 }, CollectionOrdering.Matching);
         }
     }
@@ -915,18 +915,18 @@ public class RocksDbTests
         using ReadOptions cacheOnly = new ReadOptions().SetReadTier(1);
         byte[] destination = new byte[4];
 
-        GetResult flushed = database.Db.TryGet([1, 1], destination, out int flushedLength, family, cacheOnly);
-        GetResult inMemtable = database.Db.TryGet([2, 2], destination, out int memtableLength, family, cacheOnly);
-        GetResult fromDisk = database.Db.TryGet([1, 1], destination, out int diskLength, family);
+        GetResult flushed = database.Db.TryGet([1, 1], destination, out long flushedLength, family, cacheOnly);
+        GetResult inMemtable = database.Db.TryGet([2, 2], destination, out long memtableLength, family, cacheOnly);
+        GetResult fromDisk = database.Db.TryGet([1, 1], destination, out long diskLength, family);
 
         using (Assert.Multiple())
         {
             await Assert.That(flushed).IsEqualTo(GetResult.Incomplete);
-            await Assert.That(flushedLength).IsEqualTo(-1);
+            await Assert.That(flushedLength).IsEqualTo(-1L);
             await Assert.That(inMemtable).IsEqualTo(GetResult.Found);
-            await Assert.That(memtableLength).IsEqualTo(1);
+            await Assert.That(memtableLength).IsEqualTo(1L);
             await Assert.That(fromDisk).IsEqualTo(GetResult.Found);
-            await Assert.That(diskLength).IsEqualTo(2);
+            await Assert.That(diskLength).IsEqualTo(2L);
             await Assert.That(destination[..2]).IsEquivalentTo(new byte[] { 10, 11 }, CollectionOrdering.Matching);
         }
     }
@@ -937,12 +937,12 @@ public class RocksDbTests
         using TestDatabase database = TestDatabase.Create();
         database.Db.Put([1], [10]);
 
-        GetResult result = database.Db.TryGet([2], new byte[4], out int length);
+        GetResult result = database.Db.TryGet([2], new byte[4], out long length);
 
         using (Assert.Multiple())
         {
             await Assert.That(result).IsEqualTo(GetResult.NotFound);
-            await Assert.That(length).IsEqualTo(-1);
+            await Assert.That(length).IsEqualTo(-1L);
         }
     }
 
@@ -956,12 +956,12 @@ public class RocksDbTests
         byte[] destination = new byte[destinationLength];
         Array.Fill(destination, (byte)99);
 
-        GetResult result = database.Db.TryGet([1], destination, out int length);
+        GetResult result = database.Db.TryGet([1], destination, out long length);
 
         using (Assert.Multiple())
         {
             await Assert.That(result).IsEqualTo(GetResult.Found);
-            await Assert.That(length).IsEqualTo(3);
+            await Assert.That(length).IsEqualTo(3L);
             await Assert.That(destination.All(static b => b == 99)).IsTrue();
         }
     }
@@ -972,12 +972,50 @@ public class RocksDbTests
         using TestDatabase database = TestDatabase.Create();
         database.Db.Put([1], []);
 
-        GetResult result = database.Db.TryGet([1], [], out int length);
+        GetResult result = database.Db.TryGet([1], [], out long length);
 
         using (Assert.Multiple())
         {
             await Assert.That(result).IsEqualTo(GetResult.Found);
-            await Assert.That(length).IsEqualTo(0);
+            await Assert.That(length).IsEqualTo(0L);
+        }
+    }
+
+    [Test]
+    public async Task TryGet_ReportsACorruptBlockAsFailedWithoutThrowing()
+    {
+        using TempDirectory directory = new();
+        string path = directory.Reserve("db");
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
+        using DbOptions options = CreatingOptions().SetBlockBasedTableFactory(table);
+        byte[] value = new byte[4096];
+        Array.Fill(value, (byte)0xAB);
+        using (RocksDb db = RocksDb.Open(options, path))
+        {
+            db.Put([1], value);
+            using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+            db.Flush(flush);
+        }
+
+        // The first data block starts at offset 0; damaging it breaks its checksum but not the table metadata.
+        string sst = Directory.GetFiles(path, "*.sst").Single();
+        using (FileStream file = new(sst, FileMode.Open, FileAccess.ReadWrite))
+        {
+            byte[] start = new byte[64];
+            file.ReadExactly(start);
+            for (int i = 0; i < start.Length; i++) start[i] ^= 0xFF;
+            file.Position = 0;
+            file.Write(start);
+        }
+
+        using RocksDb reopened = RocksDb.Open(options, path);
+        GetResult result = reopened.TryGet([1], new byte[8], out long length);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result).IsEqualTo(GetResult.Failed);
+            await Assert.That(length).IsEqualTo(-1L);
+            await Assert.That(() => reopened.Get([1], new byte[8192].AsSpan())).Throws<RocksDbException>();
         }
     }
 

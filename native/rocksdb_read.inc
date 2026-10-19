@@ -10,7 +10,7 @@ extern "C" {
 unsigned char rocksdb_net_get_into_buffer_status(
     rocksdb_t* db, const rocksdb_readoptions_t* options,
     rocksdb_column_family_handle_t* family, const char* key, size_t keylen,
-    char* buffer, size_t buffer_size, size_t* vallen, char** errptr) {
+    char* buffer, size_t buffer_size, size_t* vallen) {
   *vallen = 0;
   try {
     ColumnFamilyHandle* column_family = family == nullptr
@@ -30,16 +30,9 @@ unsigned char rocksdb_net_get_into_buffer_status(
     if (status.IsIncomplete()) {
       return ROCKSDB_NET_GET_INCOMPLETE;
     }
-    SaveError(errptr, status);
-    return ROCKSDB_NET_GET_ERROR;
-  } catch (const std::exception& error) {
-    try {
-      SaveError(errptr, Status::Aborted(error.what()));
-    } catch (...) {
-    }
-    return ROCKSDB_NET_GET_ERROR;
+    return ROCKSDB_NET_GET_FAILED;
   } catch (...) {
-    return ROCKSDB_NET_GET_ERROR;
+    return ROCKSDB_NET_GET_FAILED;
   }
 }
 

@@ -224,6 +224,92 @@ public class AsyncReadTests
     }
 
     [Test]
+    public async Task PrefetchAsync_FlushedKeys_BringsTheirBlocksIntoTheCache()
+    {
+        using Cache cache = Cache.CreateLru(8UL << 20);
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetBlockCache(cache);
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(table);
+        using TestDatabase database = TestDatabase.Create(options);
+        byte[] keys = FixedKeys(256);
+        for (int i = 0; i < 256; i++)
+            database.Db.Put(keys.AsSpan(i * PrefetchKeyLength, PrefetchKeyLength), new byte[100]);
+        using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flushOptions);
+        ulong before = cache.GetUsage();
+
+        await database.Db.PrefetchAsync(keys, PrefetchKeyLength);
+
+        await Assert.That(cache.GetUsage()).IsGreaterThan(before);
+        await Assert.That(database.Db.Get(keys.AsSpan(0, PrefetchKeyLength))).IsEquivalentTo(new byte[100], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task PrefetchAsync_ExistingAndMissingKeysInAColumnFamily_Completes(bool flush)
+    {
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using ColumnFamilyOptions familyOptions = new();
+        using TestDatabase database = TestDatabase.Create(options, new ColumnFamilies { { "blocks", familyOptions } });
+        IColumnFamilyHandle blocks = database.Db.GetColumnFamily("blocks");
+        byte[] keys = FixedKeys(4);
+        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), "block"u8, blocks);
+        if (flush)
+        {
+            using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+            database.Db.Flush(flushOptions, blocks);
+        }
+
+        Task prefetch = database.Db.PrefetchAsync(keys, PrefetchKeyLength, blocks);
+
+        await Assert.That(async () => await prefetch).ThrowsNothing();
+        await Assert.That(database.Db.Get(keys.AsSpan(0, PrefetchKeyLength), blocks)).IsEquivalentTo("block"u8.ToArray(), CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task PrefetchAsync_ReadThatNeedsIOAtTheCacheTier_FaultsWithTheReadError()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        byte[] keys = FixedKeys(2);
+        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), "value"u8);
+        using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flushOptions);
+        using ReadOptions cacheOnly = new ReadOptions().SetReadTier(1);
+
+        await Assert.That(async () => await database.Db.PrefetchAsync(keys, PrefetchKeyLength, readOptions: cacheOnly))
+            .Throws<RocksDbException>();
+    }
+
+    [Test]
+    public async Task PrefetchAsync_ValidatesInputsAndAcceptsEmptyBatches()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        await Assert.That(database.Db.PrefetchAsync([], PrefetchKeyLength).IsCompletedSuccessfully).IsTrue();
+        await Assert.That(() => database.Db.PrefetchAsync(new byte[4], 0)).ThrowsExactly<ArgumentOutOfRangeException>();
+        await Assert.That(() => database.Db.PrefetchAsync(new byte[5], 2)).ThrowsExactly<ArgumentException>();
+        using ReadOptions options = new();
+        options.Dispose();
+        await Assert.That(() => database.Db.PrefetchAsync([], PrefetchKeyLength, readOptions: options)).ThrowsExactly<ObjectDisposedException>();
+        database.Db.Dispose();
+        await Assert.That(() => database.Db.PrefetchAsync([], PrefetchKeyLength)).ThrowsExactly<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task PrefetchAsync_SurvivesDisposalOfDatabaseAndOptions()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        byte[] keys = FixedKeys(8);
+        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), "value"u8);
+        ReadOptions options = new();
+
+        Task prefetch = database.Db.PrefetchAsync(keys, PrefetchKeyLength, readOptions: options);
+        options.Dispose();
+        database.Db.Dispose();
+
+        await Assert.That(async () => await prefetch).ThrowsNothing();
+    }
+
+    [Test]
     public async Task Reads_SurviveDisposalOfDatabaseOptionsAndSnapshot()
     {
         using TestDatabase database = TestDatabase.Create();
@@ -306,5 +392,15 @@ public class AsyncReadTests
         database.Db.Dispose();
         await Assert.That(async () => await database.Db.GetAsync([])).ThrowsExactly<ObjectDisposedException>();
         await Assert.That(async () => await database.Db.MultiGetAsync([])).ThrowsExactly<ObjectDisposedException>();
+    }
+
+    private const int PrefetchKeyLength = 32;
+
+    private static byte[] FixedKeys(int count)
+    {
+        byte[] keys = new byte[count * PrefetchKeyLength];
+        for (int i = 0; i < count; i++)
+            BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * PrefetchKeyLength), i + 1);
+        return keys;
     }
 }

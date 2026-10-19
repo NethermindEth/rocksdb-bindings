@@ -91,6 +91,13 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         return found != 0;
     }
 
+    protected void ThrowIfAnyReadFailed()
+    {
+        sbyte* error = null;
+        NativeReadFailed((rocksdb_net_read_t*)_handle!.DangerousGetHandle(), &error);
+        RocksDbInterop.ThrowIfError(error);
+    }
+
     public abstract void Execute();
 
     protected void Release()
@@ -98,6 +105,9 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
         _handle!.Dispose();
         _handle = null;
     }
+
+    [DllImport("rocksdb", EntryPoint = "rocksdb_net_read_failed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern byte NativeReadFailed(rocksdb_net_read_t* request, sbyte** error);
 }
 
 internal sealed class AsyncGetOperation<T, TDeserializer> : AsyncReadOperation, IValueTaskSource<T?>
@@ -190,5 +200,29 @@ internal sealed class AsyncMultiGetOperation(AsyncReadHandle handle, byte[][] ke
         }
         Release();
         _completion.SetResult(values);
+    }
+}
+
+/// <summary>Completes once every read has finished; the values stay in native memory and are freed with the request.</summary>
+internal sealed class AsyncPrefetchOperation(AsyncReadHandle handle) : AsyncReadOperation(handle)
+{
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task Task => _completion.Task;
+
+    public override void Execute()
+    {
+        try
+        {
+            ThrowIfAnyReadFailed();
+        }
+        catch (Exception error)
+        {
+            Release();
+            _completion.SetException(error);
+            return;
+        }
+        Release();
+        _completion.SetResult();
     }
 }

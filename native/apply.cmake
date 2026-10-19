@@ -23,3 +23,8 @@ configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_read.inc"
                "${ROCKSDB_SOURCE}/db/rocksdb_read.inc" COPYONLY)
 configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_read.h"
                "${ROCKSDB_SOURCE}/db/rocksdb_read.h" COPYONLY)
+file(APPEND "${ROCKSDB_SOURCE}/db/c.cc" "\n#include \"rocksdb_prefetch.inc\"\n")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_prefetch.inc"
+               "${ROCKSDB_SOURCE}/db/rocksdb_prefetch.inc" COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_prefetch.h"
+               "${ROCKSDB_SOURCE}/db/rocksdb_prefetch.h" COPYONLY)

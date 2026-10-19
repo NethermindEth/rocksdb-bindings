@@ -78,13 +78,23 @@ jobs:
 
       - name: Run blobs
         run: |
-          python3 bench/benchmarks/ColdReads/run.py blobs "$REPS" blobs.csv "$RUNNER_TEMP/blobs" "$BLOB_BATCH $BLOB_BATCHES" \
-            base=out/base/ColdReads.dll | tee blobs.md
+          for temperature in cold page; do
+            export BENCH_TEMPERATURE=$temperature
+            python3 bench/benchmarks/ColdReads/run.py blobs "$REPS" blobs.csv "$RUNNER_TEMP/blobs" "4 64" base=out/base/ColdReads.dll > /dev/null
+            python3 bench/benchmarks/ColdReads/run.py blobs "$REPS" blobs.csv "$RUNNER_TEMP/blobs" "16 32" base=out/base/ColdReads.dll > blobs.md
+          done
+          cat blobs.md
 
       - name: Run state
         run: |
-          python3 bench/benchmarks/ColdReads/run.py state "$REPS" state.csv "$RUNNER_TEMP/state" "$STATE_BATCHES" \
-            base=out/base/ColdReads.dll candidate=out/prefetch/ColdReads.dll | tee state.md
+          for temperature in cold page; do
+            export BENCH_TEMPERATURE=$temperature
+            for spec in "64 8" "64 64" "16 256"; do
+              python3 bench/benchmarks/ColdReads/run.py state "$REPS" state.csv "$RUNNER_TEMP/state" "$spec" \
+                base=out/base/ColdReads.dll candidate=out/prefetch/ColdReads.dll > state.md
+            done
+          done
+          cat state.md
           { echo "### ${{ matrix.arch }} ($(nproc) cores, kernel $(uname -r))"; cat blobs.md; echo; cat state.md; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results

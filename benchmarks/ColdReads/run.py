@@ -1,5 +1,6 @@
 # Runs the arms of one case in rotation, with the page cache dropped before every process, and prints medians.
 # Usage: python3 run.py <case> <reps> <out.csv> <db> <extra args> <label=dll[:ENV=value]>...
+# BENCH_TEMPERATURE=page skips the drop and reads every database file once first, so reads start in the page cache.
 import os, statistics, subprocess, sys, collections
 case, reps, out, db, extra = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5].split()
 arms = []
@@ -7,10 +8,16 @@ for spec in sys.argv[6:]:
     label, rest = spec.split('=', 1)
     dll, _, env = rest.partition(':')
     arms.append((label, dll, dict([env.split('=', 1)]) if env else {}))
-with open(out, 'w') as f:
+page = os.environ.get('BENCH_TEMPERATURE') == 'page'
+if page:
+    # Once per invocation: the page cache then holds every file for all processes, while each process starts with
+    # an empty block cache.
+    subprocess.run(['sh', '-c', f'cat {db}/* > /dev/null'], check=True)
+with open(out, 'a') as f:
     for rep in range(reps):
         for label, dll, env in (arms if rep % 2 == 0 else arms[::-1]):
-            subprocess.run(['sudo', 'sh', '-c', 'sync; echo 3 > /proc/sys/vm/drop_caches'], check=True)
+            if not page:
+                subprocess.run(['sudo', 'sh', '-c', 'sync; echo 3 > /proc/sys/vm/drop_caches'], check=True)
             # The same seed for every arm of a rep: each arm reads the same keys, each from a cold cache.
             args = ['dotnet', dll, case, db, label] + extra + [str(rep + 1)]
             result = subprocess.run(args, check=True, capture_output=True, text=True, env={**os.environ, **env})

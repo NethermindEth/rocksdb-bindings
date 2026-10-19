@@ -1,0 +1,97 @@
+name: Benchmark cold reads
+
+# Consumer-shaped cold reads (benchmarks/ColdReads) with the page cache dropped before every process:
+#   blobs: sync MultiGet of blob-pool values, repository library against the io_uring candidate library
+#          (on, and off through ROCKSDB_NET_IO_URING=0);
+#   state: the MultiGetAsync prefetch path against PrefetchAsync, with the candidate branch and library.
+# workflow_dispatch only resolves on the default branch, so a push runs with benchmarks/ColdReads/ci-params.json.
+
+on:
+  push:
+    branches: [bench/cold-reads]
+    paths:
+      - benchmarks/**
+      - .github/workflows/benchmark-cold-reads.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    name: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      PARAMS: bench/benchmarks/ColdReads/ci-params.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out benchmark and repository library
+        uses: actions/checkout@v7
+        with:
+          path: bench
+          lfs: true
+
+      - name: Resolve parameters
+        run: |
+          for key in iouring_run prefetch_run prefetch_ref reps blob_batch blob_batches state_batches; do
+            echo "$(echo $key | tr '[:lower:]' '[:upper:]')=$(jq -r .$key "$PARAMS")" >> "$GITHUB_ENV"
+          done
+
+      - name: Check out prefetch branch
+        run: |
+          git clone --quiet --no-checkout "https://github.com/$GITHUB_REPOSITORY" prefetch
+          git -C prefetch -c advice.detachedHead=false checkout --quiet "$PREFETCH_REF"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: bench/global.json
+
+      - name: Build arms
+        run: |
+          native=runtimes/linux-${{ matrix.arch }}/native/librocksdb.so
+          cp -r bench/benchmarks bench-main
+          dotnet build bench-main/ColdReads -c Release -p:BindingsDir="$GITHUB_WORKSPACE/bench" -o out/base --nologo -v q
+          cp -r out/base out/uring
+          gh run download "$IOURING_RUN" -R "$GITHUB_REPOSITORY" -n "linux-${{ matrix.arch }}" --dir "$RUNNER_TEMP/uring"
+          cp "$RUNNER_TEMP/uring/librocksdb.so" "out/uring/$native"
+          cp -r bench/benchmarks bench-prefetch
+          dotnet build bench-prefetch/ColdReads -c Release -p:BindingsDir="$GITHUB_WORKSPACE/prefetch" -p:DefineConstants=HAS_PREFETCH -o out/prefetch --nologo -v q
+          gh run download "$PREFETCH_RUN" -R "$GITHUB_REPOSITORY" -n "linux-${{ matrix.arch }}" --dir "$RUNNER_TEMP/prefetch"
+          cp "$RUNNER_TEMP/prefetch/librocksdb.so" "out/prefetch/$native"
+          sha256sum out/*/"$native"
+
+      - name: Build databases
+        run: |
+          dotnet out/base/ColdReads.dll build-blobs "$RUNNER_TEMP/blobs"
+          dotnet out/base/ColdReads.dll build-state "$RUNNER_TEMP/state"
+          du -sh "$RUNNER_TEMP/blobs" "$RUNNER_TEMP/state"; free -g; nproc; uname -r
+
+      - name: Run blobs
+        run: |
+          python3 bench/benchmarks/ColdReads/run.py blobs "$REPS" blobs.csv "$RUNNER_TEMP/blobs" "$BLOB_BATCH $BLOB_BATCHES" \
+            base=out/base/ColdReads.dll uring=out/uring/ColdReads.dll uring-off=out/uring/ColdReads.dll:ROCKSDB_NET_IO_URING=0 | tee blobs.md
+
+      - name: Run state
+        run: |
+          python3 bench/benchmarks/ColdReads/run.py state "$REPS" state.csv "$RUNNER_TEMP/state" "$STATE_BATCHES" \
+            base=out/base/ColdReads.dll candidate=out/prefetch/ColdReads.dll | tee state.md
+          { echo "### ${{ matrix.arch }} ($(nproc) cores, kernel $(uname -r))"; cat blobs.md; echo; cat state.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cold-reads-${{ matrix.arch }}
+          path: |
+            *.csv
+            *.md

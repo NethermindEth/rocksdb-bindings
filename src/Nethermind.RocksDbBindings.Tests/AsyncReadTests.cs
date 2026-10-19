@@ -266,18 +266,28 @@ public class AsyncReadTests
         await Assert.That(database.Db.Get(keys.AsSpan(0, PrefetchKeyLength), blocks)).IsEquivalentTo("block"u8.ToArray(), CollectionOrdering.Matching);
     }
 
+    /// <remarks>
+    /// MultiGetAsync does not honour the cache read tier (a flushed value is read from the file even at tier 1), so
+    /// the read error here comes from a corrupt data block instead: the file's first block fails its checksum.
+    /// </remarks>
     [Test]
-    public async Task PrefetchAsync_ReadThatNeedsIOAtTheCacheTier_FaultsWithTheReadError()
+    public async Task PrefetchAsync_CorruptDataBlock_FaultsWithTheReadError()
     {
-        using TestDatabase database = TestDatabase.Create();
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetBlockBasedTableFactory(table);
+        using TestDatabase database = TestDatabase.Create(options);
         byte[] keys = FixedKeys(2);
-        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), "value"u8);
+        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), new byte[256]);
         using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
         database.Db.Flush(flushOptions);
-        using ReadOptions cacheOnly = new ReadOptions().SetReadTier(1);
+        string file = Directory.GetFiles(database.Path, "*.sst").Single();
+        using (FileStream stream = new(file, FileMode.Open, FileAccess.Write))
+        {
+            stream.Position = 8;
+            stream.Write([0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF]);
+        }
 
-        await Assert.That(async () => await database.Db.PrefetchAsync(keys, PrefetchKeyLength, readOptions: cacheOnly))
-            .Throws<RocksDbException>();
+        await Assert.That(async () => await database.Db.PrefetchAsync(keys, PrefetchKeyLength)).Throws<RocksDbException>();
     }
 
     [Test]

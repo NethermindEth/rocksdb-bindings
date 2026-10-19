@@ -94,8 +94,8 @@ internal abstract unsafe class AsyncReadOperation(AsyncReadHandle handle) : IThr
     protected void ThrowIfAnyReadFailed()
     {
         sbyte* error = null;
-        rocksdb_net_read_failed((rocksdb_net_read_t*)_handle!.DangerousGetHandle(), &error);
-        RocksDbInterop.ThrowIfError(error);
+        if (rocksdb_net_read_failed((rocksdb_net_read_t*)_handle!.DangerousGetHandle(), &error) != 0)
+            RocksDbInterop.ThrowIfError(error);
     }
 
     public abstract void Execute();

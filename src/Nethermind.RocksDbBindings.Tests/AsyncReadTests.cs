@@ -261,7 +261,7 @@ public class AsyncReadTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task PrefetchAsync_KeysOnlyInTheFile_BringsEveryKeyIntoTheCache(bool namedFamily)
+    public async Task PrefetchAsync_KeysOnlyInTheFile_BringsTheFirstAndLastKeyIntoTheCache(bool namedFamily)
     {
         using TempDirectory directory = new();
         string path = directory.Reserve("db");

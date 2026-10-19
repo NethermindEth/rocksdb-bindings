@@ -76,30 +76,41 @@ static void RunBlobs(string dir, string label, int batchSize, int batches, ulong
 {
     using RocksDb db = Open(dir, 32UL << 20, out Cache cache, out DbOptions options);
     int[] records = Shuffle(BlobRecords, seed);
-    if (records.Length < 2 * batches * batchSize) throw new ArgumentException("Not enough records for disjoint sets.");
+    if (records.Length < 3 * batches * batchSize) throw new ArgumentException("Not enough records for disjoint sets.");
     byte[][] keys = new byte[batchSize][];
     for (int i = 0; i < batchSize; i++) keys[i] = new byte[BlobKeyLength];
+    byte[] fixedKeys = new byte[batchSize * BlobKeyLength];
+    int[] lengths = new int[batchSize];
     int next = 0;
-    for (int b = 0; b < batches; b++)
+    string[] arms = ["multiget", "decoded", "scalar"];
+    // Rotated per seed, so no arm always reads first.
+    for (int shift = (int)(seed % 3), a = 0; a < arms.Length; a++)
     {
-        int first = next;
-        for (int i = 0; i < batchSize; i++) BlobKey(records[next++], keys[i]);
-        long t0 = Stopwatch.GetTimestamp();
-        KeyValuePair<byte[], byte[]?>[] values = db.MultiGet(keys);
-        double us = Stopwatch.GetElapsedTime(t0).TotalMicroseconds;
-        for (int i = 0; i < batchSize; i++)
-            if (values[i].Value?.Length != BlobCount(records[first + i]) * BlobLength) throw new InvalidOperationException("Wrong blob value.");
-        Console.WriteLine($"{label},blobs-{batchSize},multiget,{b},{us:F1},0");
-    }
-    for (int b = 0; b < batches; b++)
-    {
-        long t0 = Stopwatch.GetTimestamp();
-        for (int i = 0; i < batchSize; i++)
+        string arm = arms[(a + shift) % arms.Length];
+        for (int b = 0; b < batches; b++)
         {
-            BlobKey(records[next++], keys[i]);
-            if (db.Get(keys[i]) is null) throw new InvalidOperationException("Missing blob.");
+            int first = next;
+            for (int i = 0; i < batchSize; i++) BlobKey(records[next++], keys[i]);
+            long t0 = Stopwatch.GetTimestamp();
+            if (arm == "multiget")
+            {
+                KeyValuePair<byte[], byte[]?>[] values = db.MultiGet(keys);
+                for (int i = 0; i < batchSize; i++) lengths[i] = values[i].Value?.Length ?? -1;
+            }
+            else if (arm == "decoded")
+            {
+                for (int i = 0; i < batchSize; i++) keys[i].CopyTo(fixedKeys, i * BlobKeyLength);
+                db.MultiGet<int, LengthDecoder>(fixedKeys, BlobKeyLength, lengths, default);
+            }
+            else
+            {
+                for (int i = 0; i < batchSize; i++) lengths[i] = db.Get(keys[i])?.Length ?? -1;
+            }
+            double us = Stopwatch.GetElapsedTime(t0).TotalMicroseconds;
+            for (int i = 0; i < batchSize; i++)
+                if (lengths[i] != BlobCount(records[first + i]) * BlobLength) throw new InvalidOperationException("Wrong blob value.");
+            Console.WriteLine($"{label},blobs-{batchSize},{arm},{b},{us:F1},0");
         }
-        Console.WriteLine($"{label},blobs-{batchSize},scalar,{b},{Stopwatch.GetElapsedTime(t0).TotalMicroseconds:F1},0");
     }
     options.Dispose();
     cache.Dispose();
@@ -145,6 +156,8 @@ static void RunState(string dir, string label, int batches, ulong seed)
 #if HAS_PREFETCH
     arms.Add("prefetch");
 #endif
+    // Rotated per seed, so no arm always reads first.
+    if (seed % 2 == 0) arms.Reverse();
     Dictionary<string, int> starts = [];
     foreach (string arm in arms)
     {
@@ -205,4 +218,10 @@ static ulong Mix(ulong x)
     x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9UL;
     x = (x ^ (x >> 27)) * 0x94D049BB133111EBUL;
     return x ^ (x >> 31);
+}
+
+// Decodes a value to its length only: the decoded MultiGet path, with no copy of the value.
+internal readonly struct LengthDecoder : ISpanDeserializer<int>
+{
+    public int Deserialize(ReadOnlySpan<byte> buffer) => buffer.Length;
 }

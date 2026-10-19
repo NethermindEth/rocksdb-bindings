@@ -79,7 +79,7 @@ jobs:
       - name: Run blobs
         run: |
           python3 bench/benchmarks/ColdReads/run.py blobs "$REPS" blobs.csv "$RUNNER_TEMP/blobs" "$BLOB_BATCH $BLOB_BATCHES" \
-            base=out/base/ColdReads.dll uring=out/uring/ColdReads.dll uring-off=out/uring/ColdReads.dll:ROCKSDB_NET_IO_URING=0 | tee blobs.md
+            base=out/base/ColdReads.dll | tee blobs.md
 
       - name: Run state
         run: |

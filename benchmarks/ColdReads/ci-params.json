@@ -4,6 +4,6 @@
   "prefetch_ref": "bc8e927558026e807d96996263ce85b68b97cc77",
   "reps": 8,
   "blob_batch": 16,
-  "blob_batches": 40,
+  "blob_batches": 32,
   "state_batches": 64
 }

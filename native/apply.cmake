@@ -18,3 +18,8 @@ configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_batch.inc"
                "${ROCKSDB_SOURCE}/db/rocksdb_batch.inc" COPYONLY)
 configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_batch.h"
                "${ROCKSDB_SOURCE}/db/rocksdb_batch.h" COPYONLY)
+file(APPEND "${ROCKSDB_SOURCE}/db/c.cc" "\n#include \"rocksdb_read.inc\"\n")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_read.inc"
+               "${ROCKSDB_SOURCE}/db/rocksdb_read.inc" COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/rocksdb_read.h"
+               "${ROCKSDB_SOURCE}/db/rocksdb_read.h" COPYONLY)

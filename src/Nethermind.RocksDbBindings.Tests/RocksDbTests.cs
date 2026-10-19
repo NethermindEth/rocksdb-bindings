@@ -900,6 +900,142 @@ public class RocksDbTests
         for (int i = 1; i < count; i++) await Assert.That(values[i]).IsEqualTo(0);
     }
 
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(2)]
+    public async Task TryGet_AtTheBlockCacheTier_ReportsAFlushedValueAsIncompleteWithoutThrowing(int familyKind)
+    {
+        using TestDatabase database = CreateUncachedFamilyDatabase();
+        IColumnFamilyHandle? family = GetReadFamily(database.Db, familyKind);
+        database.Db.Put([1, 1], [10, 11], family);
+        using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+        database.Db.Flush(flush, family ?? database.Db.GetDefaultColumnFamily());
+        database.Db.Put([2, 2], [20], family);
+        using ReadOptions cacheOnly = new ReadOptions().SetReadTier(1);
+        byte[] destination = new byte[4];
+
+        GetResult flushed = database.Db.TryGet([1, 1], destination, out long flushedLength, family, cacheOnly);
+        GetResult inMemtable = database.Db.TryGet([2, 2], destination, out long memtableLength, family, cacheOnly);
+        GetResult fromDisk = database.Db.TryGet([1, 1], destination, out long diskLength, family);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(flushed).IsEqualTo(GetResult.Incomplete);
+            await Assert.That(flushedLength).IsEqualTo(-1L);
+            await Assert.That(inMemtable).IsEqualTo(GetResult.Found);
+            await Assert.That(memtableLength).IsEqualTo(1L);
+            await Assert.That(fromDisk).IsEqualTo(GetResult.Found);
+            await Assert.That(diskLength).IsEqualTo(2L);
+            await Assert.That(destination[..2]).IsEquivalentTo(new byte[] { 10, 11 }, CollectionOrdering.Matching);
+        }
+    }
+
+    [Test]
+    public async Task TryGet_ReportsAMissingKeyAsNotFound()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put([1], [10]);
+
+        GetResult result = database.Db.TryGet([2], new byte[4], out long length);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result).IsEqualTo(GetResult.NotFound);
+            await Assert.That(length).IsEqualTo(-1L);
+        }
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(2)]
+    public async Task TryGet_ReportsTheLengthOfAValueLongerThanTheDestinationAndCopiesNothing(int destinationLength)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put([1], [10, 11, 12]);
+        byte[] destination = new byte[destinationLength];
+        Array.Fill(destination, (byte)99);
+
+        GetResult result = database.Db.TryGet([1], destination, out long length);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result).IsEqualTo(GetResult.Found);
+            await Assert.That(length).IsEqualTo(3L);
+            await Assert.That(destination.All(static b => b == 99)).IsTrue();
+        }
+    }
+
+    [Test]
+    public async Task TryGet_ReportsAnEmptyValueAsFound()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        database.Db.Put([1], []);
+
+        GetResult result = database.Db.TryGet([1], [], out long length);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(result).IsEqualTo(GetResult.Found);
+            await Assert.That(length).IsEqualTo(0L);
+        }
+    }
+
+    [Test]
+    public async Task TryGet_ReportsACorruptBlockAsFailedWithoutThrowing()
+    {
+        using TempDirectory directory = new();
+        string path = directory.Reserve("db");
+        BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
+        using DbOptions options = CreatingOptions().SetBlockBasedTableFactory(table);
+        // Random values do not compress, so each one fills its own data blocks and can be found in the file.
+        Random random = new(7);
+        byte[][] values = new byte[64][];
+        using (RocksDb db = RocksDb.Open(options, path))
+        {
+            for (byte i = 0; i < values.Length; i++)
+            {
+                random.NextBytes(values[i] = new byte[8192]);
+                db.Put([i], values[i]);
+            }
+
+            using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
+            db.Flush(flush);
+        }
+
+        // Damage only the data of one key in the middle, which opening the database does not read.
+        const byte damagedKey = 32;
+        string sst = Directory.GetFiles(path, "*.sst").Single();
+        byte[] file = File.ReadAllBytes(sst);
+        int offset = file.AsSpan().IndexOf(values[damagedKey].AsSpan(0, 64));
+        await Assert.That(offset).IsGreaterThan(0);
+        for (int i = offset; i < offset + 64; i++) file[i] ^= 0xFF;
+        File.WriteAllBytes(sst, file);
+
+        using RocksDb reopened = RocksDb.Open(options, path);
+        GetResult damaged = reopened.TryGet([damagedKey], new byte[8], out long damagedLength);
+        GetResult intact = reopened.TryGet([1], [], out long intactLength);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(damaged).IsEqualTo(GetResult.Failed);
+            await Assert.That(damagedLength).IsEqualTo(-1L);
+            await Assert.That(intact).IsEqualTo(GetResult.Found);
+            await Assert.That(intactLength).IsEqualTo(8192L);
+            await Assert.That(() => reopened.Get([damagedKey], new byte[8192].AsSpan())).Throws<RocksDbException>();
+        }
+    }
+
+    [Test]
+    public async Task TryGet_OnADisposedDatabase_Throws()
+    {
+        TestDatabase database = TestDatabase.Create();
+        RocksDb db = database.Db;
+        database.Dispose();
+
+        await Assert.That(() => db.TryGet([1], [], out _)).Throws<ObjectDisposedException>();
+    }
+
     private static TestDatabase CreateUncachedFamilyDatabase()
     {
         BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);

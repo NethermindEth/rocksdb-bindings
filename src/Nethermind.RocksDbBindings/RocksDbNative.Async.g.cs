@@ -26,4 +26,11 @@ public static unsafe partial class RocksDbNative
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_net_read_destroy(rocksdb_net_read_t* request);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern rocksdb_net_read_t* rocksdb_net_prefetch_create(rocksdb_t* db, [NativeTypeName("const rocksdb_readoptions_t *")] rocksdb_readoptions_t* options, rocksdb_column_family_handle_t* family, [NativeTypeName("size_t")] nuint count, [NativeTypeName("const char *")] sbyte* keys, [NativeTypeName("size_t")] nuint key_length, [NativeTypeName("char **")] sbyte** errptr);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [return: NativeTypeName("unsigned char")]
+    public static extern byte rocksdb_net_read_failed(rocksdb_net_read_t* request, [NativeTypeName("char **")] sbyte** errptr);
 }

@@ -392,7 +392,7 @@ public class RocksDbTests
 
         using (Assert.Multiple())
         {
-            await Assert.That(length).IsEqualTo(3L);
+            await Assert.That(length).IsEqualTo(3);
             await Assert.That(output).IsEquivalentTo(new byte[] { 1, 2, 3, 9 }, CollectionOrdering.Matching);
         }
     }
@@ -988,34 +988,41 @@ public class RocksDbTests
         string path = directory.Reserve("db");
         BlockBasedTableOptions table = new BlockBasedTableOptions().SetNoBlockCache(true);
         using DbOptions options = CreatingOptions().SetBlockBasedTableFactory(table);
-        byte[] value = new byte[4096];
-        Array.Fill(value, (byte)0xAB);
+        // Random values do not compress, so each one fills its own data blocks and can be found in the file.
+        Random random = new(7);
+        byte[][] values = new byte[64][];
         using (RocksDb db = RocksDb.Open(options, path))
         {
-            db.Put([1], value);
+            for (byte i = 0; i < values.Length; i++)
+            {
+                random.NextBytes(values[i] = new byte[8192]);
+                db.Put([i], values[i]);
+            }
+
             using FlushOptions flush = new FlushOptions().SetWaitForFlush(true);
             db.Flush(flush);
         }
 
-        // The first data block starts at offset 0; damaging it breaks its checksum but not the table metadata.
+        // Damage only the data of one key in the middle, which opening the database does not read.
+        const byte damagedKey = 32;
         string sst = Directory.GetFiles(path, "*.sst").Single();
-        using (FileStream file = new(sst, FileMode.Open, FileAccess.ReadWrite))
-        {
-            byte[] start = new byte[64];
-            file.ReadExactly(start);
-            for (int i = 0; i < start.Length; i++) start[i] ^= 0xFF;
-            file.Position = 0;
-            file.Write(start);
-        }
+        byte[] file = File.ReadAllBytes(sst);
+        int offset = file.AsSpan().IndexOf(values[damagedKey].AsSpan(0, 64));
+        await Assert.That(offset).IsGreaterThan(0);
+        for (int i = offset; i < offset + 64; i++) file[i] ^= 0xFF;
+        File.WriteAllBytes(sst, file);
 
         using RocksDb reopened = RocksDb.Open(options, path);
-        GetResult result = reopened.TryGet([1], new byte[8], out long length);
+        GetResult damaged = reopened.TryGet([damagedKey], new byte[8], out long damagedLength);
+        GetResult intact = reopened.TryGet([1], [], out long intactLength);
 
         using (Assert.Multiple())
         {
-            await Assert.That(result).IsEqualTo(GetResult.Failed);
-            await Assert.That(length).IsEqualTo(-1L);
-            await Assert.That(() => reopened.Get([1], new byte[8192].AsSpan())).Throws<RocksDbException>();
+            await Assert.That(damaged).IsEqualTo(GetResult.Failed);
+            await Assert.That(damagedLength).IsEqualTo(-1L);
+            await Assert.That(intact).IsEqualTo(GetResult.Found);
+            await Assert.That(intactLength).IsEqualTo(8192L);
+            await Assert.That(() => reopened.Get([damagedKey], new byte[8192].AsSpan())).Throws<RocksDbException>();
         }
     }
 

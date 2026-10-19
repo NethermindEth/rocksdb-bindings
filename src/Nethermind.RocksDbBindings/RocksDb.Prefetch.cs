@@ -15,8 +15,9 @@ public sealed unsafe partial class RocksDb
     /// <remarks>
     /// The values are never copied out: unlike <see cref="MultiGetAsync"/>, a prefetch allocates nothing per key.
     /// Copies the keys before returning. Read options must not be modified until completion, and they decide
-    /// whether the blocks enter the cache. Missing keys are not an error. RocksDB may complete synchronously when
-    /// native coroutine reads are unavailable.
+    /// whether the blocks enter the cache. The block cache read tier does not stop it: RocksDB reads such a key from
+    /// its file. Missing keys are not an error. RocksDB may complete synchronously when native coroutine reads are
+    /// unavailable.
     /// </remarks>
     /// <returns>A task that completes when every read has finished, or faults with the first read error.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The key length is not positive.</exception>

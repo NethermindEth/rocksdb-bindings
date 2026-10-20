@@ -223,6 +223,134 @@ public class AsyncReadTests
         await Assert.That(await database.Db.GetAsync(key, blocks)).IsEquivalentTo("block"u8.ToArray(), CollectionOrdering.Matching);
     }
 
+    /// <remarks>
+    /// Distinct keys of different lengths, a short one after a longer one with the same prefix: each slice into the
+    /// request's single key buffer has to start where its own key starts.
+    /// </remarks>
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MultiGetAsync_DistinctKeysOfDifferentLengths_ReturnsEachKeysOwnValue(bool flush)
+    {
+        using TestDatabase database = TestDatabase.Create();
+        byte[][] keys = ["ab"u8.ToArray(), "a"u8.ToArray(), "abc"u8.ToArray(), [], "b"u8.ToArray()];
+        for (int i = 0; i < keys.Length; i++)
+            database.Db.Put(keys[i], [(byte)(i + 1)]);
+        if (flush)
+        {
+            using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+            database.Db.Flush(flushOptions);
+        }
+
+        KeyValuePair<byte[], byte[]?>[] values = await database.Db.MultiGetAsync(keys);
+
+        using (Assert.Multiple())
+        {
+            for (int i = 0; i < keys.Length; i++)
+                await Assert.That(values[i].Value).IsEquivalentTo(new[] { (byte)(i + 1) }, CollectionOrdering.Matching);
+        }
+    }
+
+    /// <remarks>
+    /// Scenario:
+    /// 1. Write 256 keys, enough for several data blocks, to one column family, flush and close.
+    /// 2. Reopen with an empty block cache, so a cache-tier probe of the last key needs the file.
+    /// 3. Prefetch every key plus one absent key through that column family.
+    /// 4. The first and the last key are now served from the cache, and the absent key is no error.
+    /// </remarks>
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task PrefetchAsync_KeysOnlyInTheFile_BringsTheFirstAndLastKeyIntoTheCache(bool namedFamily)
+    {
+        using TempDirectory directory = new();
+        string path = directory.Reserve("db");
+        byte[] keys = FixedKeys(256);
+        using (RocksDb writer = OpenFamilies(path, cache: null))
+        {
+            IColumnFamilyHandle family = namedFamily ? writer.GetColumnFamily("blocks") : writer.GetDefaultColumnFamily();
+            for (int i = 0; i < 256; i++)
+                writer.Put(keys.AsSpan(i * PrefetchKeyLength, PrefetchKeyLength), new byte[100], family);
+            using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+            writer.Flush(flushOptions, family);
+        }
+        using Cache cache = Cache.CreateLru(8UL << 20);
+        using RocksDb db = OpenFamilies(path, cache);
+        IColumnFamilyHandle? readFamily = namedFamily ? db.GetColumnFamily("blocks") : null;
+        using ReadOptions cacheOnly = new ReadOptions().SetReadTier(1);
+        byte[] first = keys[..PrefetchKeyLength];
+        byte[] last = keys[(255 * PrefetchKeyLength)..];
+        byte[] prefetched = [.. keys, .. FixedKeys(257).AsSpan(256 * PrefetchKeyLength)];
+        // Precondition: before the prefetch the last key is only in the file.
+        await Assert.That(db.TryGet(last, [], out _, readFamily, cacheOnly)).IsEqualTo(GetResult.Incomplete);
+
+        await db.PrefetchAsync(prefetched, PrefetchKeyLength, readFamily);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(db.TryGet(first, [], out _, readFamily, cacheOnly)).IsEqualTo(GetResult.Found);
+            await Assert.That(db.TryGet(last, [], out _, readFamily, cacheOnly)).IsEqualTo(GetResult.Found);
+        }
+    }
+
+    /// <remarks>
+    /// MultiGetAsync does not honour the cache read tier (a flushed value is read from the file even at tier 1), so
+    /// the read error comes from a corrupt data block instead: the file's first block fails its checksum. The file is
+    /// changed while the database is closed.
+    /// </remarks>
+    [Test]
+    public async Task PrefetchAsync_CorruptDataBlock_FaultsWithTheReadError()
+    {
+        using TempDirectory directory = new();
+        string path = directory.Reserve("db");
+        byte[] keys = FixedKeys(2);
+        using (RocksDb writer = OpenFamilies(path, cache: null))
+        {
+            writer.Put(keys.AsSpan(0, PrefetchKeyLength), new byte[256]);
+            using FlushOptions flushOptions = new FlushOptions().SetWaitForFlush(true);
+            writer.Flush(flushOptions);
+        }
+        using (FileStream stream = new(Directory.GetFiles(path, "*.sst").Single(), FileMode.Open, FileAccess.Write))
+        {
+            stream.Position = 8;
+            stream.Write([0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF]);
+        }
+        using RocksDb db = OpenFamilies(path, cache: null);
+
+        await Assert.That(async () => await db.PrefetchAsync(keys, PrefetchKeyLength)).Throws<RocksDbException>();
+    }
+
+    [Test]
+    public async Task PrefetchAsync_ValidatesInputsAndAcceptsEmptyBatches()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        await Assert.That(database.Db.PrefetchAsync([], PrefetchKeyLength).IsCompletedSuccessfully).IsTrue();
+        await Assert.That(() => database.Db.PrefetchAsync(new byte[4], 0)).ThrowsExactly<ArgumentOutOfRangeException>();
+        await Assert.That(() => database.Db.PrefetchAsync(new byte[5], 2)).ThrowsExactly<ArgumentException>();
+        await Assert.That(() => database.Db.PrefetchAsync(new byte[PrefetchKeyLength], PrefetchKeyLength, new ColumnFamilyHandleInternal(0)))
+            .ThrowsExactly<ObjectDisposedException>();
+        using ReadOptions options = new();
+        options.Dispose();
+        await Assert.That(() => database.Db.PrefetchAsync([], PrefetchKeyLength, readOptions: options)).ThrowsExactly<ObjectDisposedException>();
+        database.Db.Dispose();
+        await Assert.That(() => database.Db.PrefetchAsync([], PrefetchKeyLength)).ThrowsExactly<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task PrefetchAsync_SurvivesDisposalOfDatabaseAndOptions()
+    {
+        using TestDatabase database = TestDatabase.Create();
+        byte[] keys = FixedKeys(8);
+        database.Db.Put(keys.AsSpan(0, PrefetchKeyLength), "value"u8);
+        ReadOptions options = new();
+
+        Task prefetch = database.Db.PrefetchAsync(keys, PrefetchKeyLength, readOptions: options);
+        options.Dispose();
+        database.Db.Dispose();
+
+        await Assert.That(async () => await prefetch).ThrowsNothing();
+    }
+
     [Test]
     public async Task Reads_SurviveDisposalOfDatabaseOptionsAndSnapshot()
     {
@@ -306,5 +434,27 @@ public class AsyncReadTests
         database.Db.Dispose();
         await Assert.That(async () => await database.Db.GetAsync([])).ThrowsExactly<ObjectDisposedException>();
         await Assert.That(async () => await database.Db.MultiGetAsync([])).ThrowsExactly<ObjectDisposedException>();
+    }
+
+    private const int PrefetchKeyLength = 32;
+
+    /// <summary>Opens the default and a "blocks" column family, both reading through <paramref name="cache"/> or none.</summary>
+    private static RocksDb OpenFamilies(string path, Cache? cache)
+    {
+        BlockBasedTableOptions table = cache is null
+            ? new BlockBasedTableOptions().SetNoBlockCache(true)
+            : new BlockBasedTableOptions().SetBlockCache(cache);
+        using ColumnFamilyOptions defaultOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
+        using ColumnFamilyOptions blocksOptions = new ColumnFamilyOptions().SetBlockBasedTableFactory(table);
+        using DbOptions options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        return RocksDb.Open(options, path, new ColumnFamilies(defaultOptions) { { "blocks", blocksOptions } });
+    }
+
+    private static byte[] FixedKeys(int count)
+    {
+        byte[] keys = new byte[count * PrefetchKeyLength];
+        for (int i = 0; i < count; i++)
+            BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * PrefetchKeyLength), i + 1);
+        return keys;
     }
 }

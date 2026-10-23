@@ -74,9 +74,12 @@ The span is valid only during `Deserialize`. Single reads use pooled completions
 consume each returned `ValueTask` once, or call `AsTask()` once to share the result.
 
 The API is the same on every platform. Linux builds enable RocksDB's native
-coroutine reads using Folly and io_uring. Windows, macOS and filesystems without
-a read executor use RocksDB's synchronous fallback, which can block during
-submission. `DbOptions.SetReadIoExecutorThreads` configures the shared executor
+coroutine reads using Folly and io_uring. Where io_uring cannot be set up, for
+example on older kernels or under a seccomp filter, executor threads read
+synchronously on Folly's libevent backend; libevent is built with `epoll_wait`
+rather than `epoll_pwait2`, so this also works before Linux 5.11. Windows,
+macOS and filesystems without a read executor use RocksDB's synchronous
+fallback, which can block during submission. `DbOptions.SetReadIoExecutorThreads` configures the shared executor
 on supported builds. This API does not cancel submitted reads.
 
 ## Reusing iterator bounds

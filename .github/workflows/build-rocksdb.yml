@@ -102,6 +102,13 @@ jobs:
           triplet=$(find vcpkg/triplets -name "$TRIPLET.cmake")
           echo "string(APPEND VCPKG_C_FLAGS \" $prefix_map\")" >> $triplet
           echo "string(APPEND VCPKG_CXX_FLAGS \" $prefix_map\")" >> $triplet
+          # Read executor threads fall back to Folly's libevent backend when io_uring is
+          # unavailable. libevent calls epoll_pwait2 without a fallback whenever glibc declares
+          # it, and kernels before 5.11 reject that with ENOSYS, which aborts the process.
+          # epoll_wait with timerfd keeps precise timeouts on every kernel.
+          echo 'if(PORT STREQUAL "libevent")' >> $triplet
+          echo '  list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DEVENT__HAVE_EPOLL_PWAIT2=OFF)' >> $triplet
+          echo 'endif()' >> $triplet
           # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
           # These flags replace the triplet's, so they repeat -fPIC and the path map.
           folly_cpu=x86-64-v2
@@ -117,6 +124,8 @@ jobs:
             "folly[liburing]:$TRIPLET"
           grep -qx '#define FOLLY_HAS_LIBURING 1' \
             vcpkg/installed/$TRIPLET/include/folly/folly-config.h
+          grep -qx '/\* #undef EVENT__HAVE_EPOLL_PWAIT2 \*/' \
+            vcpkg/installed/$TRIPLET/include/event2/event-config.h
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"
@@ -212,6 +221,12 @@ jobs:
              awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' |
              grep -qx malloc_usable_size; then
             echo "::error::RocksDB must not query libc for jemalloc allocation sizes"
+            exit 1
+          fi
+          if readelf -Ws build/librocksdb.so |
+             awk '$7 == "UND" { sub(/@.*/, "", $8); print $8 }' |
+             grep -qx epoll_pwait2; then
+            echo "::error::epoll_pwait2 fails with ENOSYS on kernels before 5.11"
             exit 1
           fi
           leaked=$(readelf --dyn-syms -W $library |

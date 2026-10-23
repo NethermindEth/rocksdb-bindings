@@ -44,6 +44,29 @@ jobs:
           ROCKSDB_EXPECT_NATIVE_ASYNC: ${{ runner.os == 'Linux' && '1' || '0' }}
         run: dotnet test -c release
 
+  test-legacy-kernel:
+    name: Test without io_uring or epoll_pwait2
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      # Kernels before 5.11 lack epoll_pwait2, and io_uring may be missing or filtered. The
+      # profile returns ENOSYS for both, so async reads must run on the libevent fallback.
+      - name: Test
+        run: |
+          docker run --rm \
+            --security-opt seccomp="$PWD/.github/seccomp/no-io-uring-epoll-pwait2.json" \
+            -e ROCKSDB_EXPECT_NATIVE_ASYNC=1 \
+            -v "$PWD:/src" -w /src/src/Nethermind.RocksDbBindings.Tests \
+            mcr.microsoft.com/dotnet/sdk:10.0 dotnet test -c release
+
   notices:
     name: Notices
     runs-on: ubuntu-latest
@@ -73,7 +96,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [notices, test]
+    needs: [notices, test, test-legacy-kernel]
     if: github.event_name == 'workflow_dispatch' && inputs.publish != 'No'
     runs-on: ubuntu-latest
     permissions:

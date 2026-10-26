@@ -560,7 +560,11 @@ jobs:
           REF: ${{ inputs.ref }}
         run: |
           version=${REF#v}
-          if [[ $version =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+          # Some tags omit the patch number; keep it so the package revision does not take its place.
+          if [[ $version =~ ^[0-9]+\.[0-9]+$ ]]; then
+            version=$version.0
+          fi
+          if [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             sed -i "s|<VersionPrefix>.*</VersionPrefix>|<VersionPrefix>$version</VersionPrefix>|" \
               src/Directory.Build.props
           fi

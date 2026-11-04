@@ -4,5 +4,6 @@
     <File Path="Directory.Packages.props" />
   </Folder>
   <Project Path="Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" />
+  <Project Path="Nethermind.RocksDbBindings.CompatibilityTests/Nethermind.RocksDbBindings.CompatibilityTests.csproj" />
   <Project Path="Nethermind.RocksDbBindings.Tests/Nethermind.RocksDbBindings.Tests.csproj" />
 </Solution>

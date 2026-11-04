@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <!-- BaselineVersion builds against a published package instead of the current sources. -->
+  <ItemGroup Condition="'$(BaselineVersion)' == ''">
+    <ProjectReference Include="../Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(BaselineVersion)' != ''">
+    <PackageVersion Include="Nethermind.RocksDbBindings" Version="$(BaselineVersion)" />
+    <PackageReference Include="Nethermind.RocksDbBindings" />
+  </ItemGroup>
+
+</Project>

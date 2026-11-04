@@ -52,7 +52,7 @@ jobs:
       - name: Check out RocksDB repository
         uses: actions/checkout@v7
         with:
-          repository: facebook/rocksdb
+          repository: meta/rocksdb
           ref: ${{ inputs.ref }}
 
       - name: Check out bindings extension
@@ -262,7 +262,7 @@ jobs:
       - name: Check out RocksDB repository
         uses: actions/checkout@v7
         with:
-          repository: facebook/rocksdb
+          repository: meta/rocksdb
           ref: ${{ inputs.ref }}
 
       - name: Check out bindings extension
@@ -377,7 +377,7 @@ jobs:
       - name: Check out RocksDB repository
         uses: actions/checkout@v7
         with:
-          repository: facebook/rocksdb
+          repository: meta/rocksdb
           ref: ${{ inputs.ref }}
 
       - name: Check out bindings extension

@@ -82,7 +82,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 2. RocksDB
 
-https://github.com/facebook/rocksdb
+https://github.com/meta/rocksdb
 
 Copyright (c) 2011-present, Facebook, Inc. All rights reserved.
 Copyright (c) Meta Platforms, Inc. and affiliates.

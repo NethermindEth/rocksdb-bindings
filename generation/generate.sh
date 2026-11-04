@@ -20,7 +20,7 @@ header_file="$work/header.txt"
 printf '// %s\n' "${template//\\n/$'\n// '}" > "$header_file"
 
 curl -fsSL -o "$work/c.h" \
-  "https://raw.githubusercontent.com/facebook/rocksdb/$ref/include/rocksdb/c.h"
+  "https://raw.githubusercontent.com/meta/rocksdb/$ref/include/rocksdb/c.h"
 
 ClangSharpPInvokeGenerator @"$root/generation/rocksdb.rsp" \
   --header-file "$header_file" \

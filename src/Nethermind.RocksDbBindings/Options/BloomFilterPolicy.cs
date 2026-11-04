@@ -8,7 +8,7 @@ using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 /// <remarks>
 /// Attaching the policy to options hands ownership to RocksDB, which destroys it with them, so
 /// there is nothing to release here. A policy that is never attached leaks; see
-/// <see href="https://github.com/facebook/rocksdb/issues/1095">RocksDB issue #1095</see>.
+/// <see href="https://github.com/meta/rocksdb/issues/1095">RocksDB issue #1095</see>.
 /// </remarks>
 public sealed unsafe class BloomFilterPolicy
 {

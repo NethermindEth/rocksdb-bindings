@@ -5259,6 +5259,13 @@ public static unsafe partial class RocksDbNative
     public static extern byte rocksdb_options_get_background_close_inactive_wals(rocksdb_options_t* opt);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void rocksdb_options_set_track_options_file_number_in_manifest(rocksdb_options_t* opt, [NativeTypeName("unsigned char")] byte v);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [return: NativeTypeName("unsigned char")]
+    public static extern byte rocksdb_options_get_track_options_file_number_in_manifest(rocksdb_options_t* opt);
+
+    [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_options_set_prefix_seek_opt_in_only(rocksdb_options_t* opt, [NativeTypeName("unsigned char")] byte v);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

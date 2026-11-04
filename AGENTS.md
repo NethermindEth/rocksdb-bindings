@@ -5,6 +5,7 @@ C# bindings for RocksDB. See [global.json](./global.json) and [src](./src/) dire
 ## Project structure
 
 - [src](./src/): The main codebase. The C# API was originally derived from [rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), and has since been substantially rewritten.
+- [Nethermind.RocksDbBindings.CompatibilityTests](./src/Nethermind.RocksDbBindings.CompatibilityTests/): Checks that databases written by the current sources open with the latest published package and vice versa, using Nethermind's option sets. `-p:BaselineVersion=<version>` builds it against that package. In CI, it runs only when the linux-x64 native library differs from the latest release; upgrade failures fail the job and downgrade failures only warn.
 - [generation](./generation/): RocksDB bindings generation with ClangSharp.
 - [native](./native/): Async and decoded-batch C API extensions, included in upstream `db/c.cc` during the native build. Async declarations generate `RocksDbNative.Async.g.cs`. Batch bindings are declared in `RocksDb.MultiGet.Native.cs`.
 - [build-rocksdb.yml](./.github/workflows/build-rocksdb.yml): Builds RocksDB and generates bindings for the specified version.

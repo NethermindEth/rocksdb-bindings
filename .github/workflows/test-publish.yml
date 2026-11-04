@@ -67,6 +67,77 @@ jobs:
             -v "$PWD:/src" -w /src/src/Nethermind.RocksDbBindings.Tests \
             mcr.microsoft.com/dotnet/sdk:10.0 dotnet test -c release
 
+  compatibility:
+    name: Compatibility with the latest release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # Only the native library decides what is on disk, so an unchanged one needs no check.
+      - name: Compare the native library with the latest release
+        id: baseline
+        env:
+          LIBRARY: src/Nethermind.RocksDbBindings/runtimes/linux-x64/native/librocksdb.so
+        run: |
+          set -o pipefail
+          feed=https://api.nuget.org/v3-flatcontainer/nethermind.rocksdbbindings
+          version=$(curl -fsSL $feed/index.json | jq -r '[.versions[] | select(contains("-") | not)] | last')
+          curl -fsSL -o "$RUNNER_TEMP/baseline.nupkg" "$feed/$version/nethermind.rocksdbbindings.$version.nupkg"
+          released=$(unzip -p "$RUNNER_TEMP/baseline.nupkg" "${LIBRARY#src/Nethermind.RocksDbBindings/}" | sha256sum | cut -d' ' -f1)
+          current=$(git show "HEAD:$LIBRARY" | sed -n 's/^oid sha256://p')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          if [ "$current" = "$released" ]; then
+            echo "The linux-x64 native library matches $version; skipping."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            git lfs pull --include="$LIBRARY"
+          fi
+
+      - name: Set up .NET
+        if: steps.baseline.outputs.changed
+        uses: actions/setup-dotnet@v6
+
+      # Upgrades must always work. A downgrade break can be an accepted upstream change, such as a
+      # new default format_version, so it only warns.
+      - name: Check
+        if: steps.baseline.outputs.changed
+        working-directory: src
+        env:
+          BASELINE: ${{ steps.baseline.outputs.version }}
+        run: |
+          set -o pipefail
+          baseline=$BASELINE
+          current=$(sed -n 's|.*<VersionPrefix>\(.*\)</VersionPrefix>.*|\1|p' Directory.Build.props)
+          echo "Baseline: $baseline, current: $current"
+          project=Nethermind.RocksDbBindings.CompatibilityTests
+          dotnet build $project -c release -o "$RUNNER_TEMP/current"
+          dotnet build $project -c release -o "$RUNNER_TEMP/baseline" -p:BaselineVersion=$baseline
+          check() { dotnet "$RUNNER_TEMP/$1/$project.dll" "${@:2}"; }
+          # The baseline reads data that the current build wrote or compacted. $1 describes that data.
+          downgrade() {
+            label=$1; shift
+            log="$RUNNER_TEMP/$(basename "$1").log"
+            check baseline verify "$@" 2>&1 | tee "$log" && return
+            echo "::warning title=Downgrade compatibility::$current data does not open correctly with $baseline; see the job summary"
+            {
+              echo "### Downgrade from $current to $baseline fails: $label"
+              echo "Check that the upstream release notes expect this before publishing."
+              echo '```'
+              grep -E 'FAIL|Exception|checks failed' "$log" | head -50
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            return 1
+          }
+          data=$RUNNER_TEMP/data
+          check current write $data/downgrade
+          if downgrade "databases written by the current build" $data/downgrade --compact; then
+            check current verify $data/downgrade
+          fi
+          check baseline write $data/upgrade
+          check current verify $data/upgrade --compact
+          downgrade "databases compacted by the current build" $data/upgrade || true
+
   notices:
     name: Notices
     runs-on: ubuntu-latest
@@ -96,7 +167,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [notices, test, test-legacy-kernel]
+    needs: [compatibility, notices, test, test-legacy-kernel]
     if: github.event_name == 'workflow_dispatch' && inputs.publish != 'No'
     runs-on: ubuntu-latest
     permissions:

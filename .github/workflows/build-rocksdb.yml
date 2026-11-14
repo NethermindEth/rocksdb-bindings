@@ -109,6 +109,19 @@ jobs:
           echo 'if(PORT STREQUAL "libevent")' >> $triplet
           echo '  list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DEVENT__HAVE_EPOLL_PWAIT2=OFF)' >> $triplet
           echo 'endif()' >> $triplet
+          # The snappy port turns its SIMD paths off; enable those that the minimum CPU has.
+          if [ "$TRIPLET" = arm64-linux ]; then
+            snappy_cpu=armv8-a+crc+crypto
+            snappy_simd="-DSNAPPY_HAVE_NEON=ON -DSNAPPY_HAVE_NEON_CRC32=ON"
+          else
+            snappy_cpu=x86-64-v2
+            snappy_simd="-DSNAPPY_HAVE_SSSE3=ON -DSNAPPY_HAVE_X86_CRC32=ON"
+          fi
+          echo 'if(PORT STREQUAL "snappy")' >> $triplet
+          echo "  string(APPEND VCPKG_C_FLAGS \" -march=$snappy_cpu\")" >> $triplet
+          echo "  string(APPEND VCPKG_CXX_FLAGS \" -march=$snappy_cpu\")" >> $triplet
+          echo "  list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS $snappy_simd)" >> $triplet
+          echo 'endif()' >> $triplet
           # Match RocksDB's F14 intrinsics and avoid static C++ runtime interposition.
           # These flags replace the triplet's, so they repeat -fPIC and the path map.
           folly_cpu=x86-64-v2
@@ -126,6 +139,14 @@ jobs:
             vcpkg/installed/$TRIPLET/include/folly/folly-config.h
           grep -qx '/\* #undef EVENT__HAVE_EPOLL_PWAIT2 \*/' \
             vcpkg/installed/$TRIPLET/include/event2/event-config.h
+          # Byte shuffles show that the SIMD decompression path was compiled in.
+          shuffle=pshufb
+          if [ "$TRIPLET" = arm64-linux ]; then shuffle=tbl; fi
+          shuffles=$(objdump -d vcpkg/installed/$TRIPLET/lib/libsnappy.a | grep -cw $shuffle || true)
+          if [ "$shuffles" -eq 0 ]; then
+            echo "::error::snappy was built without SIMD"
+            exit 1
+          fi
           shared=$(find vcpkg/installed/$TRIPLET/lib -maxdepth 1 -name '*.so' -o -name '*.so.*')
           if [ -n "$shared" ]; then
             echo "::error::vcpkg produced shared dependencies: $shared"

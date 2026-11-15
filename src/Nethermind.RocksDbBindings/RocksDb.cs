@@ -369,6 +369,30 @@ public unsafe sealed partial class RocksDb : IDisposable
             pinned = GetPinned(keyPtr, (nuint)key.Length, cf, readOptions);
         }
 
+        return TryWrapPinned(pinned, out slice);
+    }
+
+    /// <summary>Lease-free <see cref="TryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/>: the caller must keep this database, <paramref name="cf"/> and <paramref name="readOptions"/> undisposed until the call returns and must release <paramref name="slice"/> before the database closes.</summary>
+    public bool DangerousTryGetPinned(scoped ReadOnlySpan<byte> key, out PinnedSlice slice, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var options = readOptions ?? DefaultReadOptions;
+        var optionsHandle = options.SafeHandle;
+        ObjectDisposedException.ThrowIf(optionsHandle.IsClosed, options);
+        sbyte* errptr = null;
+        rocksdb_pinnableslice_t* pinned;
+        fixed (byte* keyPtr = key)
+        {
+            pinned = cf is null
+                ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle.DangerousGetHandle()), (sbyte*)keyPtr, (nuint)key.Length, &errptr)
+                : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle.DangerousGetHandle()), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &errptr);
+        }
+        RocksDbInterop.ThrowIfError(errptr);
+        return TryWrapPinned(pinned, out slice);
+    }
+
+    private static bool TryWrapPinned(rocksdb_pinnableslice_t* pinned, out PinnedSlice slice)
+    {
         if (pinned is null)
         {
             slice = default;

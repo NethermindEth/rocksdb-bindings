@@ -98,6 +98,88 @@ public class PinnedSliceTests
         }
     }
 
+    private static (bool Found, bool HasValue, byte[] Value) DangerousGetPinned(RocksDb db, byte[] key, IColumnFamilyHandle? cf = null, ReadOptions? readOptions = null)
+    {
+        var found = db.DangerousTryGetPinned(key, out var slice, cf, readOptions);
+        try
+        {
+            return (found, slice.HasValue, slice.Value.ToArray());
+        }
+        finally
+        {
+            slice.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task DangerousTryGetPinned_MatchesTryGetPinned()
+    {
+        byte[] emptyKey = "empty"u8.ToArray();
+        byte[] missingKey = "missing"u8.ToArray();
+        using var database = TestDatabase.Create();
+        using var readOptions = new ReadOptions();
+        database.Db.Put(Key, Value);
+        database.Db.Put(emptyKey, ReadOnlySpan<byte>.Empty);
+
+        using (Assert.Multiple())
+        {
+            foreach (var key in new[] { Key, emptyKey, missingKey })
+            {
+                var leased = GetPinned(database.Db, key);
+                var leaseFree = DangerousGetPinned(database.Db, key);
+                var leaseFreeWithOptions = DangerousGetPinned(database.Db, key, readOptions: readOptions);
+
+                await Assert.That(leaseFree.Found).IsEqualTo(leased.Found);
+                await Assert.That(leaseFree.HasValue).IsEqualTo(leased.HasValue);
+                await Assert.That(leaseFree.Value).IsEquivalentTo(leased.Value, CollectionOrdering.Matching);
+                await Assert.That(leaseFreeWithOptions.Found).IsEqualTo(leased.Found);
+                await Assert.That(leaseFreeWithOptions.Value).IsEquivalentTo(leased.Value, CollectionOrdering.Matching);
+            }
+        }
+    }
+
+    [Test]
+    public async Task DangerousTryGetPinned_ReadsFromTheGivenColumnFamily()
+    {
+        using var options = new DbOptions().SetCreateIfMissing().SetCreateMissingColumnFamilies();
+        using var familyOptions = new ColumnFamilyOptions();
+        var families = new ColumnFamilies { { "blocks", familyOptions } };
+        using var database = TestDatabase.Create(options, families);
+        var blocks = database.Db.GetColumnFamily("blocks");
+        database.Db.Put(Key, Value, blocks);
+
+        var inFamily = DangerousGetPinned(database.Db, Key, blocks);
+        var inDefault = DangerousGetPinned(database.Db, Key);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(inFamily.Found).IsTrue();
+            await Assert.That(inFamily.Value).IsEquivalentTo(Value, CollectionOrdering.Matching);
+            await Assert.That(inDefault.Found).IsFalse();
+        }
+    }
+
+    [Test]
+    public async Task DangerousTryGetPinned_ThrowsAfterTheDatabaseIsDisposed()
+    {
+        var database = TestDatabase.Create();
+        var db = database.Db;
+        db.Put(Key, Value);
+        database.Dispose();
+
+        await Assert.That(() => db.DangerousTryGetPinned(Key, out _)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task DangerousTryGetPinned_ThrowsAfterTheReadOptionsAreDisposed()
+    {
+        using var database = TestDatabase.Create();
+        var readOptions = new ReadOptions();
+        readOptions.Dispose();
+
+        await Assert.That(() => database.Db.DangerousTryGetPinned(Key, out _, readOptions: readOptions)).Throws<ObjectDisposedException>();
+    }
+
     [Test]
     public async Task TryGetPinned_FlushedValuePinsBlockCacheUntilDisposed()
     {

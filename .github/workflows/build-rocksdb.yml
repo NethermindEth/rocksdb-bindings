@@ -525,9 +525,14 @@ jobs:
   generate-bindings:
     name: Generate bindings
     runs-on: ubuntu-latest
+    # The generator runs third-party code with the checkout mounted.
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Generate
         env:

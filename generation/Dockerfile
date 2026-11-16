@@ -4,11 +4,16 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-resolute
 
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends libclang-common-21-dev && \
+  apt-get install -y --no-install-recommends libclang-common-22-dev && \
   rm -rf /var/lib/apt/lists/*
 
-# The ClangSharp major version must match the libclang-common package above.
-RUN dotnet tool install ClangSharpPInvokeGenerator --version 21.1.8.4 --tool-path /opt/clangsharp
+# Clang builtin headers (stdbool.h, stddef.h). ClangSharp only finds those of its own
+# Clang major, so pass the newest that Ubuntu ships explicitly.
+# TODO: switch to libclang-common-23-dev, matching ClangSharp 23, once Ubuntu ships it.
+ENV CLANG_RESOURCE_DIR=/usr/lib/llvm-22/lib/clang/22
+RUN test -f "$CLANG_RESOURCE_DIR/include/stdbool.h"
+
+RUN dotnet tool install ClangSharpPInvokeGenerator --version 23.1.5 --tool-path /opt/clangsharp
 
 RUN set -eux; \
   find /opt/clangsharp -type f \( -name 'libclang.so' -o -name 'libClangSharp.so' \) \

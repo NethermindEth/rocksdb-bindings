@@ -23,6 +23,7 @@ curl -fsSL -o "$work/c.h" \
   "https://raw.githubusercontent.com/meta/rocksdb/$ref/include/rocksdb/c.h"
 
 ClangSharpPInvokeGenerator @"$root/generation/rocksdb.rsp" \
+  --resource-directory "$CLANG_RESOURCE_DIR" \
   --header-file "$header_file" \
   --file "$work/c.h" \
   --output "$work/RocksDbNative.g.cs"
@@ -33,6 +34,7 @@ mv "$work/RocksDbNative.g.cs" \
 mkdir -p "$work/rocksdb"
 cp "$work/c.h" "$work/rocksdb/c.h"
 ClangSharpPInvokeGenerator @"$root/generation/rocksdb-async.rsp" \
+  --resource-directory "$CLANG_RESOURCE_DIR" \
   --header-file "$header_file" \
   --include-directory "$work" \
   --file "$root/native/rocksdb_async.h" \

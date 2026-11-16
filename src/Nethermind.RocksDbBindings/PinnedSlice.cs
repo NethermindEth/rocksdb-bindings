@@ -18,7 +18,8 @@ namespace Nethermind.RocksDbBindings;
 /// The native handle is released with an unconditional delete, and copies of the slice alias the
 /// same handle, so release it exactly once: either dispose a single copy, or detach and pass the
 /// handle to <see cref="DangerousDestroy"/>. Obtained from
-/// <see cref="RocksDb.TryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/>.
+/// <see cref="RocksDb.TryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/> or
+/// <see cref="RocksDb.DangerousTryGetPinned(ReadOnlySpan{byte}, out PinnedSlice, IColumnFamilyHandle?, ReadOptions?)"/>.
 /// </remarks>
 public unsafe ref struct PinnedSlice
 {

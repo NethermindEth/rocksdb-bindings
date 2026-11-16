@@ -7,9 +7,8 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends libclang-common-22-dev && \
   rm -rf /var/lib/apt/lists/*
 
-# Clang builtin headers (stdbool.h, stddef.h). ClangSharp only finds those of its own
-# Clang major, so pass the newest that Ubuntu ships explicitly.
-# TODO: switch to libclang-common-23-dev, matching ClangSharp 23, once Ubuntu ships it.
+# ClangSharp only finds the builtin headers of its own Clang major, so pass Ubuntu's newest.
+# TODO: use libclang-common-23-dev once Ubuntu ships it.
 ENV CLANG_RESOURCE_DIR=/usr/lib/llvm-22/lib/clang/22
 RUN test -f "$CLANG_RESOURCE_DIR/include/stdbool.h"
 

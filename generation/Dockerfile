@@ -12,6 +12,7 @@ RUN apt-get update && \
 ENV CLANG_RESOURCE_DIR=/usr/lib/llvm-22/lib/clang/22
 RUN test -f "$CLANG_RESOURCE_DIR/include/stdbool.h"
 
+# The ClangSharp major must match the Clang headers; 22 is a stopgap (see TODO).
 RUN dotnet tool install ClangSharpPInvokeGenerator --version "23.*" --tool-path /opt/clangsharp
 
 RUN set -eux; \

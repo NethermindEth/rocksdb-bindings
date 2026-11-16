@@ -11,447 +11,447 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.RocksDbBindings.Native;
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_status_ptr_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_backup_engine_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_backup_engine_info_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_backup_engine_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_create_backup_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_restore_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_memory_allocator_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_lru_cache_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_hyper_clock_cache_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_cache_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_write_buffer_manager_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_sst_file_manager_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionfilter_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionfiltercontext_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionfilterfactory_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_walfilter_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_file_checksum_gen_factory_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_sst_partitioner_factory_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_table_properties_collector_factory_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_comparator_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_dbpath_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_env_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_fifo_compaction_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_filelock_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_filterpolicy_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_flushoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_flushwaloptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_iterator_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_logger_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_mergeoperator_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compaction_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_block_based_table_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_block_cache_trace_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_block_cache_trace_writer_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_cuckoo_table_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_randomfile_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_readoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_seqfile_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_slicetransform_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_snapshot_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writablefile_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writebatch_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writebatch_wi_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writeoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_universal_compaction_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_livefile_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_livefiles_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_column_family_handle_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_column_family_metadata_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_import_column_family_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_export_import_files_metadata_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_level_metadata_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_sst_file_metadata_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_column_family_metadata_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_envoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_ingestexternalfileoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_trace_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_trace_reader_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_replay_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_replayer_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_size_approximation_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_livefiles_storage_info_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_livefiles_storage_info_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_sstfilewriter_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_ratelimiter_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_perfcontext_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_pinnableslice_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_pinnable_multi_get_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_transactiondb_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_transactiondb_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_transaction_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_optimistictransactiondb_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_optimistictransactiondb_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_optimistictransactiondb_lock_buckets_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_optimistictransaction_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_transaction_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_checkpoint_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_wal_iterator_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_wal_readoptions_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_wal_file_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_wal_files_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_memory_consumers_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_memory_usage_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_statistics_histogram_data_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_wait_for_compact_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public unsafe partial struct rocksdb_slice_t
 {
     [NativeTypeName("const char *")]
@@ -461,102 +461,102 @@ public unsafe partial struct rocksdb_slice_t
     public nuint size;
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_flushjobinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionjobinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_subcompactionjobinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_externalfileingestioninfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_table_properties_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compaction_job_stats_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compaction_file_info_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_blob_file_addition_info_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_blob_file_garbage_info_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_eventlistener_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writestallinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_writestallcondition_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_memtableinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionservice_scheduleresponse_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionservice_jobinfo_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compactionservice_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_compaction_service_options_override_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_open_and_compact_options_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public partial struct rocksdb_pinnable_handle_t
 {
 }
 
-[GeneratedCode("ClangSharp", "21.1.8.4")]
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 public static unsafe partial class RocksDbNative
 {
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -2686,7 +2686,7 @@ public static unsafe partial class RocksDbNative
     public static extern ulong rocksdb_options_statistics_get_ticker_count(rocksdb_options_t* opt, [NativeTypeName("uint32_t")] uint ticker_type);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void rocksdb_options_statistics_get_histogram_data(rocksdb_options_t* opt, [NativeTypeName("uint32_t")] uint histogram_type, rocksdb_statistics_histogram_data_t* data);
+    public static extern void rocksdb_options_statistics_get_histogram_data(rocksdb_options_t* opt, [NativeTypeName("uint32_t")] uint histogram_type, [NativeTypeName("rocksdb_statistics_histogram_data_t *const")] rocksdb_statistics_histogram_data_t* data);
 
     [DllImport("rocksdb", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void rocksdb_options_set_max_write_buffer_number(rocksdb_options_t* param0, int param1);

@@ -379,15 +379,11 @@ public unsafe sealed partial class RocksDb : IDisposable
         var options = readOptions ?? DefaultReadOptions;
         var optionsHandle = options.SafeHandle;
         ObjectDisposedException.ThrowIf(optionsHandle.IsClosed, options);
-        sbyte* errptr = null;
         rocksdb_pinnableslice_t* pinned;
         fixed (byte* keyPtr = key)
         {
-            pinned = cf is null
-                ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle.DangerousGetHandle()), (sbyte*)keyPtr, (nuint)key.Length, &errptr)
-                : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle.DangerousGetHandle()), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)keyPtr, (nuint)key.Length, &errptr);
+            pinned = GetPinned(NativeHandle, optionsHandle.DangerousGetHandle(), keyPtr, (nuint)key.Length, cf);
         }
-        RocksDbInterop.ThrowIfError(errptr);
         return TryWrapPinned(pinned, out slice);
     }
 
@@ -671,10 +667,15 @@ public unsafe sealed partial class RocksDb : IDisposable
         using var lease = Lease();
         var options = readOptions ?? DefaultReadOptions;
         using var optionsLease = options.Lease(out nint optionsHandle);
+        return GetPinned(NativeHandle, optionsHandle, key, keyLength, cf);
+    }
+
+    private static rocksdb_pinnableslice_t* GetPinned(nint db, nint readOptions, byte* key, nuint keyLength, IColumnFamilyHandle? cf)
+    {
         sbyte* errptr = null;
         var pinned = cf is null
-            ? rocksdb_get_pinned(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), (sbyte*)key, keyLength, &errptr)
-            : rocksdb_get_pinned_cf(RocksDbInterop.Db(NativeHandle), RocksDbInterop.ReadOptions(optionsHandle), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
+            ? rocksdb_get_pinned(RocksDbInterop.Db(db), RocksDbInterop.ReadOptions(readOptions), (sbyte*)key, keyLength, &errptr)
+            : rocksdb_get_pinned_cf(RocksDbInterop.Db(db), RocksDbInterop.ReadOptions(readOptions), RocksDbInterop.ColumnFamily(cf.Handle), (sbyte*)key, keyLength, &errptr);
         RocksDbInterop.ThrowIfError(errptr);
         return pinned;
     }

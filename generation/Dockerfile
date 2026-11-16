@@ -12,7 +12,7 @@ RUN apt-get update && \
 ENV CLANG_RESOURCE_DIR=/usr/lib/llvm-22/lib/clang/22
 RUN test -f "$CLANG_RESOURCE_DIR/include/stdbool.h"
 
-RUN dotnet tool install ClangSharpPInvokeGenerator --version 23.1.5 --tool-path /opt/clangsharp
+RUN dotnet tool install ClangSharpPInvokeGenerator --version "23.*" --tool-path /opt/clangsharp
 
 RUN set -eux; \
   find /opt/clangsharp -type f \( -name 'libclang.so' -o -name 'libClangSharp.so' \) \
